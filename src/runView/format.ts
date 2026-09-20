@@ -82,7 +82,7 @@ export const resumeRunLabel = (completedRows: number): string => (
   completedRows > 0 ? `Resume from row ${completedRows + 1}` : 'Retry'
 )
 
-export const savedRunCopy = (): string => 'Using saved run.'
+export const savedRunCopy = (): string => ''
 
 export const runSubsetCopy = ({
   analyzedRows,

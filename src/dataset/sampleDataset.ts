@@ -68,7 +68,7 @@ export const SAMPLE_FIXTURE_CARDS: readonly SampleFixtureCard[] = [
     datasetId: SQUIRREL_FIXTURE_ID,
     name: SQUIRREL_DATASET_NAME,
     eyebrow: 'Sample',
-    blurb: 'Places where they eat. Map, not Location vs Activity.',
+    blurb: 'Places where they eat.',
     task: SQUIRREL_EATING_TASK,
   },
 ]
