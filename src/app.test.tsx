@@ -745,6 +745,41 @@ describe('Jev playground flow', () => {
     }))
   })
 
+  it('shows Still working when a live run has had no progress for 60s', async () => {
+    const frozenAt = new Date(Date.now() - 70_000).toISOString()
+    const frozen = snapshot({
+      status: 'running',
+      createdAt: frozenAt,
+      updatedAt: frozenAt,
+      progress: { completedRows: 728, totalRows: 3023, completedCalls: 728, totalCalls: 3023 },
+    })
+    const api = makeApi({
+      start: vi.fn(async () => frozen),
+      read: vi.fn(async () => frozen),
+    })
+    await startSampleRun(api)
+    expect(await screen.findByText(/still working/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /resume from row/i })).not.toBeInTheDocument()
+  })
+
+  it('offers Resume when a stalled run is healed to a retryable error', async () => {
+    const stalled = snapshot({
+      status: 'error',
+      progress: { completedRows: 728, totalRows: 3023, completedCalls: 728, totalCalls: 3023 },
+      error: { code: 'ANALYSIS_RUN_STALLED', retryable: true },
+    })
+    const api = makeApi({
+      start: vi.fn(async () => stalled),
+      read: vi.fn(async () => stalled),
+    })
+    await startSampleRun(api)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/this run may be stuck — resume or start again/i)
+    expect(alert).toHaveTextContent(/resume from row 729/i)
+    expect(screen.getByRole('button', { name: /resume from row 729/i })).toBeInTheDocument()
+    expect(screen.queryByText(/ANALYSIS_RUN_STALLED/)).not.toBeInTheDocument()
+  })
+
   it('validates an empty public CSV URL next to the field', async () => {
     const api = makeApi()
     render(<App api={api} />)

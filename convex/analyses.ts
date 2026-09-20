@@ -6,6 +6,10 @@ const MAX_ROWS = 5_000
 const MAX_CALLS = 5_000
 const MAX_ID_LENGTH = 200
 const MAX_QUERY_LENGTH = 20_000
+const MAX_DOCUMENT_JSON = 200_000
+const ROW_WRITE_BATCH = 40
+const STALL_AFTER_MS = 60_000
+const RUN_STALLED_CODE = 'ANALYSIS_RUN_STALLED'
 
 const analysisArgs = {
   analysisId: v.string(),
@@ -84,7 +88,8 @@ const validateSnapshot: (snapshot: unknown) => asserts snapshot is DurableSnapsh
   if (snapshot.currentFixtureRow !== undefined && !isRecord(snapshot.currentFixtureRow)) throw new Error('Invalid current analysis row')
   if (snapshot.error !== undefined && (!isRecord(snapshot.error) || typeof snapshot.error.code !== 'string' || !/^[A-Z0-9_]+$/.test(snapshot.error.code) || typeof snapshot.error.retryable !== 'boolean')) throw new Error('Invalid analysis error')
   if (snapshot.contentKey !== undefined && (typeof snapshot.contentKey !== 'string' || !/^[a-f0-9]{64}$/.test(snapshot.contentKey))) throw new Error('Invalid analysis content key')
-  if (JSON.stringify(snapshot).length > 900_000) throw new Error('Analysis snapshot is too large')
+  const { resultRows: _ignoredRows, ...documentFields } = snapshot
+  if (JSON.stringify(documentFields).length > MAX_DOCUMENT_JSON) throw new Error('Analysis snapshot is too large')
 }
 
 const snapshotDocument = (snapshot: {
@@ -191,7 +196,7 @@ const findReusableDocument = async (ctx: { db: any }, contentKey: string) => {
   return reusable[0] ?? null
 }
 
-const writeSnapshot = async (ctx: { db: any }, snapshot: DurableSnapshot) => {
+const writeSnapshotDocument = async (ctx: { db: any }, snapshot: DurableSnapshot) => {
   const existing = await findDocument(ctx, snapshot.analysisId)
   const currentClaims = existing ? {
     ...(existing.runOwnerToken === undefined ? {} : { runOwnerToken: existing.runOwnerToken }),
@@ -207,13 +212,38 @@ const writeSnapshot = async (ctx: { db: any }, snapshot: DurableSnapshot) => {
   }
   if (existing) await ctx.db.replace(existing._id, document)
   else await ctx.db.insert('analyses', document)
+  return document
+}
 
-  const currentRows = await ctx.db.query('analysisRows').withIndex('by_analysis_row', (q: any) => q.eq('analysisId', snapshot.analysisId)).take(MAX_ROWS)
-  for (const row of currentRows) await ctx.db.delete(row._id)
-  for (const row of snapshot.resultRows) {
+const upsertAnalysisRows = async (ctx: { db: any }, analysisId: string, rows: unknown[]) => {
+  for (const row of rows) {
     const durableRow = row as { rowIndex: number; input: unknown; model: string; selectedClass?: string; probabilities?: unknown; confidence?: number; value?: number; questionKind?: 'noul' | 'score' | 'choice'; error?: { code: string; retryable: boolean } }
-    await ctx.db.insert('analysisRows', { analysisId: snapshot.analysisId, ...durableRow })
+    const existingRows = await ctx.db.query('analysisRows').withIndex('by_analysis_row', (q: any) => q.eq('analysisId', analysisId).eq('rowIndex', durableRow.rowIndex)).take(1)
+    const existing = existingRows[0]
+    const stored = { analysisId, ...durableRow }
+    if (existing) await ctx.db.replace(existing._id, stored)
+    else await ctx.db.insert('analysisRows', stored)
   }
+}
+
+const consecutiveCompletedRows = (rows: Array<{ rowIndex?: unknown }>): number => {
+  const done = new Set(rows.map((row) => row.rowIndex).filter((index): index is number => typeof index === 'number' && Number.isInteger(index)))
+  let count = 0
+  while (done.has(count)) count += 1
+  return count
+}
+
+const shouldHealStalledDocument = (document: { status: string; updatedAt: string; runLeaseExpiresAt?: number }, nowMs: number): boolean => {
+  if (document.status !== 'queued' && document.status !== 'running') return false
+  const updatedAtMs = Date.parse(document.updatedAt)
+  if (!Number.isFinite(updatedAtMs) || nowMs - updatedAtMs < STALL_AFTER_MS) return false
+  if (document.runLeaseExpiresAt !== undefined && document.runLeaseExpiresAt > nowMs) return false
+  return true
+}
+
+const writeSnapshot = async (ctx: { db: any }, snapshot: DurableSnapshot) => {
+  const document = await writeSnapshotDocument(ctx, snapshot)
+  await upsertAnalysisRows(ctx, snapshot.analysisId, snapshot.resultRows)
   return publicSnapshot(document, snapshot.resultRows)
 }
 
@@ -222,6 +252,31 @@ export const putAnalysisSnapshotInternal = internalMutation({
   handler: async (ctx, { snapshot }) => {
     validateSnapshot(snapshot)
     return await writeSnapshot(ctx, snapshot)
+  },
+})
+
+export const putAnalysisMetaInternal = internalMutation({
+  args: { snapshot: v.any() },
+  handler: async (ctx, { snapshot }) => {
+    validateSnapshot(snapshot)
+    await writeSnapshotDocument(ctx, snapshot)
+    return null
+  },
+})
+
+export const upsertAnalysisRowsInternal = internalMutation({
+  args: { analysisId: v.string(), rows: v.array(v.any()) },
+  handler: async (ctx, { analysisId, rows }) => {
+    if (typeof analysisId !== 'string' || analysisId.length < 1 || analysisId.length > MAX_ID_LENGTH) throw new Error('Invalid analysis snapshot')
+    if (!Array.isArray(rows) || rows.length > MAX_ROWS) throw new Error('Analysis result rows exceed bounds')
+    const indexes = new Set<number>()
+    for (const row of rows) {
+      if (!isRecord(row) || typeof row.rowIndex !== 'number' || !Number.isInteger(row.rowIndex) || row.rowIndex < 0 || row.rowIndex >= MAX_ROWS || indexes.has(row.rowIndex)) throw new Error('Invalid analysis result row')
+      if (typeof row.model !== 'string' || row.model.length < 1 || row.model.length > 256 || !isRecord(row.input)) throw new Error('Invalid analysis result row')
+      indexes.add(row.rowIndex)
+    }
+    await upsertAnalysisRows(ctx, analysisId, rows)
+    return null
   },
 })
 
@@ -245,6 +300,7 @@ export const claimAnalysisInternal = internalMutation({
     const document = await findDocument(ctx, args.analysisId)
     if (!document) return 'missing' as const
     if (document.status === 'complete') return 'complete' as const
+    if (document.status === 'error') return 'error' as const
     if (document.runOwnerToken && document.runOwnerToken !== args.ownerToken && (document.runLeaseExpiresAt ?? 0) > args.nowMs) return 'busy' as const
     await ctx.db.patch(document._id, { status: 'running', updatedAt: new Date(args.nowMs).toISOString(), runOwnerToken: args.ownerToken, runLeaseExpiresAt: args.nowMs + args.leaseMs })
     return 'claimed' as const
@@ -260,11 +316,45 @@ export const releaseAnalysisInternal = internalMutation({
   },
 })
 
+export const healStaleAnalysisInternal = internalMutation({
+  args: { analysisId: v.string(), nowMs: v.number() },
+  handler: async (ctx, { analysisId, nowMs }) => {
+    if (!analysisId.trim() || !Number.isFinite(nowMs)) throw new Error('Invalid analysis heal')
+    const document = await findDocument(ctx, analysisId)
+    if (!document) return null
+    if (!shouldHealStalledDocument(document, nowMs)) return await readSnapshot(ctx, analysisId)
+    const rows = await ctx.db.query('analysisRows').withIndex('by_analysis_row', (q: any) => q.eq('analysisId', analysisId)).order('asc').take(MAX_ROWS)
+    const completedPrefix = consecutiveCompletedRows(rows)
+    await ctx.db.patch(document._id, {
+      status: 'error',
+      updatedAt: new Date(nowMs).toISOString(),
+      error: { code: RUN_STALLED_CODE, retryable: true },
+      progress: {
+        completedRows: completedPrefix,
+        totalRows: document.progress.totalRows,
+        completedCalls: rows.length,
+        totalCalls: document.progress.totalCalls,
+      },
+      runOwnerToken: undefined,
+      runLeaseExpiresAt: undefined,
+    })
+    return await readSnapshot(ctx, analysisId)
+  },
+})
+
 export const authorizedGetAnalysis = action({
   args: { authToken: v.string(), analysisId: v.string() },
   handler: async (ctx: any, { authToken, analysisId }: { authToken: string; analysisId: string }): Promise<unknown> => {
     authorizeWrite(authToken)
     return await ctx.runQuery(internal.analyses.getAnalysisInternal, { analysisId })
+  },
+})
+
+export const authorizedHealStaleAnalysis = action({
+  args: { authToken: v.string(), analysisId: v.string(), nowMs: v.number() },
+  handler: async (ctx: any, { authToken, analysisId, nowMs }: { authToken: string; analysisId: string; nowMs: number }): Promise<unknown> => {
+    authorizeWrite(authToken)
+    return await ctx.runMutation(internal.analyses.healStaleAnalysisInternal, { analysisId, nowMs })
   },
 })
 
@@ -293,7 +383,16 @@ export const authorizedPutAnalysisSnapshot = action({
   handler: async (ctx: any, { authToken, snapshot }: { authToken: string; snapshot: unknown }): Promise<unknown> => {
     authorizeWrite(authToken)
     validateSnapshot(snapshot)
-    return await ctx.runMutation(internal.analyses.putAnalysisSnapshotInternal, { snapshot })
+    const durable = snapshot as DurableSnapshot
+    await ctx.runMutation(internal.analyses.putAnalysisMetaInternal, { snapshot: { ...durable, resultRows: [] } })
+    const rows = Array.isArray(durable.resultRows) ? durable.resultRows : []
+    for (let offset = 0; offset < rows.length; offset += ROW_WRITE_BATCH) {
+      await ctx.runMutation(internal.analyses.upsertAnalysisRowsInternal, {
+        analysisId: durable.analysisId,
+        rows: rows.slice(offset, offset + ROW_WRITE_BATCH),
+      })
+    }
+    return await ctx.runQuery(internal.analyses.getAnalysisInternal, { analysisId: durable.analysisId })
   },
 })
 

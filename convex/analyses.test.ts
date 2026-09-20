@@ -51,6 +51,47 @@ describe('durable Convex analysis functions', () => {
     await expect(t.action(api.analyses.authorizedReleaseAnalysis, { authToken: writeSecret, analysisId: baseSnapshot.analysisId, ownerToken: 'owner-b' })).resolves.toBeNull()
   })
 
+  it('upserts incremental rows without dropping earlier completions and heals a dead lease', async () => {
+    const t = convexTest(schema, modules)
+    await t.action(api.analyses.authorizedPutAnalysisSnapshot, { authToken: writeSecret, snapshot: baseSnapshot })
+    await t.action(api.analyses.authorizedPutAnalysisSnapshot, {
+      authToken: writeSecret,
+      snapshot: { ...baseSnapshot, status: 'running', progress: { completedRows: 1, totalRows: 2, completedCalls: 1, totalCalls: 2 }, resultRows: [resultRow(0)] },
+    })
+    await t.action(api.analyses.authorizedPutAnalysisSnapshot, {
+      authToken: writeSecret,
+      snapshot: { ...baseSnapshot, status: 'running', progress: { completedRows: 2, totalRows: 2, completedCalls: 2, totalCalls: 2 }, resultRows: [resultRow(1)] },
+    })
+    await expect(t.action(api.analyses.authorizedGetAnalysis, { authToken: writeSecret, analysisId: baseSnapshot.analysisId })).resolves.toMatchObject({
+      status: 'running',
+      resultRows: [expect.objectContaining({ rowIndex: 0 }), expect.objectContaining({ rowIndex: 1 })],
+    })
+
+    await t.action(api.analyses.authorizedClaimAnalysis, { authToken: writeSecret, analysisId: baseSnapshot.analysisId, ownerToken: 'owner-a', nowMs: 1_000, leaseMs: 300_000 })
+    await expect(t.action(api.analyses.authorizedHealStaleAnalysis, {
+      authToken: writeSecret,
+      analysisId: baseSnapshot.analysisId,
+      nowMs: 61_000,
+    })).resolves.toMatchObject({ status: 'running' })
+    await expect(t.action(api.analyses.authorizedHealStaleAnalysis, {
+      authToken: writeSecret,
+      analysisId: baseSnapshot.analysisId,
+      nowMs: 301_001,
+    })).resolves.toMatchObject({
+      status: 'error',
+      error: { code: 'ANALYSIS_RUN_STALLED', retryable: true },
+      progress: { completedRows: 2 },
+      resultRows: [expect.objectContaining({ rowIndex: 0 }), expect.objectContaining({ rowIndex: 1 })],
+    })
+    await expect(t.action(api.analyses.authorizedClaimAnalysis, {
+      authToken: writeSecret,
+      analysisId: baseSnapshot.analysisId,
+      ownerToken: 'owner-b',
+      nowMs: 302_000,
+      leaseMs: 300_000,
+    })).resolves.toBe('error')
+  })
+
   it('looks up a complete snapshot by content key and ignores incomplete runs', async () => {
     const t = convexTest(schema, modules)
     const contentKey = 'a'.repeat(64)

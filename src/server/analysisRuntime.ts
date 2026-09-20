@@ -20,6 +20,7 @@ class UnconfiguredAnalysisStore implements AnalysisStorage {
   putDraft(): never { return this.unavailable() }
   claim(): never { return this.unavailable() }
   release(): never { return this.unavailable() }
+  healStale(): never { return this.unavailable() }
 }
 
 class UnconfiguredDatasetStore implements DatasetStorage {

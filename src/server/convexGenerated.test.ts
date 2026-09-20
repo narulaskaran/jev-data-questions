@@ -12,6 +12,7 @@ describe('convex generated API boundary', () => {
     expect(getFunctionName(api.analyses.authorizedGetAnalysis)).toBe('analyses:authorizedGetAnalysis')
     expect(getFunctionName(api.analyses.authorizedGetCompleteAnalysisByContentKey)).toBe('analyses:authorizedGetCompleteAnalysisByContentKey')
     expect(getFunctionName(api.analyses.authorizedClaimAnalysisByContentKey)).toBe('analyses:authorizedClaimAnalysisByContentKey')
+    expect(getFunctionName(api.analyses.authorizedHealStaleAnalysis)).toBe('analyses:authorizedHealStaleAnalysis')
     expect(getFunctionName(api.analyses.authorizedGetDraftByContentKey)).toBe('analyses:authorizedGetDraftByContentKey')
     expect(getFunctionName(api.analyses.authorizedPutDraft)).toBe('analyses:authorizedPutDraft')
     expect(getFunctionName(api.datasets.authorizedPutDataset)).toBe('datasets:authorizedPutDataset')

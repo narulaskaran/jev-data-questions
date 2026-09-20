@@ -405,6 +405,13 @@ h3 {
   line-height: 1.45;
 }
 
+.run-stall {
+  margin: 6px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .analysis-head {
   display: flex;
   flex-direction: row;
