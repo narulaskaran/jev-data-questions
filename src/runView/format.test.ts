@@ -55,7 +55,7 @@ describe('run view copy', () => {
       detail: 'Jev returned a response this run could not use. Saved rows are kept. You can resume from row 32.',
     })
     expect(resumeRunLabel(31)).toBe('Resume from row 32')
-    expect(savedRunCopy()).toBe('Using saved run.')
+    expect(savedRunCopy()).toBe('')
     expect(runErrorCopy({ code: 'ANALYSIS_RUN_STALLED', retryable: true }, 728)).toEqual({
       title: STUCK_RUN_COPY,
       detail: 'Saved rows are kept. You can resume from row 729.',
