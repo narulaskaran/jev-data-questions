@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { railMetaLine, runErrorCopy, runErrorHint, runProgressCount, runProgressPercent, runSubsetCopy, runViewHeading, chartHeading, plainAnalysisError, savedRunCopy, resumeRunLabel } from './format'
+import { railMetaLine, runErrorCopy, runErrorHint, runProgressCount, runProgressPercent, runStallCopy, runSubsetCopy, runViewHeading, chartHeading, plainAnalysisError, savedRunCopy, resumeRunLabel, STILL_WORKING_COPY, STUCK_RUN_COPY } from './format'
 
 describe('rail meta line', () => {
   it('keeps one compact play_id · qtr · class-or-percent line', () => {
@@ -32,6 +32,7 @@ describe('run view copy', () => {
   it('uses Results for the panel and chart labels for the plot', () => {
     expect(runViewHeading()).toBe('Results')
     expect(chartHeading('noul')).toBe('Win probability')
+    expect(chartHeading('noul', 'places')).toBe('Places')
     expect(chartHeading('score')).toBe('Score')
     expect(chartHeading('choice')).toBe('Class distribution')
   })
@@ -55,6 +56,13 @@ describe('run view copy', () => {
     })
     expect(resumeRunLabel(31)).toBe('Resume from row 32')
     expect(savedRunCopy()).toBe('Using saved run.')
+    expect(runErrorCopy({ code: 'ANALYSIS_RUN_STALLED', retryable: true }, 728)).toEqual({
+      title: STUCK_RUN_COPY,
+      detail: 'Saved rows are kept. You can resume from row 729.',
+    })
+    expect(runStallCopy('running', new Date(1_800_000_000_000 - 59_000).toISOString(), 1_800_000_000_000)).toBeUndefined()
+    expect(runStallCopy('running', new Date(1_800_000_000_000 - 60_000).toISOString(), 1_800_000_000_000)).toBe(STILL_WORKING_COPY)
+    expect(runStallCopy('complete', new Date(1_800_000_000_000 - 120_000).toISOString(), 1_800_000_000_000)).toBeUndefined()
   })
 
   it('explains fixture H1 subset runs without changing the 39 vs 71 split', () => {

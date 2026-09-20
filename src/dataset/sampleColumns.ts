@@ -1,4 +1,4 @@
-import type { AnalysisRowInput, DatasetColumn } from './csvTypes'
+import type { AnalysisRowInput, DatasetColumn } from './csvTypes.js'
 
 const columnType = (values: unknown[]): DatasetColumn['inferredType'] => {
   const present = values.filter((value) => value !== null && value !== undefined && value !== '')

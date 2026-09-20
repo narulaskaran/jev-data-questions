@@ -6,9 +6,9 @@
 
 **Status:** Pivot recorded. Fixture-first analysis plus Stage 5 BYOD intake (CSV upload, public HTTPS CSV URL, sample on-ramp) and a scrubbable live class-distribution run view (sample and BYOD share the same shell) is on the working branch. Remaining work is pause/cancel, browse/share completeness, abuse/cost controls, and production/release gates. Stage 0 provider-contract confirmation is still pending before paid live Jev.
 
-**Last updated:** 2026-09-18 12:56:00 UTC
+**Last updated:** 2026-09-19 13:50:00 UTC
 
-**Goal:** Let a user bring a small CSV dataset, describe an analysis in natural language, review/edit the generated Jev classifier query, run a bounded row-by-row Jev analysis, watch results arrive live, and share/replay the completed analysis at a unique URL.
+**Goal:** Let a user bring a small CSV dataset, inspect its schema/shape, run a proposed insight (Jev still fills values; advanced users can edit raw Jev JSON), watch results arrive live in the matching chart, and share/replay the completed analysis at a unique URL.
 
 **Architecture:** The browser validates and previews CSV input, but never calls Jev, OpenRouter, UploadThing server credentials, or privileged Convex mutations directly. UploadThing stores the original CSV blob; Convex stores dataset/analysis metadata, immutable normalized row references, run progress, and incremental predictions for realtime display and replay. A server-only OpenRouter adapter turns the user’s natural-language task into a structured, editable Jev query. A bounded server worker processes rows in small leased chunks, persists each result atomically, and schedules the next chunk so a large run does not depend on one long-lived Vercel request.
 
@@ -41,20 +41,19 @@ The active product is no longer a live football gamecast. The old ESPN/game-stat
 
 ### Product promise
 
-> Bring a dataset. Ask a question. See Jev classify every row.
+> Bring a dataset. Inspect its shape. See the right chart. Jev fills the values.
 
-The product should feel like a clear analysis workbench, not an AI-agent control panel. The primary flow is:
+The product should feel like a clear analysis workbench, not an AI-agent control panel. Chart type is chosen from data shape (categorical / numeric / time / geo / cardinality), not a fixed Choice-bars vs Noul-line pairing. The primary flow is:
 
 ```text
 landing page
-  → choose the checked-in football time-series sample
-  → preview the sample rows and schema
-  → describe task in natural language
-  → server drafts structured Jev classifier query through OpenRouter
-  → user reviews/edits query
-  → explicit Run Jev confirmation
-  → bounded row-by-row execution
-  → realtime result visualization (scrubbable class chart + processed-row rail)
+  → choose 2026 Super Bowl Demo, Squirrel census, or BYOD
+  → quiet schema strip (columns · types · cardinality)
+  → 1–2 proposed insight cards from shape; CTA Run insight
+  → optional Advanced: Edit Jev JSON (collapsed; class chips if Choice)
+  → bounded row-by-row execution when Jev runs
+  → proposed viz as hero (P(win) line, places map/ranked locations, or class bars)
+  → row rail only if the viz is row-streamed
   → durable replay/share page
 ```
 
@@ -95,8 +94,8 @@ These questions materially change the data model, abuse controls, and UI. Record
 2. **Execution cap — DECIDED:** Maximum 5,000 accepted rows and 5,000 Jev calls per analysis. This is a hard server-side ceiling, not a promise that every user may run 5,000 calls without additional global throttling or budget approval. The run confirmation must show the maximum call count; concurrency, retry policy, and global quota remain enforced server-side.
 3. **Jev classifier contract — DECIDED:** Each row produces a selected class, per-class probabilities, and confidence when Jev provides it; no free-form explanation by default. The implementation must generalize the existing typed `Choice` adapter from hard-coded football outcomes to dynamic user-defined classes, subject to the confirmed Jev API contract.
 4. **CSV URLs — DECIDED:** Accept public HTTPS URLs that directly return CSV. No cookies, authorization headers, authenticated/private links, or arbitrary URL fetches.
-5. **Result visualization — DECIDED:** Chart type follows the drafted Jev query. Noul/Score render a live scrubbable series over play/row index (sample win likelihood is Noul P(win) 0–1, not CSV `wpa`). The sample full-game series uses the denser 71-play index as the x-domain: same P(win) line/area, same range scrubber, no extra chrome. `Row X of Y` and the scrubber domain use Y = accepted row count (71 for sample Noul). Choice classifiers render class-distribution bars. The chart ticks on every persisted row, is scrubbable (range under the chart; mid-run snaps to completed rows; playhead follows the live edge unless the user scrubs back). Right rail (~280px; stacks under the chart on ≤900px) lists processed rows as `Row X of Y` only. Progress `N / M rows` sits above. Results table is secondary / below the fold. Empty: chart axes + “Waiting for the first row…”; rail empty until row 1.
-6. **Sample dataset — DECIDED:** Seahawks fixture stays as the site demo sample (try-it path). Default sample task is win likelihood per play; draft must honor that prompt with a Jev Noul (“will SEA win given this play state?”) and must not fall back to leftover fixture player-yard classes (K.Walker / C.Kupp / J.Smith-Njigba / Other). That Noul path uses **all usable SEA plays through the game** (not H1-only), ordered by `play_id`, and includes absolute score state (`posteam_score`, `defteam_score`) plus `score_differential` and clock/situation. Do not plot CSV `wpa` as Jev output. H1→H2 yards evaluation / leakage rules stay isolated for Choice/player-yard paths. BYOD upload + public HTTPS CSV URL also ships. Two equal first-screen cards: Try sample (Super Bowl Seahawks demo; football is the sample, not the product) and Bring your own. Do not drop the fixture while adding BYOD.
+5. **Result visualization — DECIDED:** Chart type follows dataset shape, then the proposed insight. Noul/Score on a sequential play-state table render a live scrubbable series over play/row index (sample win likelihood is Noul P(win) 0–1, not CSV `wpa`). Place/eating tables (squirrel census) render **places**: a lat/lng map when coordinates exist, otherwise ranked bars of location values — never Location vs Activity Choice bars. Choice classifiers render class-distribution bars when that is actually the insight. The `Row X of Y` rail is only for row-streamed series/bars. Progress percent chrome stays. Empty series/bars: chart axes + “Waiting for the first row…”; places can plot dataset coordinates immediately.
+6. **Sample datasets — DECIDED:** Two one-click samples. Seahawks fixture stays as the Super Bowl demo (win likelihood → P(win) line). **Squirrel census** is the second sample (slim checked-in fixture exercising place/eating/lat-lng). Default squirrel insight is where they eat. BYOD upload + public HTTPS CSV URL also ships. Idle: Super Bowl · Squirrel census + Bring your own. Do not drop the football fixture while adding the second sample.
 
 ### Working defaults pending provider-contract confirmation
 

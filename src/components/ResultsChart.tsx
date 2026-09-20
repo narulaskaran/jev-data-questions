@@ -4,8 +4,9 @@ import { classColor } from '../runView/classColor'
 import { areChartPropsEqual, barWidth } from '../runView/chartProps'
 import { clampPlayhead, playDomainCount, playIndexFromRatio, type PlayheadMotion } from '../runView/playhead'
 import { areaPath, formatPercentTick, jevSeriesPoints, linePath, seriesX } from '../runView/seriesPath'
+import { normalizePoints, projectPlaces } from '../runView/places'
 import { chartVisualFor, inferQuestionKind, type ChartVisualKind, type JevQuestionKind } from '../shared/questionKind'
-import type { AnalysisResultRow } from '../shared/analysis'
+import type { AnalysisResultRow, AnalysisRowInput } from '../shared/analysis'
 import { chartHeading } from '../runView/format'
 import { Button } from './ui/button'
 
@@ -50,6 +51,7 @@ export const ResultsChart = memo(function ResultsChart({
   chartKind,
   playing = false,
   playbackEnabled = false,
+  sourceRows,
   onSeek,
   onTogglePlayback,
 }: {
@@ -62,6 +64,7 @@ export const ResultsChart = memo(function ResultsChart({
   chartKind?: ChartVisualKind
   playing?: boolean
   playbackEnabled?: boolean
+  sourceRows?: readonly AnalysisRowInput[]
   onSeek: (index: number, phase?: 'scrub' | 'release') => void
   onTogglePlayback?: () => void
 }) {
@@ -83,19 +86,36 @@ export const ResultsChart = memo(function ResultsChart({
   )
   const classified = visual === 'bars' ? values.reduce((sum, item) => sum + item.count, 0) : series.length
   const scale = Math.max(totalRows, classified, 1)
-  const waiting = classified === 0
+  const heading = chartHeading(kind, visual)
+  const placeRows = useMemo(() => {
+    if (visual !== 'places') return []
+    if (rows.length > 0) return rows
+    return (sourceRows ?? []).map((input, rowIndex) => ({ rowIndex, input, model: 'dataset' }))
+  }, [rows, sourceRows, visual])
+  const places = useMemo(
+    () => (visual === 'places' ? projectPlaces(placeRows) : { points: [], ranks: [], hasMap: false }),
+    [placeRows, visual],
+  )
+  const mapPoints = useMemo(
+    () => (places.hasMap ? normalizePoints(places.points) : []),
+    [places.hasMap, places.points],
+  )
+  const waiting = visual === 'places' ? placeRows.length === 0 : classified === 0
   const playheadValue = series.find((point) => point.rowIndex === playheadIndex)?.yValue
   const latestLabel = completedCount === 0
-    ? 'Waiting'
+    ? (visual === 'places' && placeRows.length > 0 ? `${placeRows.length} places` : 'Waiting')
     : visual === 'series'
       ? `Play ${prefixCount}${playheadValue === undefined ? '' : ` · ${formatPercentTick(playheadValue)}`}`
-      : `Through row ${prefixCount}`
-  const heading = chartHeading(kind)
+      : visual === 'places'
+        ? `${placeRows.length} places`
+        : `Through row ${prefixCount}`
   const aria = waiting
     ? 'Waiting for the first row'
     : visual === 'series'
-      ? `${chartHeading(kind)} over play index`
-      : 'Class distribution visualization'
+      ? `${chartHeading(kind, visual)} over play index`
+      : visual === 'places'
+        ? (places.hasMap ? 'Places map of eating locations' : 'Ranked places')
+        : 'Class distribution visualization'
 
   const indexFromClientX = useCallback((clientX: number) => {
     const node = plotRef.current
@@ -194,7 +214,36 @@ export const ResultsChart = memo(function ResultsChart({
               ))}
             </div>
           ) : null}
+          {visual === 'places' && places.hasMap && mapPoints.length > 0 ? (
+            <svg className="places-svg" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet" data-place-points={mapPoints.length}>
+              {mapPoints.map((point) => (
+                <circle
+                  key={point.rowIndex}
+                  className="place-dot"
+                  cx={point.px}
+                  cy={point.py}
+                  r={0.018 + point.weight * 0.012}
+                  data-eating={point.weight >= 0.5 ? 'true' : 'false'}
+                  opacity={0.25 + point.weight * 0.7}
+                />
+              ))}
+            </svg>
+          ) : null}
+          {visual === 'places' && !places.hasMap && places.ranks.length > 0 ? (
+            <div className="distribution-chart" data-waiting="false" data-place-ranks={places.ranks.length}>
+              {places.ranks.map((item) => (
+                <ClassBar
+                  key={item.name}
+                  name={item.name}
+                  count={item.count}
+                  scale={Math.max(...places.ranks.map((entry) => entry.count), 1)}
+                  color={classColor(item.name, places.ranks.map((entry) => entry.name))}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
+        {visual === 'places' ? null : (
         <div className="chart-transport">
           {playbackEnabled ? (
             <Button
@@ -229,6 +278,7 @@ export const ResultsChart = memo(function ResultsChart({
             />
           </label>
         </div>
+        )}
       </div>
     </section>
   )

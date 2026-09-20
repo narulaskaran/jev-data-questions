@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   SAMPLE_WIN_LIKELIHOOD_TASK,
   SAMPLE_WIN_NOUL_QUERY,
+  SQUIRREL_EATING_NOUL_QUERY,
+  SQUIRREL_EATING_TASK,
   chartVisualFor,
   classesFromLabelColumns,
   classesFromTask,
   fixtureAnalysisSliceFor,
   inferQuestionKind,
+  isJunkLocationActivitySplit,
   isSampleDefaultWinTask,
+  looksLikePlaceEatingTask,
   looksLikeWinLikelihood,
   resolveDraftedQuery,
   seriesValueFromRow,
@@ -77,6 +81,27 @@ describe('draft honors the user prompt', () => {
     })
   })
 
+  it('rewrites Location vs Activity drafts for a where-they-eat task into eating Noul', () => {
+    expect(looksLikePlaceEatingTask('Identify common locations where squirrels are spotted eating.')).toBe(true)
+    expect(isJunkLocationActivitySplit(['Location', 'Activity'])).toBe(true)
+    expect(resolveDraftedQuery({
+      task: 'Identify common locations where squirrels are spotted eating.',
+      query: 'Identify common locations where squirrels are spotted eating.',
+      questionKind: 'choice',
+      classes: ['Location', 'Activity'],
+    })).toEqual({
+      query: SQUIRREL_EATING_NOUL_QUERY,
+      questionKind: 'noul',
+      classes: [],
+    })
+    expect(resolveDraftedQuery({
+      task: SQUIRREL_EATING_TASK,
+      query: '',
+      questionKind: 'choice',
+      classes: ['Location', 'Activity'],
+    }).questionKind).toBe('noul')
+  })
+
   it('pulls fruit/vehicle classes out of a classify task even when the model returns one label', () => {
     expect(classesFromTask('classify each row as fruit or vehicle using text')).toEqual(['fruit', 'vehicle'])
     expect(resolveDraftedQuery({
@@ -115,6 +140,7 @@ describe('chart type follows the drafted query', () => {
     expect(chartVisualFor('score')).toBe('series')
     expect(chartVisualFor('choice')).toBe('bars')
     expect(inferQuestionKind(SAMPLE_WIN_LIKELIHOOD_TASK)).toBe('noul')
+    expect(inferQuestionKind(SQUIRREL_EATING_TASK)).toBe('noul')
     expect(inferQuestionKind('Classify tickets.', ['urgent', 'routine'])).toBe('choice')
     expect(inferQuestionKind(JSON.stringify({ type: 'noul', instructions: SAMPLE_WIN_NOUL_QUERY }))).toBe('noul')
     expect(inferQuestionKind(JSON.stringify({ type: 'choice', instructions: 'Classify tickets.', criteria: { urgent: 'a', routine: 'b' } }))).toBe('choice')

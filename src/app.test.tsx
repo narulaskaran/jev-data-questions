@@ -4,7 +4,8 @@ import { App, canConfirmJevRun, defaultAnalysisApi, hasRunnableQuery, queryRunFo
 import { FOOTBALL_FIXTURE_ID, getHalftimeModelInput } from './fixtures/footballTimeline'
 import { asAnalysisRow } from './shared/dataset'
 import type { AnalysisDraftResult, AnalysisSnapshot } from './shared/analysis'
-import { SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, INVALID_CLASSES_COPY } from './shared/questionKind'
+import { SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_EATING_NOUL_QUERY, SQUIRREL_EATING_TASK, INVALID_CLASSES_COPY } from './shared/questionKind'
+import { SQUIRREL_FIXTURE_ID } from './fixtures/squirrelCensus'
 import { formatDraftQueryForEditor, parseJevQueryJson } from './shared/jevQuery'
 import type { DatasetIntakeStatus, DatasetPreview } from './shared/dataset'
 
@@ -74,7 +75,7 @@ const makeApi = (overrides: Partial<AnalysisApiClient> = {}): AnalysisApiClient 
 
 const startSampleRun = async (api: AnalysisApiClient) => {
   render(<App api={api} />)
-  fireEvent.click(screen.getByRole('button', { name: /^try sample$/i }))
+  fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
   fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
   await screen.findByLabelText(/^Jev query JSON$/i)
   fireEvent.click(screen.getByRole('button', { name: /run jev/i }))
@@ -95,12 +96,14 @@ describe('Jev playground flow', () => {
     expect(screen.queryByText(/bring a dataset\. ask a question\. see jev classify every row/i)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /choose a dataset/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /2026 super bowl demo/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /squirrel census/i })).toBeInTheDocument()
     expect(screen.queryByText(/football is the sample, not the product/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/same live chart as the sample/i)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /upload \.csv or public https csv url/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/upload csv/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /use public csv url/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^try sample$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^2026 super bowl demo$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^squirrel census$/i })).toBeInTheDocument()
     expect(document.querySelector('[data-stage="intake"]')).toBeTruthy()
     expect(screen.queryByRole('textbox', { name: /analysis task/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: /jev query json/i })).not.toBeInTheDocument()
@@ -131,9 +134,9 @@ describe('Jev playground flow', () => {
   it('does not fetch on sample task editing, and enables Run Jev after draft without a query edit', async () => {
     const api = makeApi()
     render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^try sample$/i }))
-    expect(document.querySelector('[data-stage="task"]')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /^try sample$/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    expect(document.querySelector('[data-stage="shape"]')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^2026 super bowl demo$/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /run jev on a csv/i })).toBeInTheDocument()
     expect(screen.queryByText(/bring a dataset\. ask a question\. see jev classify every row/i)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /choose a dataset/i })).toBeInTheDocument()
@@ -160,7 +163,7 @@ describe('Jev playground flow', () => {
     expect(api.draft).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
     const editor = await screen.findByLabelText(/^Jev query JSON$/i)
-    expect(document.querySelector('[data-stage="query"]')).toBeTruthy()
+    expect(document.querySelector('[data-stage="shape"]')).toBeTruthy()
     expect((editor as HTMLTextAreaElement).value).not.toBe(SAMPLE_WIN_LIKELIHOOD_TASK)
     expect(screen.queryByLabelText(/^Generated query$/i)).not.toBeInTheDocument()
     expect(api.draft).toHaveBeenCalledTimes(1)
@@ -169,8 +172,8 @@ describe('Jev playground flow', () => {
     expect(runButton).toBeEnabled()
     expect(screen.getByText('Classifying 39 of 71 rows (H1 plays).')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^copy$/i })).toBeInTheDocument()
-    expect(document.querySelector('[data-stage="query"]')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /^try sample$/i })).toBeInTheDocument()
+    expect(document.querySelector('[data-stage="shape"]')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^2026 super bowl demo$/i })).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: /class distribution|win probability/i })).not.toBeInTheDocument()
     fireEvent.click(runButton)
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(1))
@@ -186,7 +189,7 @@ describe('Jev playground flow', () => {
       start: vi.fn(() => pending),
     })
     render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^try sample$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
     await screen.findByLabelText(/^Jev query JSON$/i)
     expect(screen.queryByText(/review the json, then run jev/i)).not.toBeInTheDocument()
@@ -204,7 +207,7 @@ describe('Jev playground flow', () => {
   it('drafts the Jev query JSON into the editor, not a prose paraphrase of the task', async () => {
     const api = makeApi()
     render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^try sample$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
     expect(screen.getByLabelText(/^Analysis task$/i)).toHaveValue(SAMPLE_WIN_LIKELIHOOD_TASK)
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
     const editor = await screen.findByLabelText(/^Jev query JSON$/i)
@@ -226,7 +229,7 @@ describe('Jev playground flow', () => {
   it('runs after the user edits the Jev query JSON', async () => {
     const api = makeApi()
     render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^try sample$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
     await screen.findByLabelText(/^Jev query JSON$/i)
     const edited = formatDraftQueryForEditor({
@@ -248,7 +251,7 @@ describe('Jev playground flow', () => {
   it('keeps Run Jev disabled when Edit query text is cleared, and still accepts a manual edit', async () => {
     const api = makeApi()
     render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^try sample$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
     await screen.findByLabelText(/^Jev query JSON$/i)
     fireEvent.change(screen.getByLabelText(/^Jev query JSON$/i), { target: { value: '   ' } })
@@ -353,18 +356,10 @@ describe('Jev playground flow', () => {
       read: vi.fn(async () => noulRun),
     })
     render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^try sample$/i }))
-    expect(screen.getByLabelText(/^Analysis task$/i)).toHaveValue(SAMPLE_WIN_LIKELIHOOD_TASK)
-    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-    const editor = await screen.findByLabelText(/^Jev query JSON$/i)
-    expect(parseJevQueryJson((editor as HTMLTextAreaElement).value)).toEqual({ type: 'noul', instructions: SAMPLE_WIN_NOUL_QUERY })
-    expect(screen.queryByText(/noul · yes\/no probability 0–1/i)).not.toBeInTheDocument()
-    expect(document.querySelector('.query-summary')).toHaveTextContent(SAMPLE_WIN_NOUL_QUERY)
-    expect(screen.queryByText(/analyzing h1 plays/i)).not.toBeInTheDocument()
-    expect(screen.getByText('71 rows')).toBeInTheDocument()
-    expect((editor as HTMLTextAreaElement).value.trim().startsWith('{')).toBe(true)
-    expect((editor as HTMLTextAreaElement).value).not.toBe(SAMPLE_WIN_LIKELIHOOD_TASK)
-    fireEvent.click(screen.getByRole('button', { name: /run jev/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    expect(screen.getByLabelText(/dataset shape/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /win likelihood/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /run insight/i }))
     expect(await screen.findByRole('heading', { level: 2, name: '4%' })).toBeInTheDocument()
     expect(screen.getByText('3 / 71')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 3, name: 'Win probability' })).toBeInTheDocument()
@@ -385,6 +380,76 @@ describe('Jev playground flow', () => {
     expect(document.querySelector('.series-fill')).toBeTruthy()
     expect(api.draft).toHaveBeenCalledWith(expect.objectContaining({ task: SAMPLE_WIN_LIKELIHOOD_TASK }))
     expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: noulQueryJson, questionKind: 'noul', classes: [] }))
+  })
+
+  it('opens the squirrel census sample and runs a places insight, never Location vs Activity bars', async () => {
+    const eatingQuery = formatDraftQueryForEditor({
+      query: SQUIRREL_EATING_NOUL_QUERY,
+      questionKind: 'noul',
+      classes: [],
+    })
+    const eatingDraft: AnalysisDraftResult = {
+      fixtureId: SQUIRREL_FIXTURE_ID,
+      datasetId: SQUIRREL_FIXTURE_ID,
+      sourceType: 'fixture',
+      query: eatingQuery,
+      metadata: {
+        provider: 'openrouter',
+        model: 'cached-sample-places',
+        rowCount: 96,
+        questionKind: 'noul',
+        classes: [],
+        columns: ['x', 'y', 'location', 'eating'],
+        displayName: 'Squirrel census',
+      },
+    }
+    const eatingRun = snapshot({
+      analysisId: 'analysis-squirrel-1',
+      fixtureId: SQUIRREL_FIXTURE_ID,
+      datasetId: SQUIRREL_FIXTURE_ID,
+      query: eatingQuery,
+      questionKind: 'noul',
+      classes: [],
+      status: 'complete',
+      progress: { completedRows: 3, totalRows: 3, completedCalls: 3, totalCalls: 3 },
+      columns: ['x', 'y', 'location', 'eating'],
+      resultRows: [
+        { rowIndex: 0, input: { x: -73.97, y: 40.78, location: 'Ground Plane', eating: true }, model: 'jev-latest', questionKind: 'noul', value: 0.9 },
+        { rowIndex: 1, input: { x: -73.96, y: 40.79, location: 'Above Ground', eating: false }, model: 'jev-latest', questionKind: 'noul', value: 0.1 },
+        { rowIndex: 2, input: { x: -73.975, y: 40.782, location: 'Ground Plane', eating: true }, model: 'jev-latest', questionKind: 'noul', value: 0.85 },
+      ],
+    })
+    const api = makeApi({
+      draft: vi.fn(async () => eatingDraft),
+      start: vi.fn(async () => eatingRun),
+      read: vi.fn(async () => eatingRun),
+    })
+    render(<App api={api} />)
+    fireEvent.click(screen.getByRole('button', { name: /^squirrel census$/i }))
+    expect(screen.getByLabelText(/dataset shape/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /where they eat/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /run insight/i })).toBeInTheDocument()
+    expect(screen.queryByText(/^Location$/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Activity$/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/^Analysis task$/i)).toHaveValue(SQUIRREL_EATING_TASK)
+    fireEvent.click(screen.getByRole('button', { name: /run insight/i }))
+    expect(await screen.findByRole('img', { name: /places map of eating locations/i })).toBeInTheDocument()
+    expect(document.querySelector('[data-chart-kind="places"]')).toBeTruthy()
+    expect(document.querySelector('[data-place-points="3"]')).toBeTruthy()
+    expect(document.querySelector('[data-class="Location"]')).toBeNull()
+    expect(document.querySelector('[data-class="Activity"]')).toBeNull()
+    expect(screen.queryByRole('complementary', { name: /processed rows/i })).not.toBeInTheDocument()
+    expect(api.draft).toHaveBeenCalledWith(expect.objectContaining({
+      datasetId: SQUIRREL_FIXTURE_ID,
+      fixtureId: SQUIRREL_FIXTURE_ID,
+      task: SQUIRREL_EATING_TASK,
+    }))
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({
+      datasetId: SQUIRREL_FIXTURE_ID,
+      fixtureId: SQUIRREL_FIXTURE_ID,
+      questionKind: 'noul',
+      classes: [],
+    }))
   })
 
   it('follows the live edge until the user scrubs back, then seeks from the row rail', async () => {
@@ -542,6 +607,8 @@ describe('Jev playground flow', () => {
       criteria: { fruit: 'the fruit class', vehicle: 'the vehicle class' },
     })
     expect(screen.getByRole('button', { name: /run jev/i })).toBeEnabled()
+    expect(screen.getByRole('list', { name: /choice classes/i })).toHaveTextContent('fruit')
+    expect(screen.getByRole('list', { name: /choice classes/i })).toHaveTextContent('vehicle')
     expect(screen.queryByText(/INVALID_CLASSES/)).not.toBeInTheDocument()
   })
 
@@ -550,13 +617,13 @@ describe('Jev playground flow', () => {
       draft: vi.fn(async () => { throw new Error('INVALID_CLASSES') }),
     })
     render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^try sample$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(INVALID_CLASSES_COPY)
     expect(alert).toHaveTextContent(/couldn't draft/i)
     expect(alert).not.toHaveTextContent('INVALID_CLASSES')
-    expect(screen.queryByLabelText(/^Jev query JSON$/i)).not.toBeInTheDocument()
+    expect(api.start).not.toHaveBeenCalled()
   })
 
   it('keeps idle intake quiet when durable storage is down, and still lets sample start', async () => {
@@ -570,8 +637,8 @@ describe('Jev playground flow', () => {
     expect(screen.queryByText(/durable storage/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/uploadthing/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/sample still works/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^try sample$/i })).not.toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: /^try sample$/i }))
+    expect(screen.getByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
     expect(screen.getByLabelText(/^Analysis task$/i)).toHaveValue(SAMPLE_WIN_LIKELIHOOD_TASK)
     expect(api.start).not.toHaveBeenCalled()
   })
@@ -678,6 +745,41 @@ describe('Jev playground flow', () => {
     }))
   })
 
+  it('shows Still working when a live run has had no progress for 60s', async () => {
+    const frozenAt = new Date(Date.now() - 70_000).toISOString()
+    const frozen = snapshot({
+      status: 'running',
+      createdAt: frozenAt,
+      updatedAt: frozenAt,
+      progress: { completedRows: 728, totalRows: 3023, completedCalls: 728, totalCalls: 3023 },
+    })
+    const api = makeApi({
+      start: vi.fn(async () => frozen),
+      read: vi.fn(async () => frozen),
+    })
+    await startSampleRun(api)
+    expect(await screen.findByText(/still working/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /resume from row/i })).not.toBeInTheDocument()
+  })
+
+  it('offers Resume when a stalled run is healed to a retryable error', async () => {
+    const stalled = snapshot({
+      status: 'error',
+      progress: { completedRows: 728, totalRows: 3023, completedCalls: 728, totalCalls: 3023 },
+      error: { code: 'ANALYSIS_RUN_STALLED', retryable: true },
+    })
+    const api = makeApi({
+      start: vi.fn(async () => stalled),
+      read: vi.fn(async () => stalled),
+    })
+    await startSampleRun(api)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/this run may be stuck — resume or start again/i)
+    expect(alert).toHaveTextContent(/resume from row 729/i)
+    expect(screen.getByRole('button', { name: /resume from row 729/i })).toBeInTheDocument()
+    expect(screen.queryByText(/ANALYSIS_RUN_STALLED/)).not.toBeInTheDocument()
+  })
+
   it('validates an empty public CSV URL next to the field', async () => {
     const api = makeApi()
     render(<App api={api} />)
@@ -702,7 +804,7 @@ describe('Jev playground flow', () => {
       createFromUrl: vi.fn(async () => { throw new Error('URL_NOT_HTTPS') }),
     })
     render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^try sample$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
     expect(screen.getByLabelText(/^Analysis task$/i)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText(/public https csv url/i), { target: { value: 'http://example.com/data.csv' } })
     fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))

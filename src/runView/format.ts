@@ -1,4 +1,5 @@
-import type { AnalysisResultRow } from '../shared/analysis'
+import type { AnalysisResultRow, AnalysisStatus } from '../shared/analysis'
+import { ANALYSIS_RUN_STALLED_CODE, ANALYSIS_STALL_AFTER_MS, progressAgeMs } from '../shared/analysis'
 import type { DatasetSourceType } from '../shared/dataset'
 import { INVALID_CLASSES_COPY, type ChartVisualKind, type JevQuestionKind } from '../shared/questionKind'
 
@@ -25,10 +26,20 @@ export const runProgressCount = (
   status === 'complete' ? `${totalRows} of ${totalRows}` : `${completedRows} / ${totalRows}`
 )
 
-export const chartHeading = (kind: JevQuestionKind): string => {
+export const chartHeading = (kind: JevQuestionKind, visual?: ChartVisualKind): string => {
+  if (visual === 'places') return 'Places'
   if (kind === 'noul') return 'Win probability'
   if (kind === 'score') return 'Score'
   return 'Class distribution'
+}
+
+export const STILL_WORKING_COPY = 'Still working…'
+export const STUCK_RUN_COPY = 'This run may be stuck — Resume or start again'
+
+export const runStallCopy = (status: AnalysisStatus, updatedAt: string, nowMs: number): string | undefined => {
+  if (status !== 'queued' && status !== 'running') return undefined
+  if (progressAgeMs(updatedAt, nowMs) < ANALYSIS_STALL_AFTER_MS) return undefined
+  return STILL_WORKING_COPY
 }
 
 export const ANALYSIS_ERROR_COPY: Record<string, string> = {
@@ -39,6 +50,8 @@ export const ANALYSIS_ERROR_COPY: Record<string, string> = {
   JEV_CONNECTION: 'Could not reach Jev.',
   ANALYSIS_PROVIDER_ERROR: 'Jev hit a provider error.',
   JEV_NOT_CONFIGURED: 'Jev is not configured on this deployment.',
+  ANALYSIS_RUN_STALLED: STUCK_RUN_COPY,
+  ANALYSIS_STORAGE_ERROR: 'Could not save analysis progress.',
 }
 
 export const plainAnalysisError = (code: string, fallback = 'This run hit an error.'): string => {
@@ -55,10 +68,13 @@ export const runErrorCopy = (
   error: { code: string; retryable: boolean },
   completedRows: number,
 ): { title: string; detail: string } => {
-  const reason = plainAnalysisError(error.code)
   const next = completedRows > 0
     ? `Saved rows are kept. You can resume from row ${completedRows + 1}.`
     : 'You can retry this run.'
+  if (error.code === ANALYSIS_RUN_STALLED_CODE) {
+    return { title: STUCK_RUN_COPY, detail: next }
+  }
+  const reason = plainAnalysisError(error.code)
   return { title: "Couldn't finish this run", detail: `${reason} ${next}` }
 }
 
@@ -126,6 +142,7 @@ export const railMetaLine = (row: AnalysisResultRow, chartKind: ChartVisualKind 
     }
   }
   if (chartKind === 'series' && row.value !== undefined) parts.push(percent(row.value))
+  else if (chartKind === 'places' && row.value !== undefined) parts.push(percent(row.value))
   else if (row.selectedClass) parts.push(row.selectedClass)
   else if (row.value !== undefined) parts.push(percent(row.value))
   return parts.join(' · ')

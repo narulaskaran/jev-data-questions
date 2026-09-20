@@ -129,6 +129,29 @@ describe('ResultsChart motion', () => {
     expect(document.querySelector('.series-line')).toBeNull()
   })
 
+  it('renders a places map for eating locations instead of Location vs Activity bars', () => {
+    const rows = [
+      { rowIndex: 0, input: { x: -73.97, y: 40.78, location: 'Ground Plane', eating: true }, model: 'jev', questionKind: 'noul' as const, value: 0.9 },
+      { rowIndex: 1, input: { x: -73.96, y: 40.79, location: 'Above Ground', eating: false }, model: 'jev', questionKind: 'noul' as const, value: 0.05 },
+    ]
+    render(
+      <ResultsChart
+        rows={rows}
+        playheadIndex={1}
+        totalRows={2}
+        questionKind="noul"
+        chartKind="places"
+        onSeek={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('heading', { name: 'Places' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /places map of eating locations/i })).toBeInTheDocument()
+    expect(document.querySelector('[data-chart-kind="places"]')).toBeTruthy()
+    expect(document.querySelector('[data-place-points="2"]')).toBeTruthy()
+    expect(document.querySelector('[data-class="Location"]')).toBeNull()
+    expect(screen.queryByRole('slider', { name: /chart playhead/i })).not.toBeInTheDocument()
+  })
+
   it('does not plot CSV wpa as if Jev produced the series', () => {
     render(
       <ResultsChart

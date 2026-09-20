@@ -3,13 +3,17 @@ import { parseJevQueryJson } from './jevQuery.js'
 export const FIXTURE_PLAYER_CLASSES = ['K.Walker', 'C.Kupp', 'J.Smith-Njigba', 'Other/Tie'] as const
 export const SAMPLE_WIN_LIKELIHOOD_TASK = 'Win likelihood of the game per play.'
 export const SAMPLE_WIN_NOUL_QUERY = 'Will SEA win given this play state?'
+export const SQUIRREL_EATING_TASK = 'Where they eat.'
+export const SQUIRREL_EATING_NOUL_QUERY = 'Is this squirrel eating given this sighting?'
 export const INVALID_CLASSES_COPY = "Couldn't draft classes for that CSV — try a clearer question."
 
 export const JEV_QUESTION_KINDS = ['noul', 'score', 'choice'] as const
 export type JevQuestionKind = typeof JEV_QUESTION_KINDS[number]
-export type ChartVisualKind = 'series' | 'bars'
+export type ChartVisualKind = 'series' | 'bars' | 'places'
 
 const WIN_LIKELIHOOD_RE = /win[-\s]?likelihood|\bp\s*\(\s*win\s*\)|will\s+(?:sea|the\s+seahawks|seattle|this\s+team|the\s+home\s+team)\s+win|(?:probability|chance)\s+(?:that\s+)?(?:sea|the\s+seahawks|seattle)\s+(?:will\s+)?win|chance\s+(?:that\s+)?(?:sea|the\s+seahawks|seattle)\s+(?:wins|of winning)/i
+const PLACE_EATING_RE = /where\s+they\s+eat|locations?\s+where\s+(?:\w+\s+)?(?:squirrels?|they)\s+(?:are\s+)?(?:spotted\s+)?eat|spotted\s+eating|eating\s+locations?|places?\s+(?:they|squirrels?)\s+eat/i
+const JUNK_PLACE_SPLIT = new Set(['location', 'activity', 'place', 'places'])
 const FIXTURE_PLAYER_RE = /k\.?\s*walker|c\.?\s*kupp|j\.?\s*smith-?njigba|scrimmage\s+yards|leading\s+(?:player|rusher|receiver)/i
 const CLASS_LIST_SPLIT_RE = /\s*(?:,|\bor\b|\band\b|\bvs\.?\b|\bversus\b|\/)\s*/i
 const CLASS_CLAUSE_RE = /\b(?:as|into)\s+(.+?)(?:\s+(?:using|with|from|given|based|via)\b|[.?!]|$)/i
@@ -30,6 +34,18 @@ export const parseQuestionKind = (value: unknown): JevQuestionKind | undefined =
 )
 
 export const looksLikeWinLikelihood = (text: string): boolean => WIN_LIKELIHOOD_RE.test(text.trim())
+
+export const looksLikePlaceEatingTask = (text: string): boolean => PLACE_EATING_RE.test(text.trim())
+
+export const isJunkLocationActivitySplit = (classes: readonly string[] = []): boolean => {
+  if (classes.length !== 2) return false
+  const normalized = classes.map((name) => name.trim().toLowerCase())
+  return normalized.every((name) => JUNK_PLACE_SPLIT.has(name)) && new Set(normalized).size === 2
+}
+
+export const isSampleDefaultEatingTask = (task: string): boolean => (
+  normalizeAnalysisTask(task) === normalizeAnalysisTask(SQUIRREL_EATING_TASK) || looksLikePlaceEatingTask(task)
+)
 
 export const normalizeAnalysisTask = (task: string): string => task.trim().replace(/\s+/g, ' ').toLowerCase()
 
@@ -137,6 +153,7 @@ export const inferQuestionKind = (
   const parsed = parseJevQueryJson(text)
   if (parsed) return parsed.type
   if (looksLikeWinLikelihood(text)) return 'noul'
+  if (looksLikePlaceEatingTask(text)) return 'noul'
   if (classes.length >= 2) return 'choice'
   return 'choice'
 }
@@ -163,6 +180,19 @@ export const resolveDraftedQuery = (input: {
     const leftoverPlayerDraft = isPlayerClassifierQuery(query) || query.length === 0
     return {
       query: leftoverPlayerDraft ? SAMPLE_WIN_NOUL_QUERY : query,
+      questionKind: 'noul',
+      classes: [],
+    }
+  }
+
+  if (looksLikePlaceEatingTask(task)) {
+    const leftoverJunk = query.length === 0
+      || isJunkLocationActivitySplit(rawClasses)
+      || isPlayerClassifierQuery(query)
+      || looksLikeWinLikelihood(query)
+      || isCannedSampleWinQuery(query)
+    return {
+      query: leftoverJunk ? SQUIRREL_EATING_NOUL_QUERY : query,
       questionKind: 'noul',
       classes: [],
     }

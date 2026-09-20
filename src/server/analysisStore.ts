@@ -34,11 +34,15 @@ export class ConvexAnalysisStore implements AnalysisStorage {
   }
 
   async get(analysisId: string): Promise<AnalysisSnapshot | undefined> {
+    const healed = await this.healStale(analysisId, Date.now())
+    if (healed) return healed
     const snapshot = await this.client.action(api.analyses.authorizedGetAnalysis, { authToken: this.authToken(), analysisId }) as AnalysisSnapshot | null
     return snapshot ? cloneAnalysisSnapshot(normalizeSnapshot(snapshot)) : undefined
   }
 
   async getPublic(analysisId: string): Promise<AnalysisSnapshot | undefined> {
+    const healed = await this.healStale(analysisId, Date.now())
+    if (healed) return healed
     const snapshot = await this.client.query(api.analyses.getAnalysisShareSnapshot, { analysisId }) as AnalysisSnapshot | null
     return snapshot ? cloneAnalysisSnapshot(normalizeSnapshot(snapshot)) : undefined
   }
@@ -73,12 +77,17 @@ export class ConvexAnalysisStore implements AnalysisStorage {
     })
   }
 
-  async claim(analysisId: string, ownerToken: string, nowMs: number, leaseMs: number): Promise<'claimed' | 'busy' | 'complete' | 'missing'> {
-    return await this.client.action(api.analyses.authorizedClaimAnalysis, { authToken: this.authToken(), analysisId, ownerToken, nowMs, leaseMs }) as 'claimed' | 'busy' | 'complete' | 'missing'
+  async claim(analysisId: string, ownerToken: string, nowMs: number, leaseMs: number): Promise<'claimed' | 'busy' | 'complete' | 'missing' | 'error'> {
+    return await this.client.action(api.analyses.authorizedClaimAnalysis, { authToken: this.authToken(), analysisId, ownerToken, nowMs, leaseMs }) as 'claimed' | 'busy' | 'complete' | 'missing' | 'error'
   }
 
   async release(analysisId: string, ownerToken: string): Promise<void> {
     await this.client.action(api.analyses.authorizedReleaseAnalysis, { authToken: this.authToken(), analysisId, ownerToken })
+  }
+
+  async healStale(analysisId: string, nowMs: number): Promise<AnalysisSnapshot | undefined> {
+    const snapshot = await this.client.action(api.analyses.authorizedHealStaleAnalysis, { authToken: this.authToken(), analysisId, nowMs }) as AnalysisSnapshot | null
+    return snapshot ? cloneAnalysisSnapshot(normalizeSnapshot(snapshot)) : undefined
   }
 }
 

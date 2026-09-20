@@ -1,8 +1,8 @@
 # Jev Data Analysis
 
-Bring a dataset. Ask a question. See Jev classify every row.
+Bring a dataset. Inspect its shape. See the right chart. Jev fills the values.
 
-This is a Jev playground: upload a CSV, paste a public CSV URL, or try the sample dataset, then watch a live class-distribution chart. It is not a live sports product or production analytics.
+This is a Jev playground: open a one-click sample, upload a CSV, or paste a public CSV URL. The UI inspects schema/shape and proposes a viz; Jev still fills values. It is not a live sports product or production analytics.
 
 Start with `CURSOR.md` and `PLAN.md`. The API contract is `docs/analysis-api.md`.
 
@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL. The landing page has two equal cards: **Try sample** (the checked-in Seahawks fixture; default task is win likelihood per play) and **Bring your own** (CSV upload or public HTTPS CSV URL). Draft a Jev query, then confirm **Run Jev**. You can edit the query first if you want.
+Open the Vite URL. QA this locally — do not wait on a Production deploy. The landing page has two one-click samples — **2026 Super Bowl Demo** (P(win) line) and **Squirrel census** (places where they eat) — plus **Bring your own** (CSV upload or public HTTPS CSV URL). After a pick, a schema strip and insight cards appear. Use **Run insight**. Advanced **Edit Jev JSON** stays collapsed.
 
 Visiting or sharing a page never starts a paid Jev run. The browser never calls Jev, OpenRouter, ESPN, UploadThing, or privileged Convex writes. Tests never make a paid provider request.
 
@@ -32,9 +32,10 @@ npm run audit
 
 `test:convex` uses the official `convex-test` mock runtime. It is not evidence of a deployed Convex environment.
 
-## Sample fixture
+## Sample fixtures
 
-`src/fixtures/footballTimeline.ts` is the sample on-ramp: 71 Seattle run/pass/sack plays through the game. The default win-likelihood task sends every usable row (not H1-only) and includes in-progress `posteam_score` / `defteam_score` plus `score_differential` and clock. The leftover H1→H2 yards evaluation still uses 39 first-half rows without absolute scores. Validate with `npm run fixture:validate`.
+- `src/fixtures/footballTimeline.ts` — 71 Seattle run/pass/sack plays. Default insight is win likelihood per play (full-game rows with in-progress scores). Validate with `npm run fixture:validate`.
+- `src/fixtures/squirrelCensus.ts` — slim 2018 Central Park Squirrel Census-shaped table (lat/lng, location, eating). Default insight is **where they eat** as a places map, not Location vs Activity Choice bars.
 
 ## API
 

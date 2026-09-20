@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { footballFixture, getHalftimeModelInput, getWinLikelihoodModelInput, FOOTBALL_FIXTURE_ID, FOOTBALL_FIXTURE_SCHEMA } from '../fixtures/footballTimeline'
-import { SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY } from '../shared/questionKind'
+import { SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_EATING_NOUL_QUERY, SQUIRREL_EATING_TASK } from '../shared/questionKind'
+import { SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensus'
 import { parseJevQueryJson } from '../shared/jevQuery'
 import {
   ANALYSIS_CLASSIFY_CONCURRENCY,
@@ -114,6 +115,25 @@ describe('analysis domain contract', () => {
     expect(drafted.metadata.columns).toEqual(expect.arrayContaining(['posteam_score', 'defteam_score', 'score_differential']))
     expect(JSON.stringify(drafted)).not.toMatch(/K\.Walker|C\.Kupp|Smith-Njigba|Other\/Tie/)
     expect(drafted.metadata.model).toBe('cached-sample-noul')
+    expect(draftCalls).toHaveLength(0)
+  })
+
+  it('short-circuits squirrel where-they-eat into eating Noul, not Location vs Activity', async () => {
+    const draftCalls: unknown[] = []
+    const service = serviceWith(makeClassifier([]), makeDraftProvider(draftCalls, {
+      query: JSON.stringify({
+        type: 'choice',
+        instructions: 'Identify common locations where squirrels are spotted eating.',
+        criteria: { Location: 'specific location where squirrels eat', Activity: 'eating or foraging' },
+      }),
+      model: 'openrouter/test',
+    }))
+    const drafted = await service.draft({ fixtureId: SQUIRREL_FIXTURE_ID, task: SQUIRREL_EATING_TASK })
+    expect(parseJevQueryJson(drafted.query)).toEqual({ type: 'noul', instructions: SQUIRREL_EATING_NOUL_QUERY })
+    expect(drafted.metadata.questionKind).toBe('noul')
+    expect(drafted.metadata.classes).toEqual([])
+    expect(drafted.metadata.model).toBe('cached-sample-places')
+    expect(JSON.stringify(drafted)).not.toMatch(/Location|Activity/)
     expect(draftCalls).toHaveLength(0)
   })
 
@@ -660,6 +680,96 @@ describe('analysis domain contract', () => {
     expect(failed.status).toBe('error')
     expect(failed.error).toEqual({ code: 'ANALYSIS_STORAGE_ERROR', retryable: true })
     expect(JSON.stringify(failed)).not.toMatch(/convex write qps/i)
+    expect(store.get('byod-put-fail')?.status).toBe('error')
+    expect(store.get('byod-put-fail')?.error).toEqual({ code: 'ANALYSIS_STORAGE_ERROR', retryable: true })
+  })
+
+  it('merges incremental snapshot puts so a later row does not drop earlier rows', () => {
+    const store = new InMemoryAnalysisStore()
+    const base: AnalysisSnapshot = {
+      analysisId: 'merge-rows',
+      fixtureId: 'tickets',
+      datasetId: 'tickets',
+      sourceType: 'upload',
+      query: byodTicketQuery,
+      status: 'running',
+      createdAt: '2026-09-18T00:00:00.000Z',
+      updatedAt: '2026-09-18T00:00:00.000Z',
+      progress: { completedRows: 1, totalRows: 3, completedCalls: 1, totalCalls: 3 },
+      classes: ['urgent', 'routine'],
+      columns: ['message'],
+      resultRows: [{ rowIndex: 0, input: { message: 'one' }, model: 'jev-latest', selectedClass: 'urgent', probabilities: { urgent: 0.7, routine: 0.3 } }],
+    }
+    store.put(base)
+    store.put({
+      ...base,
+      progress: { completedRows: 2, totalRows: 3, completedCalls: 2, totalCalls: 3 },
+      resultRows: [{ rowIndex: 2, input: { message: 'three' }, model: 'jev-latest', selectedClass: 'routine', probabilities: { urgent: 0.2, routine: 0.8 } }],
+    })
+    expect(store.get('merge-rows')?.resultRows.map((row) => row.rowIndex)).toEqual([0, 2])
+    store.put({ ...base, status: 'error', resultRows: [], error: { code: 'ANALYSIS_STORAGE_ERROR', retryable: true } })
+    expect(store.get('merge-rows')).toMatchObject({
+      status: 'error',
+      resultRows: [expect.objectContaining({ rowIndex: 0 }), expect.objectContaining({ rowIndex: 2 })],
+    })
+  })
+
+  it('heals a lease-dead frozen running snapshot on get so Resume can continue', async () => {
+    const store = new InMemoryAnalysisStore()
+    const now = 1_800_000_000_000
+    const service = new AnalysisService({
+      store,
+      classifier: makeClassifier([]),
+      draftProvider: makeDraftProvider([]),
+      datasets: new InMemoryDatasetSource([ticketsDataset]),
+      now: () => now,
+      idFactory: () => 'stalled-run',
+    })
+    const started = await service.start({ datasetId: 'tickets', query: byodTicketQuery, classes: ['urgent', 'routine'] })
+    store.put({
+      ...started,
+      status: 'running',
+      updatedAt: new Date(now - 61_000).toISOString(),
+      progress: { completedRows: 2, totalRows: 3, completedCalls: 2, totalCalls: 3 },
+      resultRows: [
+        { rowIndex: 0, input: ticketsDataset.rows[0], model: 'jev-latest', selectedClass: 'urgent', probabilities: { urgent: 0.7, routine: 0.3 } },
+        { rowIndex: 1, input: ticketsDataset.rows[1], model: 'jev-latest', selectedClass: 'urgent', probabilities: { urgent: 0.7, routine: 0.3 } },
+      ],
+    })
+    await expect(service.get(started.analysisId)).resolves.toMatchObject({
+      status: 'error',
+      progress: { completedRows: 2 },
+      error: { code: 'ANALYSIS_RUN_STALLED', retryable: true },
+    })
+    const recovered = await service.start({
+      datasetId: 'tickets',
+      query: byodTicketQuery,
+      analysisId: started.analysisId,
+      classes: ['urgent', 'routine'],
+      resume: true,
+    })
+    expect(recovered).toMatchObject({ status: 'queued', progress: { completedRows: 2 } })
+  })
+
+  it('does not heal a live leased running snapshot', async () => {
+    const store = new InMemoryAnalysisStore()
+    const now = 1_800_000_000_000
+    const service = new AnalysisService({
+      store,
+      classifier: makeClassifier([]),
+      draftProvider: makeDraftProvider([]),
+      datasets: new InMemoryDatasetSource([ticketsDataset]),
+      now: () => now,
+      idFactory: () => 'live-lease',
+    })
+    const started = await service.start({ datasetId: 'tickets', query: byodTicketQuery, classes: ['urgent', 'routine'] })
+    expect(store.claim(started.analysisId, 'owner-live', now, 300_000)).toBe('claimed')
+    store.put({
+      ...started,
+      status: 'running',
+      updatedAt: new Date(now - 61_000).toISOString(),
+    })
+    await expect(service.get(started.analysisId)).resolves.toMatchObject({ status: 'running' })
   })
 
   it('keeps bounds explicit for future fixtures', () => {

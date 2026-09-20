@@ -144,7 +144,17 @@ export class OpenRouterDraftProvider implements AnalysisDraftProvider {
           model: this.model,
           temperature: 0,
           messages: [
-            { role: 'system', content: 'Return JSON only: a Jev query object {"type":"noul"|"score"|"choice","instructions":"...","criteria":...}. Honor the user task; do not ignore it. Noul is {"type":"noul","instructions":"..."} (yes/no probability 0-1). Use "Will SEA win given this play state?" only when the user asked for per-play win likelihood. Score is {"type":"score","instructions":"...","criteria":["Low","Medium","High"]}. Choice is {"type":"choice","instructions":"...","criteria":{"Label":"what this class means"}} with at least two criteria keys taken from the user task (for example fruit and vehicle). Never return empty or single-class criteria. Do not return a natural-language paraphrase of the task as the query. Do not substitute a leftover demo player-yards classifier (K.Walker, C.Kupp, J.Smith-Njigba, Other). Do not treat CSV columns such as wpa or epa as the model output. Do not include credentials or executable code.' },
+            { role: 'system', content: 'Return JSON only: a Jev query object {"type":"noul"|"score"|"choice","instructions":"...","criteria":...}. Honor the user task; do not ignore it. Noul is {"type":"noul","instructions":"..."} (yes/no probability 0-1). Use "Will SEA win given this play state?" only when the user asked for per-play win likelihood. For "where they eat" / location-of-an-activity questions, prefer Noul ("is this row that activity?") so the UI can map or rank places; Choice classes must be actual location values from the columns (Ground Plane, Above Ground), never meta-labels named Location vs Activity. Score is {"type":"score","instructions":"...","criteria":["Low","Medium","High"]}. Choice is {"type":"choice","instructions":"...","criteria":{"Label":"what this class means"}} with at least two criteria keys taken from the user task (for example fruit and vehicle). Never return empty or single-class criteria. Do not return a natural-language paraphrase of the task as the query. Do not substitute a leftover demo player-yards classifier (K.Walker, C.Kupp, J.Smith-Njigba, Other). Do not treat CSV columns such as wpa or epa as the model output. Do not include credentials or executable code.' },
+            { role: 'user', content: JSON.stringify({
+              fixtureId: input.fixtureId,
+              datasetId: input.datasetId,
+              task: input.task,
+              ...(input.classes && input.classes.length >= 2 ? { classes: input.classes } : {}),
+              columns: input.columns,
+              sampleRows: input.sampleRows,
+              sourceType: input.sourceType,
+              questionKindHint: input.questionKindHint,
+            }) },
             { role: 'user', content: JSON.stringify({
               fixtureId: input.fixtureId,
               datasetId: input.datasetId,

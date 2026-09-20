@@ -10,13 +10,15 @@ import {
   runErrorCopy,
   runProgressCount,
   runProgressPercent,
+  runStallCopy,
   runSubsetCopy,
   savedRunCopy,
 } from '../runView/format'
 import { downloadTextFile, resultsCsv, resultsCsvFilename } from '../runView/resultsCsv'
 import { snapCompleteMotion, snapCompletePlayhead, useRunPlayhead } from '../runView/playhead'
-import { chartVisualFor, inferQuestionKind } from '../shared/questionKind'
-import type { AnalysisSnapshot, AnalysisStatus } from '../shared/analysis'
+import { inferQuestionKind, type ChartVisualKind } from '../shared/questionKind'
+import { chartIsRowStreamed, resolveChartVisual } from '../dataset/insight'
+import type { AnalysisRowInput, AnalysisSnapshot, AnalysisStatus } from '../shared/analysis'
 
 const statusLabels: Record<AnalysisStatus, string> = {
   queued: 'Queued',
@@ -74,6 +76,8 @@ export const AnalysisRunView = memo(function AnalysisRunView({
   datasetRowCount,
   inputHalf,
   latencyHint,
+  chartKind: chartKindOverride,
+  sourceRows,
 }: {
   snapshot: AnalysisSnapshot
   shareUrl: string
@@ -84,11 +88,14 @@ export const AnalysisRunView = memo(function AnalysisRunView({
   datasetRowCount?: number
   inputHalf?: 'H1'
   latencyHint?: 'saved' | 'live'
+  chartKind?: ChartVisualKind
+  sourceRows?: readonly AnalysisRowInput[]
 }) {
   const rows = snapshot.resultRows
   const playbackEnabled = snapshot.status === 'complete'
   const live = snapshot.status === 'queued' || snapshot.status === 'running'
   const [elapsedMs, setElapsedMs] = useState(0)
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const { index, followLive, motion, playing, seek, togglePlayback } = useRunPlayhead(rows.length, snapshot.analysisId)
   const seekRef = useRef(seek)
   const toggleRef = useRef(togglePlayback)
@@ -101,7 +108,16 @@ export const AnalysisRunView = memo(function AnalysisRunView({
     toggleRef.current()
   }, [])
   const questionKind = inferQuestionKind(snapshot.query, snapshot.classes, snapshot.questionKind)
-  const chartKind = chartVisualFor(questionKind)
+  const chartKind = resolveChartVisual({
+    datasetId: snapshot.datasetId || snapshot.fixtureId,
+    columns: snapshot.columns,
+    rows: snapshot.resultRows.map((row) => row.input),
+    query: snapshot.query,
+    questionKind,
+    classes: snapshot.classes,
+    visual: chartKindOverride,
+  })
+  const showRail = chartIsRowStreamed(chartKind)
   const canDownload = rows.length > 0
   const subsetCopy = runSubsetCopy({
     analyzedRows: snapshot.progress.totalRows,
@@ -119,7 +135,11 @@ export const AnalysisRunView = memo(function AnalysisRunView({
     if (!live) return undefined
     const startedAt = Date.parse(snapshot.createdAt)
     const origin = Number.isFinite(startedAt) ? startedAt : Date.now()
-    const tick = () => setElapsedMs(Math.max(0, Date.now() - origin))
+    const tick = () => {
+      const now = Date.now()
+      setNowMs(now)
+      setElapsedMs(Math.max(0, now - origin))
+    }
     tick()
     const timer = window.setInterval(tick, 1000)
     return () => window.clearInterval(timer)
@@ -130,6 +150,7 @@ export const AnalysisRunView = memo(function AnalysisRunView({
   const savedCopy = savedReuse ? savedRunCopy() : undefined
   const chartIndex = snapCompletePlayhead(snapshot.status, rows.length, index, playing, followLive)
   const chartMotion = snapCompleteMotion(snapshot.status, playing, motion)
+  const stallCopy = runStallCopy(snapshot.status, snapshot.updatedAt, nowMs)
   const latencyCopy = live
     ? subsetCopy
       ? `Live run · ${formatElapsed(elapsedMs)} · ${subsetCopy} Can take a few minutes.`
@@ -171,6 +192,7 @@ export const AnalysisRunView = memo(function AnalysisRunView({
           percent={progressPercent}
         />
         {latencyCopy ? <p className="run-latency" role="status">{latencyCopy}</p> : null}
+        {stallCopy ? <p className="run-stall" role="status">{stallCopy}</p> : null}
         {errorCopy ? (
           <div className="error-banner compact" role="alert">
             <div className="error-banner-copy">
@@ -202,11 +224,13 @@ export const AnalysisRunView = memo(function AnalysisRunView({
               questionKind={questionKind}
               chartKind={chartKind}
               playing={playing}
-              playbackEnabled={playbackEnabled}
+              playbackEnabled={playbackEnabled && showRail}
+              sourceRows={sourceRows}
               onSeek={handleSeek}
               onTogglePlayback={handleTogglePlayback}
             />
           </div>
+          {showRail ? (
           <RowRail
             rows={rows}
             totalRows={snapshot.progress.totalRows}
@@ -215,6 +239,7 @@ export const AnalysisRunView = memo(function AnalysisRunView({
             chartKind={chartKind}
             onSelect={handleSeek}
           />
+          ) : null}
         </div>
       </CardContent>
     </Card>

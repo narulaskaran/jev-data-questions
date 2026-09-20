@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnalysisRunView } from './components/AnalysisRunView'
 import { DatasetIntake } from './components/DatasetIntake'
 import { DatasetPreviewCard } from './components/DatasetPreview'
+import { InsightCards } from './components/InsightCards'
+import { SchemaStrip } from './components/SchemaStrip'
 import { StageFold } from './components/StageFold'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from './components/ui/card'
 import { Label } from './components/ui/label'
 import { Textarea } from './components/ui/textarea'
-import { getSampleDatasetPreview, SAMPLE_DATASET_ID } from './dataset/sampleDataset'
+import { getFixtureDatasetPreview, getSampleDatasetPreview } from './dataset/sampleDataset'
+import { proposeInsights, type InsightProposal } from './dataset/insight'
 import { DatasetError, DATASET_ERROR_COPY, plainDatasetError } from './dataset/csvTypes'
 import { validateCsvText } from './dataset/validateDataset'
 import type {
@@ -16,7 +19,6 @@ import type {
   AnalysisSnapshot,
 } from './shared/analysis'
 import {
-  SAMPLE_WIN_LIKELIHOOD_TASK,
   INVALID_CLASSES_COPY,
 } from './shared/questionKind'
 import {
@@ -105,7 +107,10 @@ export const defaultAnalysisApi: AnalysisApiClient = {
 }
 
 const DEFAULT_TASK = 'Classify each row using the visible columns.'
-const SAMPLE_TASK = SAMPLE_WIN_LIKELIHOOD_TASK
+
+const fixtureIdFor = (dataset?: { sourceType?: string; datasetId?: string }): string | undefined => (
+  dataset?.sourceType === 'fixture' ? dataset.datasetId : undefined
+)
 
 export const hasRunnableQuery = (query: string): boolean => looksLikeJevQueryJson(query)
 
@@ -196,6 +201,10 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const [queryCopyMessage, setQueryCopyMessage] = useState('')
   const [foldAnimate, setFoldAnimate] = useState(false)
   const [runLatency, setRunLatency] = useState<'saved' | 'live' | undefined>()
+  const [selectedInsight, setSelectedInsight] = useState<InsightProposal | undefined>()
+  const [jsonOpen, setJsonOpen] = useState(false)
+  const [insightRunning, setInsightRunning] = useState(false)
+  const [insightVisual, setInsightVisual] = useState<InsightProposal['visual'] | undefined>()
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setFoldAnimate(true))
@@ -265,6 +274,10 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     setQueryCopyMessage('')
     setError(undefined)
     setRunLatency(undefined)
+    setSelectedInsight(undefined)
+    setJsonOpen(false)
+    setInsightRunning(false)
+    setInsightVisual(undefined)
   }
 
   const handleDraft = async () => {
@@ -272,7 +285,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     if (!task.trim()) { setError('Enter a task before drafting a query.'); return }
     setDrafting(true); setError(undefined); setIntakeError(undefined); setDraft(undefined); setQuery(''); setQueryCopyMessage(''); setShareMessage('')
     try {
-      const result = await api.draft({ datasetId, fixtureId: dataset?.sourceType === 'fixture' ? SAMPLE_DATASET_ID : undefined, task: task.trim() })
+      const result = await api.draft({ datasetId, fixtureId: fixtureIdFor(dataset), task: task.trim() })
       setDraft(result)
       setQuery(formatDraftQueryForEditor({
         query: result.query,
@@ -283,16 +296,16 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     } finally { setDrafting(false) }
   }
 
-  const handleRun = async () => {
-    if (!draft || !hasRunnableQuery(query) || !datasetId) return
-    const parsed = parseJevQueryJson(query)
+  const handleRun = async (nextQuery = query) => {
+    if (!hasRunnableQuery(nextQuery) || !datasetId) return
+    const parsed = parseJevQueryJson(nextQuery)
     if (!parsed) return
     setStarting(true); setError(undefined); setIntakeError(undefined); setShareMessage(''); setRunLatency(undefined)
     try {
       const started = await api.start({
         datasetId,
-        fixtureId: dataset?.sourceType === 'fixture' ? SAMPLE_DATASET_ID : undefined,
-        query: query.trim(),
+        fixtureId: fixtureIdFor(dataset),
+        query: nextQuery.trim(),
         classes: classesFromJevQuery(parsed),
         questionKind: parsed.type,
       })
@@ -302,13 +315,50 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     } finally { setStarting(false) }
   }
 
+  const handleRunInsight = async (insight: InsightProposal) => {
+    if (!datasetId) { setError('Choose a dataset first.'); return }
+    setSelectedInsight(insight)
+    setInsightVisual(insight.visual)
+    setTask(insight.task)
+    const canned = insight.cannedQuery
+      ? formatDraftQueryForEditor({
+        query: insight.cannedQuery,
+        questionKind: insight.questionKind,
+        classes: insight.classes,
+      })
+      : undefined
+    if (canned) setQuery(canned)
+    setDrafting(true); setInsightRunning(true); setError(undefined); setIntakeError(undefined); setQueryCopyMessage(''); setShareMessage('')
+    try {
+      const result = await api.draft({ datasetId, fixtureId: fixtureIdFor(dataset), task: insight.task })
+      setDraft(result)
+      const nextQuery = formatDraftQueryForEditor({
+        query: result.query,
+        questionKind: result.metadata.questionKind,
+        classes: result.metadata.classes,
+      })
+      setQuery(nextQuery)
+      setDrafting(false)
+      await handleRun(nextQuery)
+    } catch (draftError) {
+      setDrafting(false)
+      if (canned && hasRunnableQuery(canned)) {
+        await handleRun(canned)
+        return
+      }
+      setError(shortError(draftError, 'Could not draft a Jev query'))
+    } finally {
+      setInsightRunning(false)
+    }
+  }
+
   const handleResume = async () => {
     if (!snapshot || snapshot.status !== 'error' || !datasetId) return
     setStarting(true); setError(undefined); setIntakeError(undefined); setShareMessage(''); setRunLatency('live')
     try {
       const started = await api.start({
         datasetId,
-        fixtureId: dataset?.sourceType === 'fixture' ? SAMPLE_DATASET_ID : undefined,
+        fixtureId: fixtureIdFor(dataset),
         query: snapshot.query,
         classes: [...snapshot.classes],
         questionKind: snapshot.questionKind,
@@ -331,6 +381,25 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     })
   }
 
+  const applyDataset = (preview: DatasetPreview, preferredTask?: string) => {
+    resetRunState()
+    resetIntakeForm()
+    setIntakeError(undefined)
+    setDataset(preview)
+    const insights = proposeInsights(preview)
+    const insight = insights[0]
+    setSelectedInsight(insight)
+    const nextTask = preferredTask ?? insight?.task ?? DEFAULT_TASK
+    setTask(nextTask)
+    if (insight?.cannedQuery) {
+      setQuery(formatDraftQueryForEditor({
+        query: insight.cannedQuery,
+        questionKind: insight.questionKind,
+        classes: insight.classes,
+      }))
+    }
+  }
+
   const handleUpload = async (file: File) => {
     setIntakeBusy(true); setError(undefined); setIntakeError(undefined)
     try {
@@ -338,10 +407,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       validateCsvText(csvText)
       if (!api.createFromCsv) throw new DatasetError('UPLOADTHING_NOT_CONFIGURED', DATASET_ERROR_COPY.UPLOADTHING_NOT_CONFIGURED, 503)
       const preview = await api.createFromCsv({ csvText, filename: file.name })
-      resetRunState()
-      resetIntakeForm()
-      setDataset(preview)
-      setTask(DEFAULT_TASK)
+      applyDataset(preview)
     } catch (uploadError) {
       setIntakeError(shortError(uploadError, 'Could not use this CSV'))
     } finally { setIntakeBusy(false) }
@@ -357,21 +423,15 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     try {
       if (!api.createFromUrl) throw new DatasetError('UPLOADTHING_NOT_CONFIGURED', DATASET_ERROR_COPY.UPLOADTHING_NOT_CONFIGURED, 503)
       const preview = await api.createFromUrl({ url: trimmed })
-      resetRunState()
-      resetIntakeForm()
-      setDataset(preview)
-      setTask(DEFAULT_TASK)
+      applyDataset(preview)
     } catch (urlError) {
       setIntakeError(shortError(urlError, 'Could not use this CSV URL'))
     } finally { setIntakeBusy(false) }
   }
 
-  const handleSample = () => {
-    resetRunState()
-    resetIntakeForm()
-    setIntakeError(undefined)
-    setDataset(getSampleDatasetPreview())
-    setTask(SAMPLE_TASK)
+  const handleSample = (datasetId: string) => {
+    const preview = getFixtureDatasetPreview(datasetId) ?? getSampleDatasetPreview()
+    applyDataset(preview)
   }
 
   const copyShareUrl = useCallback(async () => {
@@ -390,15 +450,16 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     }
   }, [query])
 
+  const insights = useMemo(() => (dataset ? proposeInsights(dataset) : []), [dataset])
   const showIntake = !isShareView
-  const showTask = !isShareView && Boolean(dataset)
-  const showQuery = !isShareView && Boolean(draft)
+  const showShape = !isShareView && Boolean(dataset)
+  const showAdvanced = showShape
   const showRun = Boolean(snapshot)
-  const canRun = Boolean(draft && datasetId && canConfirmJevRun({ query, starting }))
+  const canRun = Boolean(datasetId && canConfirmJevRun({ query, starting: starting || drafting }))
   const parsedQuery = parseJevQueryJson(query)
   const querySummary = parsedQuery?.instructions
   const queryInvalid = query.trim().length > 0 && !parsedQuery
-  const runFooter = queryRunFooter({ query, starting, hasSnapshot: Boolean(snapshot) })
+  const runFooter = queryRunFooter({ query, starting: starting || drafting, hasSnapshot: Boolean(snapshot) })
   const subsetCopy = draft
     ? runSubsetCopy({
       analyzedRows: draft.metadata.rowCount,
@@ -407,9 +468,11 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       inputHalf: draft.metadata.inputHalf,
     })
     : undefined
+  const choiceClasses = parsedQuery?.type === 'choice' ? Object.keys(parsedQuery.criteria) : []
+  const stage = isShareView ? 'share' : snapshot ? 'run' : dataset ? 'shape' : 'intake'
 
   return (
-    <main className="analysis-shell" data-stage={isShareView ? 'share' : snapshot ? 'run' : draft ? 'query' : dataset ? 'task' : 'intake'}>
+    <main className="analysis-shell" data-stage={stage}>
       <header className="site-header">
         <a className="brand" href="/" aria-label="Jev playground home">Jev</a>
         <div className="site-header-actions">
@@ -432,17 +495,31 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
             onTrySample={handleSample}
           />
         </StageFold>
-        <StageFold open={showTask} animate={foldAnimate}>
+        <StageFold open={showShape} animate={foldAnimate}>
           {dataset ? (
             <div className="stage-stack">
+              <SchemaStrip dataset={dataset} />
               <DatasetPreviewCard dataset={dataset} onChange={() => { setDataset(undefined); resetRunState(); setIntakeError(undefined); resetIntakeForm() }} />
-              <Card className="task-card" aria-labelledby="task-heading">
+              <InsightCards
+                insights={insights}
+                selectedId={selectedInsight?.id}
+                running={insightRunning}
+                onRun={(insight) => void handleRunInsight(insight)}
+              />
+            </div>
+          ) : null}
+        </StageFold>
+        <StageFold open={showAdvanced} animate={foldAnimate}>
+          {dataset ? (
+            <details className="advanced-json query-card" open={jsonOpen} onToggle={(event) => setJsonOpen((event.currentTarget as HTMLDetailsElement).open)}>
+              <summary className="advanced-json-summary">Edit Jev JSON</summary>
+              <Card className="query-card advanced-json-body">
                 <CardHeader className="section-heading flex-row items-start justify-between space-y-0">
                   <div>
-                    <p className="eyebrow">Prompt</p>
-                    <h2 id="task-heading">What should Jev answer?</h2>
+                    <p className="eyebrow">Advanced</p>
+                    <h2 id="query-heading">Jev query</h2>
                   </div>
-                  {drafting ? <Badge variant="running">Drafting</Badge> : <Badge variant="secondary">Draft</Badge>}
+                  {drafting ? <Badge variant="running">Drafting</Badge> : null}
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-2">
@@ -451,67 +528,58 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
                       id="analysis-task"
                       value={task}
                       onChange={(event) => setTask(event.target.value)}
-                      rows={3}
+                      rows={2}
                       placeholder="What should Jev answer per row?"
                     />
                   </div>
+                  {querySummary ? <p className="query-summary">{querySummary}</p> : null}
+                  {subsetCopy ? <p className="query-scope" role="status">{subsetCopy}</p> : null}
+                  {choiceClasses.length >= 2 ? (
+                    <ul className="class-chips" aria-label="Choice classes">
+                      {choiceClasses.map((name) => (
+                        <li key={name} className="class-chip">{name}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <div className="grid gap-2 min-w-0">
+                    <div className="query-editor-head">
+                      <Label htmlFor="jev-query">Jev query JSON</Label>
+                      <Button variant="ghost" size="sm" type="button" onClick={() => void copyQuery()} disabled={!query.trim()}>
+                        {queryCopyMessage || 'Copy'}
+                      </Button>
+                    </div>
+                    <Textarea
+                      id="jev-query"
+                      className="query-json"
+                      value={query}
+                      onChange={(event) => { setQuery(event.target.value); setQueryCopyMessage('') }}
+                      rows={10}
+                      spellCheck={false}
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      aria-invalid={queryInvalid || undefined}
+                    />
+                  </div>
                   {drafting ? <Thinking>Drafting query…</Thinking> : null}
+                  {starting ? <Thinking>Starting run…</Thinking> : null}
                 </CardContent>
                 <CardFooter className="form-footer">
-                  <Button type="button" onClick={() => void handleDraft()} disabled={drafting}>
+                  {runFooter ? <span>{runFooter}</span> : null}
+                  <Button type="button" variant="secondary" onClick={() => void handleDraft()} disabled={drafting}>
                     {drafting ? 'Drafting…' : 'Draft task'}
+                  </Button>
+                  <Button
+                    className="run-button"
+                    variant="run"
+                    type="button"
+                    onClick={() => void handleRun()}
+                    disabled={!canRun}
+                  >
+                    {starting ? 'Starting…' : 'Run Jev'}
                   </Button>
                 </CardFooter>
               </Card>
-            </div>
-          ) : null}
-        </StageFold>
-        <StageFold open={showQuery} animate={foldAnimate}>
-          {draft ? (
-            <Card className="query-card">
-              <CardHeader className="section-heading flex-row items-start justify-between space-y-0">
-                <div>
-                    <p className="eyebrow">Query</p>
-                    <h2 id="query-heading">Jev query</h2>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {querySummary ? <p className="query-summary">{querySummary}</p> : null}
-                {subsetCopy ? <p className="query-scope" role="status">{subsetCopy}</p> : null}
-                <div className="grid gap-2 min-w-0">
-                  <div className="query-editor-head">
-                    <Label htmlFor="jev-query">Jev query JSON</Label>
-                    <Button variant="ghost" size="sm" type="button" onClick={() => void copyQuery()} disabled={!query.trim()}>
-                      {queryCopyMessage || 'Copy'}
-                    </Button>
-                  </div>
-                  <Textarea
-                    id="jev-query"
-                    className="query-json"
-                    value={query}
-                    onChange={(event) => { setQuery(event.target.value); setQueryCopyMessage('') }}
-                    rows={10}
-                    spellCheck={false}
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    aria-invalid={queryInvalid || undefined}
-                  />
-                </div>
-                {starting ? <Thinking>Starting run…</Thinking> : null}
-              </CardContent>
-              <CardFooter className="form-footer">
-                {runFooter ? <span>{runFooter}</span> : null}
-                <Button
-                  className="run-button"
-                  variant="run"
-                  type="button"
-                  onClick={() => void handleRun()}
-                  disabled={!canRun}
-                >
-                  {starting ? 'Starting…' : 'Run Jev'}
-                </Button>
-              </CardFooter>
-            </Card>
+            </details>
           ) : null}
         </StageFold>
         {!isShareView && error && (dataset || !showIntake) && (
@@ -539,6 +607,8 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
               datasetRowCount={dataset?.acceptedRowCount}
               inputHalf={draft?.metadata.inputHalf}
               latencyHint={isShareView ? undefined : runLatency}
+              chartKind={insightVisual}
+              sourceRows={dataset?.previewRows}
             />
           ) : null}
         </StageFold>

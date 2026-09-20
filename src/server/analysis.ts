@@ -7,9 +7,11 @@ import {
   ANALYSIS_MAX_ROWS,
   ANALYSIS_MAX_TASK_LENGTH,
   ANALYSIS_RUN_LEASE_MS,
+  ANALYSIS_RUN_STALLED_CODE,
   ANALYSIS_STALE_AFTER_MS,
   cloneAnalysisSnapshot,
   normalizeSnapshot,
+  shouldHealStalledRun,
   type AnalysisClassification,
   type AnalysisDraftInput,
   type AnalysisDraftResult,
@@ -25,11 +27,13 @@ import {
   fixtureAnalysisSliceFor,
   inferQuestionKind,
   isFixturePlayerClassList,
+  isSampleDefaultEatingTask,
   isSampleDefaultWinTask,
   classesFromLabelColumns,
   mergeClassLists,
   resolveDraftedQuery,
   SAMPLE_WIN_NOUL_QUERY,
+  SQUIRREL_EATING_NOUL_QUERY,
   userAskedForFixturePlayers,
   type FixtureAnalysisSlice,
 } from '../shared/questionKind.js'
@@ -50,6 +54,12 @@ import {
   getHalftimeModelInput,
   getWinLikelihoodModelInput,
 } from '../fixtures/footballTimeline.js'
+import {
+  SQUIRREL_DATASET_NAME,
+  SQUIRREL_FIXTURE_ID,
+  SQUIRREL_FIXTURE_SCHEMA,
+  getSquirrelModelInput,
+} from '../fixtures/squirrelCensus.js'
 
 export type { AnalysisClassification, AnalysisDraftInput, AnalysisDraftResult, AnalysisResultRow, AnalysisSnapshot, AnalysisStartInput, AnalysisStorage } from '../shared/analysis.js'
 export { ANALYSIS_CLASS_NAMES, ANALYSIS_MAX_CALLS, ANALYSIS_MAX_QUERY_LENGTH, ANALYSIS_MAX_ROWS, ANALYSIS_MAX_TASK_LENGTH } from '../shared/analysis.js'
@@ -169,7 +179,16 @@ export class InMemoryAnalysisStore implements AnalysisStorage {
   }
 
   put(snapshot: AnalysisSnapshot): void {
-    this.snapshots.set(snapshot.analysisId, cloneAnalysisSnapshot(normalizeSnapshot(snapshot)))
+    const incoming = cloneAnalysisSnapshot(normalizeSnapshot(snapshot))
+    const existing = this.snapshots.get(snapshot.analysisId)
+    if (existing && incoming.resultRows.length === 0 && existing.resultRows.length > 0) {
+      incoming.resultRows = existing.resultRows
+    } else if (existing && incoming.resultRows.length > 0) {
+      let rows = [...existing.resultRows]
+      for (const row of incoming.resultRows) rows = mergeResultRow(rows, row)
+      incoming.resultRows = rows
+    }
+    this.snapshots.set(snapshot.analysisId, incoming)
   }
 
   findCompleteByContentKey(contentKey: string): AnalysisSnapshot | undefined {
@@ -196,10 +215,11 @@ export class InMemoryAnalysisStore implements AnalysisStorage {
     return this.get(analysisId)
   }
 
-  claim(analysisId: string, ownerToken: string, nowMs: number, leaseMs: number): 'claimed' | 'busy' | 'complete' | 'missing' {
+  claim(analysisId: string, ownerToken: string, nowMs: number, leaseMs: number): 'claimed' | 'busy' | 'complete' | 'missing' | 'error' {
     const snapshot = this.snapshots.get(analysisId)
     if (!snapshot) return 'missing'
     if (snapshot.status === 'complete') return 'complete'
+    if (snapshot.status === 'error') return 'error'
     const current = this.claims.get(analysisId)
     if (current && current.leaseExpiresAt > nowMs && current.ownerToken !== ownerToken) return 'busy'
     this.claims.set(analysisId, { ownerToken, leaseExpiresAt: nowMs + leaseMs })
@@ -208,6 +228,29 @@ export class InMemoryAnalysisStore implements AnalysisStorage {
 
   release(analysisId: string, ownerToken: string): void {
     if (this.claims.get(analysisId)?.ownerToken === ownerToken) this.claims.delete(analysisId)
+  }
+
+  healStale(analysisId: string, nowMs: number): AnalysisSnapshot | undefined {
+    const snapshot = this.snapshots.get(analysisId)
+    if (!snapshot) return undefined
+    const leaseExpiresAt = this.claims.get(analysisId)?.leaseExpiresAt
+    if (!shouldHealStalledRun({ status: snapshot.status, updatedAt: snapshot.updatedAt, nowMs, leaseExpiresAt })) {
+      return cloneAnalysisSnapshot(normalizeSnapshot(snapshot))
+    }
+    this.claims.delete(analysisId)
+    const healed: AnalysisSnapshot = {
+      ...snapshot,
+      status: 'error',
+      currentFixtureRow: undefined,
+      updatedAt: new Date(nowMs).toISOString(),
+      progress: {
+        ...snapshot.progress,
+        completedRows: consecutiveCompletedRows(snapshot.resultRows),
+      },
+      error: { code: ANALYSIS_RUN_STALLED_CODE, retryable: true },
+    }
+    this.snapshots.set(analysisId, cloneAnalysisSnapshot(normalizeSnapshot(healed)))
+    return cloneAnalysisSnapshot(normalizeSnapshot(healed))
   }
 
   private findReusableByContentKey(contentKey: string, statuses: readonly AnalysisSnapshot['status'][]): AnalysisSnapshot | undefined {
@@ -242,6 +285,18 @@ export const fixtureAnalysisDataset = (slice: FixtureAnalysisSlice = 'win-likeli
   }
 }
 
+export const squirrelAnalysisDataset = (): ResolvedAnalysisDataset => {
+  const rows = getSquirrelModelInput()
+  return {
+    datasetId: SQUIRREL_FIXTURE_ID,
+    fixtureId: SQUIRREL_FIXTURE_ID,
+    sourceType: 'fixture',
+    displayName: SQUIRREL_DATASET_NAME,
+    columns: [...SQUIRREL_FIXTURE_SCHEMA],
+    rows,
+  }
+}
+
 export class InMemoryDatasetSource implements AnalysisDatasetSource {
   private readonly datasets = new Map<string, ResolvedAnalysisDataset>()
 
@@ -255,6 +310,7 @@ export class InMemoryDatasetSource implements AnalysisDatasetSource {
 
   get(datasetId: string): ResolvedAnalysisDataset | undefined {
     if (datasetId === FOOTBALL_FIXTURE_ID) return fixtureAnalysisDataset(fixtureAnalysisSliceFor())
+    if (datasetId === SQUIRREL_FIXTURE_ID) return squirrelAnalysisDataset()
     return this.datasets.get(datasetId)
   }
 }
@@ -396,7 +452,10 @@ const persistError = (error: unknown): AnalysisError => {
 }
 
 /** One in-flight snapshot put; later enqueues coalesce to the latest snapshot. Classify does not await. */
-export const createSnapshotWritePipeline = (put: (snapshot: AnalysisSnapshot) => Promise<void> | void) => {
+export const createSnapshotWritePipeline = (
+  put: (snapshot: AnalysisSnapshot) => Promise<void> | void,
+  options: { onFailed?: (error: unknown) => void } = {},
+) => {
   let latest: AnalysisSnapshot | undefined
   let loop: Promise<void> | undefined
   let failed: unknown
@@ -410,6 +469,7 @@ export const createSnapshotWritePipeline = (put: (snapshot: AnalysisSnapshot) =>
       }
     } catch (error) {
       failed = persistError(error)
+      options.onFailed?.(failed)
     }
   }
 
@@ -426,6 +486,9 @@ export const createSnapshotWritePipeline = (put: (snapshot: AnalysisSnapshot) =>
         await loop
       }
       if (failed !== undefined) throw failed
+    },
+    failed(): unknown {
+      return failed
     },
   }
 }
@@ -552,13 +615,15 @@ export class AnalysisService {
   }
 
   async get(analysisId: string): Promise<AnalysisSnapshot> {
-    const snapshot = await this.options.store.get(analysisId)
+    const healed = await this.options.store.healStale?.(analysisId, this.now())
+    const snapshot = healed ?? await this.options.store.get(analysisId)
     if (!snapshot) throw new AnalysisError('ANALYSIS_NOT_FOUND', 'Analysis was not found', 404)
     return cloneAnalysisSnapshot(normalizeSnapshot(snapshot))
   }
 
   async share(analysisId: string): Promise<AnalysisSnapshot> {
-    const snapshot = await (this.options.store.getPublic?.(analysisId) ?? this.options.store.get(analysisId))
+    const healed = await this.options.store.healStale?.(analysisId, this.now())
+    const snapshot = healed ?? await (this.options.store.getPublic?.(analysisId) ?? this.options.store.get(analysisId))
     if (!snapshot) throw new AnalysisError('ANALYSIS_NOT_FOUND', 'Analysis was not found', 404)
     return cloneAnalysisSnapshot(normalizeSnapshot(snapshot))
   }
@@ -580,6 +645,24 @@ export class AnalysisService {
         metadata: {
           provider: 'openrouter',
           model: 'cached-sample-noul',
+          rowCount: dataset.rows.length,
+          classes: [],
+          columns: [...dataset.columns],
+          displayName: dataset.displayName,
+          questionKind: 'noul' as const,
+        },
+      }
+      return withCacheWrite(canned, await this.writeDraftCache(contentKey || flightKey, canned))
+    }
+    if (dataset.sourceType === 'fixture' && dataset.datasetId === SQUIRREL_FIXTURE_ID && isSampleDefaultEatingTask(task)) {
+      const canned = {
+        fixtureId: dataset.fixtureId,
+        datasetId: dataset.datasetId,
+        sourceType: dataset.sourceType,
+        query: stringifyJevQuery(buildJevQuery({ type: 'noul', instructions: SQUIRREL_EATING_NOUL_QUERY })),
+        metadata: {
+          provider: 'openrouter',
+          model: 'cached-sample-places',
           rowCount: dataset.rows.length,
           classes: [],
           columns: [...dataset.columns],
@@ -739,41 +822,63 @@ export class AnalysisService {
 
   private async execute(analysisId: string): Promise<AnalysisSnapshot> {
     const ownerToken = `${analysisId}:${this.idFactory()}`
-    const claimed = await this.options.store.claim?.(analysisId, ownerToken, this.now(), ANALYSIS_RUN_LEASE_MS)
-    if (claimed === 'missing') throw new AnalysisError('ANALYSIS_NOT_FOUND', 'Analysis was not found', 404)
-    if (claimed === 'complete' || claimed === 'busy') return this.get(analysisId)
-    const initial = await this.options.store.get(analysisId)
-    if (!initial) throw new AnalysisError('ANALYSIS_NOT_FOUND', 'Analysis was not found', 404)
-    const snapshot0 = normalizeSnapshot(initial)
-    if (snapshot0.status === 'complete' || snapshot0.status === 'error') return cloneAnalysisSnapshot(snapshot0)
-    const dataset = await this.requireDataset({
-      fixtureId: snapshot0.fixtureId,
-      datasetId: snapshot0.datasetId,
-      query: snapshot0.query,
-      questionKind: snapshot0.questionKind,
-      classes: snapshot0.classes,
-    })
-    const rows = dataset.rows
-    const classes = snapshot0.classes
-    const questionKind = inferQuestionKind(snapshot0.query, classes, snapshot0.questionKind)
-    let snapshot: AnalysisSnapshot = { ...snapshot0, status: 'running', questionKind, updatedAt: nowIso(this.now), resultRows: [...snapshot0.resultRows] }
-    await this.options.store.put(snapshot)
-    const pipeline = createSnapshotWritePipeline((next) => this.options.store.put(next))
-    const persistFinal = async (next: AnalysisSnapshot): Promise<AnalysisSnapshot> => {
-      try {
-        await pipeline.flush()
-      } catch (error) {
-        if (next.status !== 'error') throw error
-      }
-      try {
-        await this.options.store.put(next)
-      } catch (error) {
-        if (next.status === 'error') return cloneAnalysisSnapshot(next)
-        throw persistError(error)
-      }
-      return cloneAnalysisSnapshot(next)
-    }
+    let snapshot: AnalysisSnapshot | undefined
     try {
+      const claimed = await this.options.store.claim?.(analysisId, ownerToken, this.now(), ANALYSIS_RUN_LEASE_MS)
+      if (claimed === 'missing') throw new AnalysisError('ANALYSIS_NOT_FOUND', 'Analysis was not found', 404)
+      if (claimed === 'complete' || claimed === 'busy' || claimed === 'error') return this.get(analysisId)
+      const initial = await this.options.store.get(analysisId)
+      if (!initial) throw new AnalysisError('ANALYSIS_NOT_FOUND', 'Analysis was not found', 404)
+      const snapshot0 = normalizeSnapshot(initial)
+      if (snapshot0.status === 'complete' || snapshot0.status === 'error') return cloneAnalysisSnapshot(snapshot0)
+      const dataset = await this.requireDataset({
+        fixtureId: snapshot0.fixtureId,
+        datasetId: snapshot0.datasetId,
+        query: snapshot0.query,
+        questionKind: snapshot0.questionKind,
+        classes: snapshot0.classes,
+      })
+      const rows = dataset.rows
+      const classes = snapshot0.classes
+      const questionKind = inferQuestionKind(snapshot0.query, classes, snapshot0.questionKind)
+      snapshot = { ...snapshot0, status: 'running', questionKind, updatedAt: nowIso(this.now), resultRows: [...snapshot0.resultRows] }
+      const persistedIndexes = new Set(snapshot.resultRows.map((row) => row.rowIndex))
+      const persistDelta = async (next: AnalysisSnapshot): Promise<void> => {
+        const delta = next.resultRows.filter((row) => !persistedIndexes.has(row.rowIndex))
+        await this.options.store.put({ ...next, resultRows: delta })
+        for (const row of delta) persistedIndexes.add(row.rowIndex)
+      }
+      await persistDelta({ ...snapshot, resultRows: [] })
+      let firstError: unknown
+      let stopped = false
+      const pipeline = createSnapshotWritePipeline(persistDelta, {
+        onFailed: (error) => {
+          stopped = true
+          if (firstError === undefined) firstError = error
+        },
+      })
+      const persistCompact = async (next: AnalysisSnapshot): Promise<void> => {
+        await this.options.store.put({ ...next, resultRows: [] })
+      }
+      const persistFinal = async (next: AnalysisSnapshot): Promise<AnalysisSnapshot> => {
+        try {
+          await pipeline.flush()
+        } catch (error) {
+          if (next.status !== 'error') throw error
+        }
+        try {
+          await persistDelta(next)
+        } catch (error) {
+          try {
+            await persistCompact(next)
+            return cloneAnalysisSnapshot(next)
+          } catch {
+            if (next.status === 'error') return cloneAnalysisSnapshot(next)
+            throw persistError(error)
+          }
+        }
+        return cloneAnalysisSnapshot(next)
+      }
       const pending = pendingRowIndexes(rows.length, snapshot.resultRows)
       if (pending.length === 0) {
         snapshot = {
@@ -787,8 +892,6 @@ export class AnalysisService {
         return await persistFinal(snapshot)
       }
       let resultRows = [...snapshot.resultRows]
-      let firstError: unknown
-      let stopped = false
       let cursor = 0
       let lastLeaseAt = this.now()
       const concurrency = Math.min(clampClassifyConcurrency(this.options.classifyConcurrency), pending.length)
@@ -801,7 +904,7 @@ export class AnalysisService {
       const applyResult = (resultRow: AnalysisResultRow) => {
         resultRows = mergeResultRow(resultRows, resultRow)
         snapshot = {
-          ...snapshot,
+          ...snapshot!,
           status: 'running',
           currentFixtureRow: undefined,
           updatedAt: nowIso(this.now),
@@ -811,6 +914,11 @@ export class AnalysisService {
         }
         pipeline.enqueue(snapshot)
         refreshLease()
+        const pipelineError = pipeline.failed()
+        if (pipelineError !== undefined) {
+          stopped = true
+          if (firstError === undefined) firstError = pipelineError
+        }
       }
       const worker = async () => {
         while (!stopped) {
@@ -824,9 +932,9 @@ export class AnalysisService {
           try {
             const classification = normalizeClassification(await this.options.classifier.classify({
               analysisId,
-              fixtureId: snapshot.fixtureId,
-              datasetId: snapshot.datasetId,
-              query: snapshot.query,
+              fixtureId: snapshot!.fixtureId,
+              datasetId: snapshot!.datasetId,
+              query: snapshot!.query,
               rowIndex,
               row,
               classes,
@@ -872,8 +980,34 @@ export class AnalysisService {
         error: undefined,
       }
       return await persistFinal(snapshot)
+    } catch (error) {
+      if (error instanceof AnalysisError && error.code === 'ANALYSIS_NOT_FOUND') throw error
+      const current = snapshot ?? await this.options.store.get(analysisId)
+      if (!current || current.status === 'complete') throw persistError(error)
+      if (current.status === 'error') return cloneAnalysisSnapshot(normalizeSnapshot(current))
+      const failed: AnalysisSnapshot = {
+        ...normalizeSnapshot(current),
+        status: 'error',
+        currentFixtureRow: undefined,
+        updatedAt: nowIso(this.now),
+        progress: {
+          ...current.progress,
+          completedRows: consecutiveCompletedRows(current.resultRows),
+        },
+        error: safeProviderError(error),
+      }
+      try {
+        await this.options.store.put({ ...failed, resultRows: [] })
+      } catch {
+        // Compact status write is best-effort; GET heal still flips lease-dead runs.
+      }
+      return cloneAnalysisSnapshot(failed)
     } finally {
-      await this.options.store.release?.(analysisId, ownerToken)
+      try {
+        await this.options.store.release?.(analysisId, ownerToken)
+      } catch {
+        // Lease expiry + GET heal recovers if release cannot persist.
+      }
     }
   }
 
@@ -913,6 +1047,9 @@ export class AnalysisService {
         questionKind: input.questionKind,
         classes: input.classes,
       }))
+    }
+    if (datasetId === SQUIRREL_FIXTURE_ID || input.fixtureId === SQUIRREL_FIXTURE_ID) {
+      return squirrelAnalysisDataset()
     }
     const dataset = await this.datasets.get(datasetId)
     if (!dataset) throw new AnalysisError('DATASET_NOT_FOUND', 'Dataset was not found', 404)
