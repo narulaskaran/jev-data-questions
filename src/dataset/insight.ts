@@ -2,13 +2,18 @@ import type { DatasetPreview } from '../shared/dataset'
 import { FOOTBALL_FIXTURE_ID } from '../fixtures/footballTimeline'
 import { SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensus'
 import {
+  SAMPLE_PLAY_QUALITY_LEVELS,
+  SAMPLE_PLAY_QUALITY_QUERY,
+  SAMPLE_PLAY_QUALITY_TASK,
   SAMPLE_WIN_LIKELIHOOD_TASK,
   SAMPLE_WIN_NOUL_QUERY,
   SQUIRREL_EATING_NOUL_QUERY,
   SQUIRREL_EATING_TASK,
   classesFromLabelColumns,
+  isGoodBadPlayClassList,
   isJunkLocationActivitySplit,
   looksLikePlaceEatingTask,
+  looksLikePlayQuality,
   looksLikeWinLikelihood,
   type ChartVisualKind,
   type JevQuestionKind,
@@ -56,7 +61,7 @@ const placeValues = (shape: DatasetShape, rows: readonly AnalysisRowInput[]): st
 const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
   id: 'places-eating',
   title: 'Where they eat',
-  reason: shape.geo ? 'Lat/lng + eating — map of places, not class bars.' : 'Location values among eating sightings — ranked places, not Location vs Activity.',
+  reason: shape.geo ? 'Lat/lng + eating — map of places.' : 'Location values among eating sightings — ranked places.',
   visual: 'places',
   task: SQUIRREL_EATING_TASK,
   questionKind: 'noul',
@@ -75,12 +80,24 @@ const winLikelihoodInsight = (): InsightProposal => ({
   cannedQuery: SAMPLE_WIN_NOUL_QUERY,
 })
 
+const playQualityInsight = (): InsightProposal => ({
+  id: 'series-play-quality',
+  title: 'Play quality',
+  reason: 'Sequential play state — quality over play index.',
+  visual: 'series',
+  task: SAMPLE_PLAY_QUALITY_TASK,
+  questionKind: 'score',
+  classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+  cannedQuery: SAMPLE_PLAY_QUALITY_QUERY,
+})
+
 export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'columns' | 'previewRows' | 'sourceType'>): InsightProposal[] => {
   const shape = inspectDatasetShape(dataset.columns, dataset.previewRows)
   const insights: InsightProposal[] = []
 
   if (dataset.datasetId === FOOTBALL_FIXTURE_ID || (shape.hasPlayState && shape.sequential)) {
     insights.push(winLikelihoodInsight())
+    if (insights.length < 2) insights.push(playQualityInsight())
   }
 
   if (dataset.datasetId === SQUIRREL_FIXTURE_ID || (shape.hasEating && (shape.geo || shape.placeColumns.length > 0))) {
@@ -158,6 +175,9 @@ export const resolveChartVisual = (input: {
     return 'places'
   }
   if (looksLikeWinLikelihood(text)) return 'series'
+  if ((looksLikePlayQuality(text) || isGoodBadPlayClassList(input.classes)) && input.questionKind !== 'choice') {
+    return 'series'
+  }
   if (input.questionKind === 'choice') return 'bars'
   if (input.questionKind === 'noul' || input.questionKind === 'score') return 'series'
   return 'bars'

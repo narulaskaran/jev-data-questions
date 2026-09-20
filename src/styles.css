@@ -663,6 +663,19 @@ h3 {
   line-height: 1.45;
 }
 
+.insight-preview {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 24px;
+  color: var(--run);
+  opacity: 0.85;
+}
+
+.insight-preview rect,
+.insight-preview circle {
+  fill: currentColor;
+}
+
 .insight-card.is-selected {
   box-shadow: inset 0 0 0 1px var(--run);
 }

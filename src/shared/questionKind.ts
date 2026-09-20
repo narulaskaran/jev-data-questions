@@ -3,6 +3,9 @@ import { parseJevQueryJson } from './jevQuery.js'
 export const FIXTURE_PLAYER_CLASSES = ['K.Walker', 'C.Kupp', 'J.Smith-Njigba', 'Other/Tie'] as const
 export const SAMPLE_WIN_LIKELIHOOD_TASK = 'Win likelihood of the game per play.'
 export const SAMPLE_WIN_NOUL_QUERY = 'Will SEA win given this play state?'
+export const SAMPLE_PLAY_QUALITY_TASK = 'Evaluate the quality of each play.'
+export const SAMPLE_PLAY_QUALITY_QUERY = 'Rate the quality of this play given this play state.'
+export const SAMPLE_PLAY_QUALITY_LEVELS = ['Low', 'Medium', 'High'] as const
 export const SQUIRREL_EATING_TASK = 'Where they eat.'
 export const SQUIRREL_EATING_NOUL_QUERY = 'Is this squirrel eating given this sighting?'
 export const INVALID_CLASSES_COPY = "Couldn't draft classes for that CSV — try a clearer question."
@@ -11,7 +14,9 @@ export const JEV_QUESTION_KINDS = ['noul', 'score', 'choice'] as const
 export type JevQuestionKind = typeof JEV_QUESTION_KINDS[number]
 export type ChartVisualKind = 'series' | 'bars' | 'places'
 
-const WIN_LIKELIHOOD_RE = /win[-\s]?likelihood|\bp\s*\(\s*win\s*\)|will\s+(?:sea|the\s+seahawks|seattle|this\s+team|the\s+home\s+team)\s+win|(?:probability|chance)\s+(?:that\s+)?(?:sea|the\s+seahawks|seattle)\s+(?:will\s+)?win|chance\s+(?:that\s+)?(?:sea|the\s+seahawks|seattle)\s+(?:wins|of winning)/i
+const WIN_LIKELIHOOD_RE = /win[-\s]?likelihood|\bp\s*\(\s*win\s*\)|will\s+(?:sea|the\s+seahawks|seattle|this\s+team|the\s+home\s+team)\s+win|(?:probability|chance)\s+(?:that\s+)?(?:sea|the\s+seahawks|seattle)\s+(?:will\s+)?win|chance\s+(?:that\s+)?(?:sea|the\s+seahawks|seattle)\s+(?:wins|of winning)|how\s+(?:the\s+)?game\s+went/i
+const PLAY_QUALITY_RE = /play\s+quality|quality\s+of\s+(?:the\s+|each\s+|every\s+|these\s+|this\s+)?plays?|grad(?:e|ing)\s+(?:the\s+|each\s+|every\s+|these\s+|this\s+)?plays?|plays?\s+grad(?:e|ing)|good\s*(?:or|\/|vs\.?|versus|-)?\s*bad\s+plays?|bad\s*(?:or|\/|vs\.?|versus|-)?\s*good\s+plays?|rate\s+(?:the\s+|each\s+|every\s+|these\s+|this\s+)?(?:plays?|quality)|how\s+good\s+(?:was|were|is)\s+(?:this|the|each|every)\s+play/i
+const GOOD_BAD_PLAY_LABELS = new Set(['good', 'bad', 'good play', 'bad play', 'good plays', 'bad plays'])
 const PLACE_EATING_RE = /where\s+they\s+eat|locations?\s+where\s+(?:\w+\s+)?(?:squirrels?|they)\s+(?:are\s+)?(?:spotted\s+)?eat|spotted\s+eating|eating\s+locations?|places?\s+(?:they|squirrels?)\s+eat/i
 const JUNK_PLACE_SPLIT = new Set(['location', 'activity', 'place', 'places'])
 const FIXTURE_PLAYER_RE = /k\.?\s*walker|c\.?\s*kupp|j\.?\s*smith-?njigba|scrimmage\s+yards|leading\s+(?:player|rusher|receiver)/i
@@ -35,7 +40,17 @@ export const parseQuestionKind = (value: unknown): JevQuestionKind | undefined =
 
 export const looksLikeWinLikelihood = (text: string): boolean => WIN_LIKELIHOOD_RE.test(text.trim())
 
+export const looksLikePlayQuality = (text: string): boolean => PLAY_QUALITY_RE.test(text.trim())
+
 export const looksLikePlaceEatingTask = (text: string): boolean => PLACE_EATING_RE.test(text.trim())
+
+export const isGoodBadPlayClassList = (classes: readonly string[] = []): boolean => {
+  if (classes.length !== 2) return false
+  const normalized = classes.map((name) => name.trim().toLowerCase())
+  if (normalized.some((name) => !GOOD_BAD_PLAY_LABELS.has(name))) return false
+  const polarities = new Set(normalized.map((name) => (name.startsWith('good') ? 'good' : 'bad')))
+  return polarities.size === 2
+}
 
 export const isJunkLocationActivitySplit = (classes: readonly string[] = []): boolean => {
   if (classes.length !== 2) return false
@@ -51,6 +66,10 @@ export const normalizeAnalysisTask = (task: string): string => task.trim().repla
 
 export const isSampleDefaultWinTask = (task: string): boolean => (
   normalizeAnalysisTask(task) === normalizeAnalysisTask(SAMPLE_WIN_LIKELIHOOD_TASK)
+)
+
+export const isSampleDefaultPlayQualityTask = (task: string): boolean => (
+  normalizeAnalysisTask(task) === normalizeAnalysisTask(SAMPLE_PLAY_QUALITY_TASK) || looksLikePlayQuality(task)
 )
 
 const uniqueClassLabels = (values: readonly string[]): string[] => {
@@ -123,6 +142,11 @@ export const chartVisualFor = (kind: JevQuestionKind): ChartVisualKind => (
 
 export type FixtureAnalysisSlice = 'win-likelihood' | 'halftime-eval'
 
+const analysisInstructions = (query: string): string => {
+  const parsed = query ? parseJevQueryJson(query) : undefined
+  return (parsed?.instructions ?? query).trim()
+}
+
 export const fixtureAnalysisSliceFor = (input: {
   task?: string
   query?: string
@@ -131,15 +155,20 @@ export const fixtureAnalysisSliceFor = (input: {
 } = {}): FixtureAnalysisSlice => {
   const task = input.task?.trim() ?? ''
   const query = input.query?.trim() ?? ''
-  if (looksLikeWinLikelihood(task) || looksLikeWinLikelihood(query)) return 'win-likelihood'
+  const instructions = analysisInstructions(query)
   const parsed = query ? parseJevQueryJson(query) : undefined
   const kind = input.questionKind ?? parsed?.type
+  const classes = input.classes ?? []
+  if (looksLikeWinLikelihood(task) || looksLikeWinLikelihood(instructions)) return 'win-likelihood'
+  if (looksLikePlayQuality(task) || looksLikePlayQuality(instructions) || isGoodBadPlayClassList(classes)) {
+    return 'win-likelihood'
+  }
   if (kind === 'noul' || kind === 'score') return 'win-likelihood'
-  if (kind === 'choice') return 'halftime-eval'
-  if (isPlayerClassifierQuery(task) || isPlayerClassifierQuery(query) || isFixturePlayerClassList(input.classes ?? [])) {
+  if (isPlayerClassifierQuery(task) || isPlayerClassifierQuery(instructions) || isFixturePlayerClassList(classes)) {
     return 'halftime-eval'
   }
-  if ((input.classes?.length ?? 0) >= 2) return 'halftime-eval'
+  if (kind === 'choice') return 'halftime-eval'
+  if (classes.length >= 2) return 'halftime-eval'
   if (task || query) return 'halftime-eval'
   return 'win-likelihood'
 }
@@ -154,6 +183,7 @@ export const inferQuestionKind = (
   if (parsed) return parsed.type
   if (looksLikeWinLikelihood(text)) return 'noul'
   if (looksLikePlaceEatingTask(text)) return 'noul'
+  if (looksLikePlayQuality(text) && !userAskedForFixturePlayers(text)) return 'score'
   if (classes.length >= 2) return 'choice'
   return 'choice'
 }
@@ -162,6 +192,12 @@ export const isCannedSampleWinQuery = (text: string): boolean => {
   const parsed = parseJevQueryJson(text)
   const instructions = (parsed?.instructions ?? text).trim()
   return instructions === SAMPLE_WIN_NOUL_QUERY
+}
+
+export const isCannedSamplePlayQualityQuery = (text: string): boolean => {
+  const parsed = parseJevQueryJson(text)
+  const instructions = (parsed?.instructions ?? text).trim()
+  return instructions === SAMPLE_PLAY_QUALITY_QUERY
 }
 
 export const resolveDraftedQuery = (input: {
@@ -185,6 +221,24 @@ export const resolveDraftedQuery = (input: {
     }
   }
 
+  if (looksLikePlayQuality(task) && !userAskedForFixturePlayers(task)) {
+    const leftoverChoice = query.length === 0
+      || parsedKind === 'choice'
+      || isGoodBadPlayClassList(rawClasses)
+      || isPlayerClassifierQuery(query)
+      || looksLikeWinLikelihood(query)
+      || isCannedSampleWinQuery(query)
+      || isJunkLocationActivitySplit(rawClasses)
+    const classes = !leftoverChoice && parsedKind === 'score' && rawClasses.length >= 2
+      ? rawClasses
+      : [...SAMPLE_PLAY_QUALITY_LEVELS]
+    return {
+      query: leftoverChoice ? SAMPLE_PLAY_QUALITY_QUERY : query,
+      questionKind: 'score',
+      classes,
+    }
+  }
+
   if (looksLikePlaceEatingTask(task)) {
     const leftoverJunk = query.length === 0
       || isJunkLocationActivitySplit(rawClasses)
@@ -198,11 +252,11 @@ export const resolveDraftedQuery = (input: {
     }
   }
 
-  const leftoverCannedWin = isCannedSampleWinQuery(query) || looksLikeWinLikelihood(query)
+  const leftoverCannedWin = isCannedSampleWinQuery(query) || looksLikeWinLikelihood(query) || isCannedSamplePlayQualityQuery(query) || looksLikePlayQuality(query)
   const honoredQuery = leftoverCannedWin ? task : query
   const honoredKind = leftoverCannedWin ? undefined : parsedKind
   const dropFixtureFallback = isFixturePlayerClassList(rawClasses) && !userAskedForFixturePlayers(task)
-  const providerClasses = dropFixtureFallback ? [] : rawClasses
+  const providerClasses = (dropFixtureFallback || leftoverCannedWin) ? [] : rawClasses
   const classes = providerClasses.length >= 2 ? providerClasses : mergeClassLists(providerClasses, taskClasses)
 
   if (honoredKind === 'noul' && classes.length < 2) {

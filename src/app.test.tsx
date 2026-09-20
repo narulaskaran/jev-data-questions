@@ -4,7 +4,7 @@ import { App, canConfirmJevRun, defaultAnalysisApi, hasRunnableQuery, queryRunFo
 import { FOOTBALL_FIXTURE_ID, getHalftimeModelInput } from './fixtures/footballTimeline'
 import { asAnalysisRow } from './shared/dataset'
 import type { AnalysisDraftResult, AnalysisSnapshot } from './shared/analysis'
-import { SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_EATING_NOUL_QUERY, SQUIRREL_EATING_TASK, INVALID_CLASSES_COPY } from './shared/questionKind'
+import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_PLAY_QUALITY_TASK, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_EATING_NOUL_QUERY, SQUIRREL_EATING_TASK, INVALID_CLASSES_COPY } from './shared/questionKind'
 import { SQUIRREL_FIXTURE_ID } from './fixtures/squirrelCensus'
 import { formatDraftQueryForEditor, parseJevQueryJson } from './shared/jevQuery'
 import type { DatasetIntakeStatus, DatasetPreview } from './shared/dataset'
@@ -359,9 +359,14 @@ describe('Jev playground flow', () => {
     })
     render(<App api={api} />)
     fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    expect(document.querySelector('[data-insight-id="series-win"]')).toHaveAttribute('data-visual', 'series')
+    expect(document.querySelector('[data-insight-id="series-play-quality"]')).toHaveAttribute('data-visual', 'series')
+    expect(document.querySelector('[data-insight-id="series-play-quality"] [data-preview="series"]')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /play quality/i })).toBeInTheDocument()
+    expect(screen.getByText('Series')).toBeInTheDocument()
     expect(screen.getByLabelText(/dataset shape/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /win likelihood/i })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /run insight/i }))
+    fireEvent.click(within(document.querySelector('[data-insight-id="series-win"]') as HTMLElement).getByRole('button', { name: /run insight/i }))
     expect(await screen.findByRole('heading', { level: 2, name: '4%' })).toBeInTheDocument()
     expect(screen.getByText('3 / 71')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 3, name: 'Win probability' })).toBeInTheDocument()
@@ -382,6 +387,61 @@ describe('Jev playground flow', () => {
     expect(document.querySelector('.series-fill')).toBeTruthy()
     expect(api.draft).toHaveBeenCalledWith(expect.objectContaining({ task: SAMPLE_WIN_LIKELIHOOD_TASK }))
     expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: noulQueryJson, questionKind: 'noul', classes: [] }))
+  })
+
+  it('charts Seahawks play quality as a series over all 71 plays, not Good/Bad H1 bars', async () => {
+    const scoreQueryJson = formatDraftQueryForEditor({
+      query: SAMPLE_PLAY_QUALITY_QUERY,
+      questionKind: 'score',
+      classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+    })
+    const scoreDraft: AnalysisDraftResult = {
+      ...draft,
+      query: scoreQueryJson,
+      metadata: {
+        ...draft.metadata,
+        rowCount: 71,
+        questionKind: 'score',
+        classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+        columns: ['play_id', 'posteam_score', 'defteam_score', 'score_differential'],
+      },
+    }
+    delete scoreDraft.metadata.inputHalf
+    delete scoreDraft.metadata.labelHalf
+    const scoreRun = snapshot({
+      query: scoreQueryJson,
+      questionKind: 'score',
+      classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+      status: 'running',
+      progress: { completedRows: 3, totalRows: 71, completedCalls: 3, totalCalls: 71 },
+      resultRows: Array.from({ length: 3 }, (_, rowIndex) => ({
+        rowIndex,
+        input: { ...input, wpa: 0.91, posteam_score: 3, defteam_score: 0 },
+        model: 'jev-latest',
+        questionKind: 'score' as const,
+        value: 0.35 + rowIndex * 0.1,
+      })),
+    })
+    const api = makeApi({
+      draft: vi.fn(async () => scoreDraft),
+      start: vi.fn(async () => scoreRun),
+      read: vi.fn(async () => scoreRun),
+    })
+    render(<App api={api} />)
+    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    const playQualityCard = document.querySelector('[data-insight-id="series-play-quality"]') as HTMLElement
+    expect(playQualityCard).toHaveAttribute('data-visual', 'series')
+    expect(playQualityCard.querySelector('[data-preview="series"]')).toBeTruthy()
+    expect(within(playQualityCard).queryByText(/class bars/i)).not.toBeInTheDocument()
+    fireEvent.click(within(playQualityCard).getByRole('button', { name: /run insight/i }))
+    expect(await screen.findByRole('img', { name: /score over play index/i })).toBeInTheDocument()
+    expect(screen.getByText('3 / 71')).toBeInTheDocument()
+    expect(document.querySelector('[data-chart-kind="series"]')).toBeTruthy()
+    expect(document.querySelector('[data-class="Good Play"]')).toBeNull()
+    expect(document.querySelector('[data-class="Bad Play"]')).toBeNull()
+    expect(screen.queryByText(/classifying 39 of 71 rows \(h1 plays\)/i)).not.toBeInTheDocument()
+    expect(api.draft).toHaveBeenCalledWith(expect.objectContaining({ task: SAMPLE_PLAY_QUALITY_TASK }))
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: scoreQueryJson, questionKind: 'score' }))
   })
 
   it('opens the squirrel census sample and runs a places insight, never Location vs Activity bars', async () => {
