@@ -11,7 +11,7 @@ import {
   proposeInsights,
   resolveChartVisual,
 } from './insight'
-import { SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY } from '../shared/questionKind'
+import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_PLAY_QUALITY_TASK, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY } from '../shared/questionKind'
 
 describe('shape inspection', () => {
   it('reads geo, place, eating, and cardinality from the squirrel fixture', () => {
@@ -48,6 +48,7 @@ describe('shape → viz routing', () => {
       questionKind: 'noul',
       cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
     }))
+    expect(insights[0]?.reason).not.toMatch(/not class bars|location vs activity/i)
     expect(insights.some((item) => item.visual === 'bars')).toBe(false)
     expect(insights.flatMap((item) => item.classes)).not.toEqual(expect.arrayContaining(['Location', 'Activity']))
     expect(resolveChartVisual({
@@ -81,7 +82,26 @@ describe('shape → viz routing', () => {
       questionKind: 'noul',
     })).toBe('series')
     expect(chartIsRowStreamed('series')).toBe(true)
-    expect(proposeInsights(dataset).some((item) => item.visual === 'places')).toBe(false)
+    const insights = proposeInsights(dataset)
+    expect(insights.some((item) => item.visual === 'places')).toBe(false)
+    expect(insights.find((item) => item.id === 'series-play-quality')).toEqual(expect.objectContaining({
+      title: 'Play quality',
+      visual: 'series',
+      task: SAMPLE_PLAY_QUALITY_TASK,
+      questionKind: 'score',
+      cannedQuery: SAMPLE_PLAY_QUALITY_QUERY,
+      classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+    }))
+    expect(resolveChartVisual({
+      datasetId: FOOTBALL_FIXTURE_ID,
+      task: 'Evaluate the quality of the plays.',
+      questionKind: 'score',
+      classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+    })).toBe('series')
+    expect(resolveChartVisual({
+      datasetId: FOOTBALL_FIXTURE_ID,
+      task: 'Evaluate the quality of the plays.',
+    })).toBe('series')
   })
 
   it('proposes label-class bars for a fruit/vehicle table without a place split', () => {

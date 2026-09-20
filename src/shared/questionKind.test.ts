@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  SAMPLE_PLAY_QUALITY_LEVELS,
+  SAMPLE_PLAY_QUALITY_QUERY,
+  SAMPLE_PLAY_QUALITY_TASK,
   SAMPLE_WIN_LIKELIHOOD_TASK,
   SAMPLE_WIN_NOUL_QUERY,
   SQUIRREL_EATING_NOUL_QUERY,
@@ -9,9 +12,11 @@ import {
   classesFromTask,
   fixtureAnalysisSliceFor,
   inferQuestionKind,
+  isGoodBadPlayClassList,
   isJunkLocationActivitySplit,
   isSampleDefaultWinTask,
   looksLikePlaceEatingTask,
+  looksLikePlayQuality,
   looksLikeWinLikelihood,
   resolveDraftedQuery,
   seriesValueFromRow,
@@ -81,6 +86,58 @@ describe('draft honors the user prompt', () => {
     })
   })
 
+  it('rewrites leftover Good/Bad Choice drafts for a play-quality task into Score over play index', () => {
+    expect(looksLikePlayQuality('Evaluate the quality of the plays.')).toBe(true)
+    expect(looksLikePlayQuality(SAMPLE_PLAY_QUALITY_TASK)).toBe(true)
+    expect(looksLikePlayQuality(SAMPLE_PLAY_QUALITY_QUERY)).toBe(true)
+    expect(looksLikePlayQuality('Grade each play.')).toBe(true)
+    expect(looksLikePlayQuality('good vs bad plays')).toBe(true)
+    expect(isGoodBadPlayClassList(['Good Play', 'Bad Play'])).toBe(true)
+    expect(isGoodBadPlayClassList(['K.Walker', 'C.Kupp'])).toBe(false)
+    expect(resolveDraftedQuery({
+      task: 'Evaluate the quality of the plays.',
+      query: 'Evaluate the quality of the plays using Good Play or Bad Play.',
+      questionKind: 'choice',
+      classes: ['Good Play', 'Bad Play'],
+    })).toEqual({
+      query: SAMPLE_PLAY_QUALITY_QUERY,
+      questionKind: 'score',
+      classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+    })
+    expect(resolveDraftedQuery({
+      task: SAMPLE_PLAY_QUALITY_TASK,
+      query: '',
+      questionKind: 'choice',
+      classes: ['Good Play', 'Bad Play'],
+    }).questionKind).toBe('score')
+  })
+
+  it('keeps a Score play-quality query the model actually drafted', () => {
+    expect(resolveDraftedQuery({
+      task: 'Grade each play.',
+      query: 'How well was this play executed given this play state?',
+      questionKind: 'score',
+      classes: ['Poor', 'Average', 'Great'],
+    })).toEqual({
+      query: 'How well was this play executed given this play state?',
+      questionKind: 'score',
+      classes: ['Poor', 'Average', 'Great'],
+    })
+  })
+
+  it('does not keep the canned play-quality score when the task is unrelated', () => {
+    expect(resolveDraftedQuery({
+      task: 'Classify each play as run or pass using the visible columns.',
+      query: SAMPLE_PLAY_QUALITY_QUERY,
+      questionKind: 'score',
+      classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+    })).toEqual({
+      query: 'Classify each play as run or pass using the visible columns.',
+      questionKind: 'choice',
+      classes: ['run', 'pass'],
+    })
+  })
+
   it('rewrites Location vs Activity drafts for a where-they-eat task into eating Noul', () => {
     expect(looksLikePlaceEatingTask('Identify common locations where squirrels are spotted eating.')).toBe(true)
     expect(isJunkLocationActivitySplit(['Location', 'Activity'])).toBe(true)
@@ -131,6 +188,9 @@ describe('draft honors the user prompt', () => {
     expect(looksLikeWinLikelihood('probability will win')).toBe(false)
     expect(looksLikeWinLikelihood('chance of winning the raffle')).toBe(false)
     expect(looksLikeWinLikelihood(SAMPLE_WIN_LIKELIHOOD_TASK)).toBe(true)
+    expect(looksLikeWinLikelihood('how the game went')).toBe(true)
+    expect(looksLikePlayQuality('Evaluate the quality of the plays.')).toBe(true)
+    expect(inferQuestionKind('Evaluate the quality of the plays.')).toBe('score')
   })
 })
 
@@ -141,6 +201,7 @@ describe('chart type follows the drafted query', () => {
     expect(chartVisualFor('choice')).toBe('bars')
     expect(inferQuestionKind(SAMPLE_WIN_LIKELIHOOD_TASK)).toBe('noul')
     expect(inferQuestionKind(SQUIRREL_EATING_TASK)).toBe('noul')
+    expect(inferQuestionKind(SAMPLE_PLAY_QUALITY_TASK)).toBe('score')
     expect(inferQuestionKind('Classify tickets.', ['urgent', 'routine'])).toBe('choice')
     expect(inferQuestionKind(JSON.stringify({ type: 'noul', instructions: SAMPLE_WIN_NOUL_QUERY }))).toBe('noul')
     expect(inferQuestionKind(JSON.stringify({ type: 'choice', instructions: 'Classify tickets.', criteria: { urgent: 'a', routine: 'b' } }))).toBe('choice')
@@ -163,6 +224,17 @@ describe('chart type follows the drafted query', () => {
       questionKind: 'choice',
       classes: ['K.Walker', 'C.Kupp', 'J.Smith-Njigba', 'Other/Tie'],
     })).toBe('halftime-eval')
+    expect(fixtureAnalysisSliceFor({ task: 'Evaluate the quality of the plays.' })).toBe('win-likelihood')
+    expect(fixtureAnalysisSliceFor({
+      query: 'Evaluate the quality of the plays.',
+      questionKind: 'choice',
+      classes: ['Good Play', 'Bad Play'],
+    })).toBe('win-likelihood')
+    expect(fixtureAnalysisSliceFor({
+      query: SAMPLE_PLAY_QUALITY_QUERY,
+      questionKind: 'score',
+      classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+    })).toBe('win-likelihood')
   })
 
   it('reads Jev series values and never treats CSV wpa as the prediction', () => {

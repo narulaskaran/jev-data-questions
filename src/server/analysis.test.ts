@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { footballFixture, getHalftimeModelInput, getWinLikelihoodModelInput, FOOTBALL_FIXTURE_ID, FOOTBALL_FIXTURE_SCHEMA } from '../fixtures/footballTimeline'
-import { SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_EATING_NOUL_QUERY, SQUIRREL_EATING_TASK } from '../shared/questionKind'
+import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_EATING_NOUL_QUERY, SQUIRREL_EATING_TASK } from '../shared/questionKind'
 import { SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensus'
 import { parseJevQueryJson } from '../shared/jevQuery'
 import {
@@ -115,6 +115,39 @@ describe('analysis domain contract', () => {
     expect(drafted.metadata.columns).toEqual(expect.arrayContaining(['posteam_score', 'defteam_score', 'score_differential']))
     expect(JSON.stringify(drafted)).not.toMatch(/K\.Walker|C\.Kupp|Smith-Njigba|Other\/Tie/)
     expect(drafted.metadata.model).toBe('cached-sample-noul')
+    expect(draftCalls).toHaveLength(0)
+  })
+
+  it('drafts a play-quality ask as Score over the full game, not Good/Bad Choice on H1', async () => {
+    const draftCalls: unknown[] = []
+    const service = serviceWith(makeClassifier([]), {
+      async draft(input) {
+        draftCalls.push(input)
+        return {
+          query: JSON.stringify({
+            type: 'choice',
+            instructions: 'Evaluate the quality of the plays.',
+            criteria: { 'Good Play': 'a successful play', 'Bad Play': 'an unsuccessful play' },
+          }),
+          model: 'openrouter/test',
+          questionKind: 'choice' as const,
+          classes: ['Good Play', 'Bad Play'],
+        }
+      },
+    })
+    const drafted = await service.draft({ fixtureId: FOOTBALL_FIXTURE_ID, task: 'Evaluate the quality of the plays.' })
+    expect(parseJevQueryJson(drafted.query)).toEqual({
+      type: 'score',
+      instructions: SAMPLE_PLAY_QUALITY_QUERY,
+      criteria: [...SAMPLE_PLAY_QUALITY_LEVELS],
+    })
+    expect(drafted.metadata.questionKind).toBe('score')
+    expect(drafted.metadata.classes).toEqual([...SAMPLE_PLAY_QUALITY_LEVELS])
+    expect(drafted.metadata.rowCount).toBe(71)
+    expect(drafted.metadata.inputHalf).toBeUndefined()
+    expect(drafted.metadata.labelHalf).toBeUndefined()
+    expect(drafted.metadata.model).toBe('cached-sample-score')
+    expect(JSON.stringify(drafted)).not.toMatch(/Good Play|Bad Play/)
     expect(draftCalls).toHaveLength(0)
   })
 
@@ -473,6 +506,37 @@ describe('analysis domain contract', () => {
     expect(completed.resultRows.every((row) => row.value === 0.41 && row.value !== row.input.wpa)).toBe(true)
     expect(completed.resultRows[0]?.input).toEqual(expected[0])
     expect(completed.resultRows.at(-1)?.input).toEqual(expected.at(-1))
+  })
+
+  it('runs play-quality Score over all 71 plays, not the H1 Choice slice', async () => {
+    const calls: Array<{ questionKind?: string; row: Record<string, unknown> }> = []
+    const classifier: AnalysisClassifier = {
+      async classify(input) {
+        calls.push({ questionKind: input.questionKind, row: input.row })
+        return { model: 'jev-latest', questionKind: 'score', value: 0.62 }
+      },
+    }
+    const service = serviceWith(classifier)
+    const query = JSON.stringify({
+      type: 'score',
+      instructions: SAMPLE_PLAY_QUALITY_QUERY,
+      criteria: [...SAMPLE_PLAY_QUALITY_LEVELS],
+    }, null, 2)
+    const started = await service.start({
+      fixtureId: FOOTBALL_FIXTURE_ID,
+      query,
+      questionKind: 'score',
+      classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+    })
+    const completed = await service.run(started.analysisId)
+    const expected = getWinLikelihoodModelInput(footballFixture)
+    expect(started.questionKind).toBe('score')
+    expect(started.progress.totalRows).toBe(71)
+    expect(completed.resultRows).toHaveLength(71)
+    expect(calls).toHaveLength(71)
+    expect(calls[0]?.questionKind).toBe('score')
+    expect(calls.some((call) => Number(call.row.qtr) >= 3)).toBe(true)
+    expect(calls.map((call) => call.row.play_id)).toEqual(expected.map((row) => row.play_id))
   })
 
   it('runs only H1 rows, reports bounded progress, and sorts replay rows deterministically', async () => {

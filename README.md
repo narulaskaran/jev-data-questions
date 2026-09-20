@@ -34,7 +34,7 @@ npm run audit
 
 ## Sample fixtures
 
-- `src/fixtures/footballTimeline.ts` — 71 Seattle run/pass/sack plays. Default insight is win likelihood per play (full-game rows with in-progress scores). Validate with `npm run fixture:validate`.
+- `src/fixtures/footballTimeline.ts` — 71 Seattle run/pass/sack plays. Default insight is win likelihood per play (full-game rows with in-progress scores). Play quality / grading is a Score series over the same 71 plays. Validate with `npm run fixture:validate`.
 - `src/fixtures/squirrelCensus.ts` — slim 2018 Central Park Squirrel Census-shaped table (lat/lng, location, eating). Default insight is **where they eat** as a places map, not Location vs Activity Choice bars.
 
 ## API

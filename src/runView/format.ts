@@ -98,14 +98,12 @@ export const runSubsetCopy = ({
   tense?: 'analyzing' | 'analyzed'
 }): string | undefined => {
   let rows = datasetRows
-  let half = inputHalf
   if (sourceType === 'fixture' && analyzedRows === SAMPLE_H1_ROW_COUNT) {
     rows = rows ?? SAMPLE_DATASET_ROW_COUNT
-    half = half ?? 'H1'
   }
   if (!rows || analyzedRows < 1 || analyzedRows >= rows) return undefined
   const verb = tense === 'analyzed' ? 'Classified' : 'Classifying'
-  if (half === 'H1') return `${verb} ${analyzedRows} of ${rows} rows (H1 plays).`
+  if (inputHalf === 'H1') return `${verb} ${analyzedRows} of ${rows} rows (H1 plays).`
   return `${verb} ${analyzedRows} of ${rows} rows.`
 }
 

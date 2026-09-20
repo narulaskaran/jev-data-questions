@@ -28,10 +28,13 @@ import {
   inferQuestionKind,
   isFixturePlayerClassList,
   isSampleDefaultEatingTask,
+  isSampleDefaultPlayQualityTask,
   isSampleDefaultWinTask,
   classesFromLabelColumns,
   mergeClassLists,
   resolveDraftedQuery,
+  SAMPLE_PLAY_QUALITY_LEVELS,
+  SAMPLE_PLAY_QUALITY_QUERY,
   SAMPLE_WIN_NOUL_QUERY,
   SQUIRREL_EATING_NOUL_QUERY,
   userAskedForFixturePlayers,
@@ -650,6 +653,28 @@ export class AnalysisService {
           columns: [...dataset.columns],
           displayName: dataset.displayName,
           questionKind: 'noul' as const,
+        },
+      }
+      return withCacheWrite(canned, await this.writeDraftCache(contentKey || flightKey, canned))
+    }
+    if (dataset.sourceType === 'fixture' && dataset.datasetId === FOOTBALL_FIXTURE_ID && isSampleDefaultPlayQualityTask(task) && !userAskedForFixturePlayers(task)) {
+      const canned = {
+        fixtureId: dataset.fixtureId,
+        datasetId: dataset.datasetId,
+        sourceType: dataset.sourceType,
+        query: stringifyJevQuery(buildJevQuery({
+          type: 'score',
+          instructions: SAMPLE_PLAY_QUALITY_QUERY,
+          classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+        })),
+        metadata: {
+          provider: 'openrouter',
+          model: 'cached-sample-score',
+          rowCount: dataset.rows.length,
+          classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+          columns: [...dataset.columns],
+          displayName: dataset.displayName,
+          questionKind: 'score' as const,
         },
       }
       return withCacheWrite(canned, await this.writeDraftCache(contentKey || flightKey, canned))

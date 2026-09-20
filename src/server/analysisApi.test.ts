@@ -48,6 +48,22 @@ describe('analysis API contract', () => {
     expect(body.metadata.labelHalf).toBeUndefined()
   })
 
+  it('drafts play-quality Score over the full game without the H1-only contract', async () => {
+    const state: ResponseState = { headers: {} }
+    await createAnalysisDraftHandler(service())({ method: 'POST', headers: {}, body: { fixtureId: FOOTBALL_FIXTURE_ID, task: 'Evaluate the quality of the plays.' } }, response(state))
+    expect(state.code).toBe(200)
+    const body = state.body as { query: string; metadata: { rowCount: number; questionKind?: string; inputHalf?: string; classes: string[] } }
+    expect(JSON.parse(body.query)).toEqual({
+      type: 'score',
+      instructions: 'Rate the quality of this play given this play state.',
+      criteria: ['Low', 'Medium', 'High'],
+    })
+    expect(body.metadata.questionKind).toBe('score')
+    expect(body.metadata.rowCount).toBe(71)
+    expect(body.metadata.inputHalf).toBeUndefined()
+    expect(body.metadata.classes).toEqual(['Low', 'Medium', 'High'])
+  })
+
   it('returns a cached draft for the same dataset and task without calling the provider again', async () => {
     const draftCalls: unknown[] = []
     const instance = new AnalysisService({
