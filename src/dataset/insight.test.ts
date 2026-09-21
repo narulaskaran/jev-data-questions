@@ -91,9 +91,10 @@ describe('shape → viz routing', () => {
     })).toBe('series')
     expect(chartIsRowStreamed('series')).toBe(true)
     const insights = proposeInsights(dataset)
-    expect(insights.length).toBeGreaterThanOrEqual(2)
-    expect(insights.length).toBeLessThanOrEqual(3)
+    expect(insights.length).toBe(2)
+    expect(insights.map((item) => item.id)).toEqual(['series-win', 'series-play-quality'])
     expect(insights.some((item) => item.visual === 'places')).toBe(false)
+    expect(insights.some((item) => /classify sea/i.test(item.title))).toBe(false)
     expect(insights.find((item) => item.id === 'series-play-quality')).toEqual(expect.objectContaining({
       title: 'SEA play quality',
       visual: 'series',

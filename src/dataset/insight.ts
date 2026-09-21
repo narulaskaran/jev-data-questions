@@ -199,7 +199,8 @@ export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'col
   const shape = inspectDatasetShape(dataset.columns, dataset.previewRows)
   const insights: InsightProposal[] = []
 
-  if (dataset.datasetId === FOOTBALL_FIXTURE_ID || (shape.hasPlayState && shape.sequential)) {
+  const playState = dataset.datasetId === FOOTBALL_FIXTURE_ID || (shape.hasPlayState && shape.sequential)
+  if (playState) {
     const perspectiveLabel = perspectiveLabelFor({
       datasetId: dataset.datasetId,
       rows: dataset.previewRows,
@@ -230,12 +231,14 @@ export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'col
     }
   }
 
-  for (const column of shape.columns) {
-    if (insights.length >= MAX_INSIGHTS) break
-    const insight = classifyFromColumn(column, dataset.previewRows)
-    if (!insight) continue
-    if (insights.some((item) => classesEqual(item.classes, insight.classes))) continue
-    pushInsight(insights, insight)
+  if (!playState) {
+    for (const column of shape.columns) {
+      if (insights.length >= MAX_INSIGHTS) break
+      const insight = classifyFromColumn(column, dataset.previewRows)
+      if (!insight) continue
+      if (insights.some((item) => classesEqual(item.classes, insight.classes))) continue
+      pushInsight(insights, insight)
+    }
   }
 
   if (insights.length < 2) pushInsight(insights, notableInsight())
