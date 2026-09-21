@@ -122,7 +122,11 @@ export const isEngineerMode = (search = typeof window === 'undefined' ? '' : win
 const engineerHref = (on: boolean): string => {
   const path = typeof window === 'undefined' ? '/' : window.location.pathname || '/'
   const hash = typeof window === 'undefined' ? '' : window.location.hash
-  return `${on ? `${path}?${ENGINEER_MODE_PARAM}=${ENGINEER_MODE_VALUE}` : path}${hash}`
+  const params = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search)
+  if (on) params.set(ENGINEER_MODE_PARAM, ENGINEER_MODE_VALUE)
+  else params.delete(ENGINEER_MODE_PARAM)
+  const query = params.toString()
+  return `${path}${query ? `?${query}` : ''}${hash}`
 }
 
 const queryFromInsight = (insight: InsightProposal): string => (
@@ -223,7 +227,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const [foldAnimate, setFoldAnimate] = useState(false)
   const [runLatency, setRunLatency] = useState<'saved' | 'live' | undefined>()
   const [selectedInsight, setSelectedInsight] = useState<InsightProposal | undefined>()
-  const [jsonOpen, setJsonOpen] = useState(false)
+  const [jsonOpen, setJsonOpen] = useState(() => isEngineerMode())
   const [insightRunning, setInsightRunning] = useState(false)
   const [insightVisual, setInsightVisual] = useState<InsightProposal['visual'] | undefined>()
   const [engineerMode, setEngineerMode] = useState(() => isEngineerMode())
@@ -234,7 +238,11 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   }, [])
 
   useEffect(() => {
-    const sync = () => setEngineerMode(isEngineerMode())
+    const sync = () => {
+      const next = isEngineerMode()
+      setEngineerMode(next)
+      setJsonOpen(next)
+    }
     window.addEventListener('popstate', sync)
     return () => window.removeEventListener('popstate', sync)
   }, [])
@@ -484,7 +492,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     const next = !engineerMode
     window.history.pushState({}, '', engineerHref(next))
     setEngineerMode(next)
-    if (!next) setJsonOpen(false)
+    setJsonOpen(next)
   }
   const canRun = Boolean(datasetId && canConfirmJevRun({ query, starting: starting || drafting }))
   const parsedQuery = parseJevQueryJson(query)
@@ -503,7 +511,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const stage = isShareView ? 'share' : snapshot ? 'run' : dataset ? 'shape' : 'intake'
 
   return (
-    <main className="analysis-shell" data-stage={stage}>
+    <main className="analysis-shell" data-stage={stage} data-mode={engineerMode ? 'engineer' : 'product'}>
       <header className="site-header">
         <a className="brand" href="/" aria-label="Jev home">Jev</a>
         <div className="site-header-actions">

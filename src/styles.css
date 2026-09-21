@@ -270,7 +270,7 @@ h3 {
 }
 
 .stage-fold.is-animate {
-  transition: grid-template-rows 300ms ease-out, opacity 300ms ease-out;
+  transition: grid-template-rows var(--stage-fold-ms, 300ms) ease-out, opacity var(--stage-fold-ms, 300ms) ease-out;
 }
 
 .stage-fold-clip {
@@ -288,7 +288,7 @@ h3 {
 }
 
 .stage-fold.is-animate .stage-fold-body {
-  transition: transform 300ms ease-out;
+  transition: transform var(--stage-fold-ms, 300ms) ease-out;
 }
 
 .section-heading {
@@ -916,6 +916,15 @@ h3 {
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
+.series-svg {
+  clip-path: inset(0 calc((1 - var(--series-extent, 1)) * 100%) 0 0);
+}
+.chart-shell[data-motion='tick'] .series-svg {
+  transition: clip-path 200ms ease-out;
+}
+.chart-shell[data-motion='seek'] .series-svg {
+  transition: none;
+}
 .series-cursor {
   stroke: var(--foreground);
   stroke-width: 1;
@@ -1176,6 +1185,7 @@ h3 {
   .chart-shell .distribution-track span,
   .series-fill,
   .series-line,
+  .series-svg,
   .rail-item,
   .rail-item.is-selected,
   .thinking-dot,

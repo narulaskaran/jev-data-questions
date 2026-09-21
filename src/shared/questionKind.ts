@@ -18,7 +18,7 @@ const WIN_LIKELIHOOD_RE = /win[-\s]?likelihood|\bp\s*\(\s*win\s*\)|will\s+(?:sea
 const PLAY_QUALITY_RE = /play\s+quality|quality\s+of\s+(?:the\s+|each\s+|every\s+|these\s+|this\s+)?plays?|grad(?:e|ing)\s+(?:the\s+|each\s+|every\s+|these\s+|this\s+)?plays?|plays?\s+grad(?:e|ing)|good\s*(?:or|\/|vs\.?|versus|-)?\s*bad\s+plays?|bad\s*(?:or|\/|vs\.?|versus|-)?\s*good\s+plays?|rate\s+(?:the\s+|each\s+|every\s+|these\s+|this\s+)?(?:plays?|quality)|how\s+good\s+(?:was|were|is)\s+(?:this|the|each|every)\s+play/i
 const GOOD_BAD_PLAY_LABELS = new Set(['good', 'bad', 'good play', 'bad play', 'good plays', 'bad plays'])
 const PLACE_EATING_RE = /where\s+they\s+eat|locations?\s+where\s+(?:\w+\s+)?(?:squirrels?|they)\s+(?:are\s+)?(?:spotted\s+)?eat|spotted\s+eating|eating\s+locations?|places?\s+(?:they|squirrels?)\s+eat/i
-const JUNK_PLACE_SPLIT = new Set(['location', 'activity', 'place', 'places'])
+const JUNK_PLACE_SPLIT = new Set(['location', 'activity', 'place', 'places', 'locations'])
 const FIXTURE_PLAYER_RE = /k\.?\s*walker|c\.?\s*kupp|j\.?\s*smith-?njigba|scrimmage\s+yards|leading\s+(?:player|rusher|receiver)/i
 const CLASS_LIST_SPLIT_RE = /\s*(?:,|\bor\b|\band\b|\bvs\.?\b|\bversus\b|\/)\s*/i
 const CLASS_CLAUSE_RE = /\b(?:as|into)\s+(.+?)(?:\s+(?:using|with|from|given|based|via)\b|[.?!]|$)/i
@@ -53,9 +53,11 @@ export const isGoodBadPlayClassList = (classes: readonly string[] = []): boolean
 }
 
 export const isJunkLocationActivitySplit = (classes: readonly string[] = []): boolean => {
-  if (classes.length !== 2) return false
+  if (classes.length < 2) return false
   const normalized = classes.map((name) => name.trim().toLowerCase())
-  return normalized.every((name) => JUNK_PLACE_SPLIT.has(name)) && new Set(normalized).size === 2
+  if (normalized.every((name) => JUNK_PLACE_SPLIT.has(name))) return true
+  const labels = new Set(normalized)
+  return labels.has('location') && labels.has('activity')
 }
 
 export const isSampleDefaultEatingTask = (task: string): boolean => (

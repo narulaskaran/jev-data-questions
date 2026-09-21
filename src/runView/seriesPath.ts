@@ -43,4 +43,12 @@ export const areaPath = (points: readonly SeriesPoint[]): string => {
   return `${linePath(points)} L${coord(last.x)} 1 L${coord(first.x)} 1 Z`
 }
 
+/** Left-to-right clip for the live area+line so it grows with completed rows. */
+export const seriesExtent = (points: readonly SeriesPoint[], totalRows: number): number => {
+  if (points.length === 0) return 0
+  const last = points[points.length - 1]?.x ?? 0
+  const min = 1 / Math.max(1, totalRows - 1)
+  return Math.min(1, Math.max(last, min))
+}
+
 export const formatPercentTick = (value: number): string => `${Math.round(clamp01(value) * 100)}%`

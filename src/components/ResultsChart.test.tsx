@@ -108,6 +108,8 @@ describe('ResultsChart motion', () => {
     expect(screen.getByRole('img', { name: /win probability over play index/i })).toBeInTheDocument()
     expect(document.querySelector('[data-chart-kind="series"]')).toBeTruthy()
     expect(document.querySelector('[data-series-points="2"]')).toBeTruthy()
+    expect(document.querySelector('[data-series-extent]')).toBeTruthy()
+    expect(Number(document.querySelector('[data-series-extent]')?.getAttribute('data-series-extent'))).toBeGreaterThan(0)
     expect(document.querySelector('[data-play-cursor="true"]')).toBeTruthy()
     expect(document.querySelector('[data-class="K.Walker"]')).toBeNull()
     expect(document.querySelector('.series-line')).toBeTruthy()
