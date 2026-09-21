@@ -120,11 +120,9 @@ export const isEngineerMode = (search = typeof window === 'undefined' ? '' : win
 )
 
 const engineerHref = (on: boolean): string => {
-  if (typeof window === 'undefined') return on ? `/?${ENGINEER_MODE_PARAM}=${ENGINEER_MODE_VALUE}` : '/'
-  const url = new URL(window.location.href)
-  if (on) url.searchParams.set(ENGINEER_MODE_PARAM, ENGINEER_MODE_VALUE)
-  else url.searchParams.delete(ENGINEER_MODE_PARAM)
-  return `${url.pathname}${url.search}${url.hash}`
+  const path = typeof window === 'undefined' ? '/' : window.location.pathname || '/'
+  const hash = typeof window === 'undefined' ? '' : window.location.hash
+  return `${on ? `${path}?${ENGINEER_MODE_PARAM}=${ENGINEER_MODE_VALUE}` : path}${hash}`
 }
 
 const queryFromInsight = (insight: InsightProposal): string => (
@@ -228,7 +226,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const [jsonOpen, setJsonOpen] = useState(false)
   const [insightRunning, setInsightRunning] = useState(false)
   const [insightVisual, setInsightVisual] = useState<InsightProposal['visual'] | undefined>()
-  const [engineerMode, setEngineerMode] = useState(isEngineerMode)
+  const [engineerMode, setEngineerMode] = useState(() => isEngineerMode())
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setFoldAnimate(true))
@@ -544,7 +542,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
           ) : null}
         </StageFold>
         <StageFold open={showAdvanced} animate={foldAnimate}>
-          {dataset ? (
+          {dataset && engineerMode ? (
             <details className="advanced-json query-card" open={jsonOpen} onToggle={(event) => setJsonOpen((event.currentTarget as HTMLDetailsElement).open)}>
               <summary className="advanced-json-summary">Edit Jev JSON</summary>
               <Card className="query-card advanced-json-body">

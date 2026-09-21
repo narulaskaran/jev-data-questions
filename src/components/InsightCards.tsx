@@ -66,7 +66,6 @@ export const InsightCards = ({
               className={`insight-card${selected ? ' is-selected' : ''}`}
               data-insight-id={insight.id}
               data-visual={insight.visual}
-              aria-pressed={selected}
               onClick={() => onSelect?.(insight)}
             >
               <CardHeader className="section-heading flex-row items-start justify-between space-y-0">
