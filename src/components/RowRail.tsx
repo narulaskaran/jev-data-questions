@@ -40,6 +40,7 @@ export const RowRail = memo(function RowRail({
   totalRows,
   playheadIndex,
   chartKind = 'bars',
+  perspectiveLabel,
   onSelect,
 }: {
   rows: readonly AnalysisResultRow[]
@@ -47,6 +48,7 @@ export const RowRail = memo(function RowRail({
   playheadIndex: number
   classes?: readonly string[]
   chartKind?: ChartVisualKind
+  perspectiveLabel?: string
   onSelect: (index: number) => void
 }) {
   const listRef = useRef<HTMLUListElement>(null)
@@ -108,7 +110,7 @@ export const RowRail = memo(function RowRail({
               key={row.rowIndex}
               index={index}
               label={`Row ${row.rowIndex + 1} of ${totalRows}`}
-              meta={railMetaLine(row, chartKind) || undefined}
+              meta={railMetaLine(row, chartKind, perspectiveLabel) || undefined}
               selected={index === playheadIndex}
               onSelect={onSelect}
             />

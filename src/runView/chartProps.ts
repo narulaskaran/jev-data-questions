@@ -21,6 +21,7 @@ type ChartVisual = {
   chartKind?: ChartVisualKind
   playing?: boolean
   playbackEnabled?: boolean
+  perspectiveLabel?: string
 }
 
 export const areChartPropsEqual = (prev: ChartVisual, next: ChartVisual): boolean => (
@@ -32,6 +33,7 @@ export const areChartPropsEqual = (prev: ChartVisual, next: ChartVisual): boolea
   && prev.rows.length === next.rows.length
   && prev.questionKind === next.questionKind
   && prev.chartKind === next.chartKind
+  && prev.perspectiveLabel === next.perspectiveLabel
   && sameStringList(prev.classes, next.classes)
   && prev.rows[prev.playheadIndex]?.selectedClass === next.rows[next.playheadIndex]?.selectedClass
   && prev.rows[prev.playheadIndex]?.value === next.rows[next.playheadIndex]?.value
@@ -45,6 +47,7 @@ type RailVisual = {
   totalRows: number
   classes?: readonly string[]
   chartKind?: ChartVisualKind
+  perspectiveLabel?: string
 }
 
 export const areRailPropsEqual = (prev: RailVisual, next: RailVisual): boolean => (
@@ -52,6 +55,7 @@ export const areRailPropsEqual = (prev: RailVisual, next: RailVisual): boolean =
   && prev.totalRows === next.totalRows
   && prev.rows.length === next.rows.length
   && prev.chartKind === next.chartKind
+  && prev.perspectiveLabel === next.perspectiveLabel
   && sameStringList(prev.classes, next.classes)
   && prev.rows[prev.playheadIndex]?.selectedClass === next.rows[next.playheadIndex]?.selectedClass
   && prev.rows[prev.playheadIndex]?.value === next.rows[next.playheadIndex]?.value

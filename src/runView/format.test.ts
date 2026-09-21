@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { railMetaLine, runErrorCopy, runErrorHint, runProgressCount, runProgressPercent, runStallCopy, runSubsetCopy, runViewHeading, chartHeading, plainAnalysisError, savedRunCopy, resumeRunLabel, STILL_WORKING_COPY, STUCK_RUN_COPY } from './format'
+import { railMetaLine, runErrorCopy, runErrorHint, runProgressCount, runProgressPercent, runStallCopy, runSubsetCopy, runViewHeading, chartHeading, seriesPlayStatus, plainAnalysisError, savedRunCopy, resumeRunLabel, STILL_WORKING_COPY, STUCK_RUN_COPY } from './format'
 
 describe('rail meta line', () => {
   it('keeps one compact play_id · qtr · class-or-percent line', () => {
@@ -16,6 +16,20 @@ describe('rail meta line', () => {
       questionKind: 'noul',
       value: 0.42,
     }, 'series')).toBe('184 · Q2 · 42%')
+    expect(railMetaLine({
+      rowIndex: 2,
+      input: { play_id: 184, qtr: 2, wpa: 0.4, posteam: 'SEA' },
+      model: 'jev',
+      questionKind: 'noul',
+      value: 0.91,
+    }, 'series', 'SEA')).toBe('184 · Q2 · SEA 91%')
+    expect(railMetaLine({
+      rowIndex: 2,
+      input: { play_id: 184, qtr: 2, wpa: 0.4, posteam: 'SEA' },
+      model: 'jev',
+      questionKind: 'noul',
+      value: 0.91,
+    }, 'series', 'SEA')).not.toBe('184 · Q2 · 91%')
   })
 
   it('falls back to a short native field instead of dumping the row', () => {
@@ -32,9 +46,17 @@ describe('run view copy', () => {
   it('uses Results for the panel and chart labels for the plot', () => {
     expect(runViewHeading()).toBe('Results')
     expect(chartHeading('noul')).toBe('Win probability')
+    expect(chartHeading('noul', 'series', 'SEA')).toBe('SEA win probability')
+    expect(chartHeading('noul', 'series', 'SEA')).not.toBe('Win probability')
     expect(chartHeading('noul', 'places')).toBe('Places')
     expect(chartHeading('score')).toBe('Score')
+    expect(chartHeading('score', 'series', 'SEA')).toBe('SEA play quality')
+    expect(chartHeading('score', 'series', 'SEA')).not.toBe('Play quality')
     expect(chartHeading('choice')).toBe('Class distribution')
+    expect(seriesPlayStatus(12, 0.4)).toBe('Play 12 · 40%')
+    expect(seriesPlayStatus(12, 0.91, 'SEA')).toBe('Play 12 · SEA 91%')
+    expect(seriesPlayStatus(12, 0.91, 'SEA')).not.toBe('Play 12 · 91%')
+    expect(seriesPlayStatus(3)).toBe('Play 3')
   })
 
   it('surfaces completedRows/totalRows as a header percent without count-up', () => {

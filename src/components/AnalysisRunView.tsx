@@ -17,7 +17,7 @@ import {
 import { downloadTextFile, resultsCsv, resultsCsvFilename } from '../runView/resultsCsv'
 import { snapCompleteMotion, snapCompletePlayhead, useRunPlayhead } from '../runView/playhead'
 import { inferQuestionKind, type ChartVisualKind } from '../shared/questionKind'
-import { chartIsRowStreamed, resolveChartVisual } from '../dataset/insight'
+import { chartIsRowStreamed, perspectiveLabelFor, resolveChartVisual } from '../dataset/insight'
 import type { AnalysisRowInput, AnalysisSnapshot, AnalysisStatus } from '../shared/analysis'
 
 const statusLabels: Record<AnalysisStatus, string> = {
@@ -116,6 +116,15 @@ export const AnalysisRunView = memo(function AnalysisRunView({
     questionKind,
     classes: snapshot.classes,
     visual: chartKindOverride,
+  })
+  const perspectiveLabel = perspectiveLabelFor({
+    datasetId: snapshot.datasetId,
+    fixtureId: snapshot.fixtureId,
+    rows: [
+      ...(snapshot.currentFixtureRow ? [snapshot.currentFixtureRow.input] : []),
+      ...snapshot.resultRows.map((row) => row.input),
+      ...(sourceRows ?? []),
+    ],
   })
   const showRail = chartIsRowStreamed(chartKind)
   const canDownload = rows.length > 0
@@ -226,6 +235,7 @@ export const AnalysisRunView = memo(function AnalysisRunView({
               playing={playing}
               playbackEnabled={playbackEnabled && showRail}
               sourceRows={sourceRows}
+              perspectiveLabel={perspectiveLabel}
               onSeek={handleSeek}
               onTogglePlayback={handleTogglePlayback}
             />
@@ -237,6 +247,7 @@ export const AnalysisRunView = memo(function AnalysisRunView({
             playheadIndex={chartIndex}
             classes={snapshot.classes}
             chartKind={chartKind}
+            perspectiveLabel={perspectiveLabel}
             onSelect={handleSeek}
           />
           ) : null}

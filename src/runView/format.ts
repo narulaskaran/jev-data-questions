@@ -2,6 +2,8 @@ import type { AnalysisResultRow, AnalysisStatus } from '../shared/analysis'
 import { ANALYSIS_RUN_STALLED_CODE, ANALYSIS_STALL_AFTER_MS, progressAgeMs } from '../shared/analysis'
 import type { DatasetSourceType } from '../shared/dataset'
 import { INVALID_CLASSES_COPY, type ChartVisualKind, type JevQuestionKind } from '../shared/questionKind'
+import { perspectiveMetricTitle, perspectivePercentLabel } from '../teamMetadata'
+import { formatPercentTick } from './seriesPath'
 
 export const SAMPLE_DATASET_ROW_COUNT = 71
 export const SAMPLE_H1_ROW_COUNT = 39
@@ -26,11 +28,24 @@ export const runProgressCount = (
   status === 'complete' ? `${totalRows} of ${totalRows}` : `${completedRows} / ${totalRows}`
 )
 
-export const chartHeading = (kind: JevQuestionKind, visual?: ChartVisualKind): string => {
+export const chartHeading = (
+  kind: JevQuestionKind,
+  visual?: ChartVisualKind,
+  perspectiveLabel?: string,
+): string => {
   if (visual === 'places') return 'Places'
-  if (kind === 'noul') return 'Win probability'
-  if (kind === 'score') return 'Score'
+  if (kind === 'noul') return perspectiveMetricTitle('win probability', perspectiveLabel)
+  if (kind === 'score') return perspectiveMetricTitle(perspectiveLabel ? 'play quality' : 'Score', perspectiveLabel)
   return 'Class distribution'
+}
+
+export const seriesPlayStatus = (
+  playNumber: number,
+  value?: number,
+  perspectiveLabel?: string,
+): string => {
+  if (value === undefined) return `Play ${playNumber}`
+  return `Play ${playNumber} · ${perspectivePercentLabel(formatPercentTick(value), perspectiveLabel)}`
 }
 
 export const STILL_WORKING_COPY = 'Still working…'
@@ -126,7 +141,11 @@ const isCompact = (value: unknown): value is string | number => {
   return false
 }
 
-export const railMetaLine = (row: AnalysisResultRow, chartKind: ChartVisualKind = 'bars'): string => {
+export const railMetaLine = (
+  row: AnalysisResultRow,
+  chartKind: ChartVisualKind = 'bars',
+  perspectiveLabel?: string,
+): string => {
   const parts: string[] = []
   const playId = row.input.play_id
   const qtr = row.input.qtr
@@ -134,14 +153,16 @@ export const railMetaLine = (row: AnalysisResultRow, chartKind: ChartVisualKind 
   if (isCompact(qtr)) parts.push(`Q${qtr}`)
   if (parts.length === 0) {
     for (const [key, value] of Object.entries(row.input)) {
-      if (SKIP_META_KEYS.has(key) || !isCompact(value)) continue
+      if (SKIP_META_KEYS.has(key) || key === 'posteam' || !isCompact(value)) continue
       parts.push(String(value).trim())
       break
     }
   }
-  if (chartKind === 'series' && row.value !== undefined) parts.push(percent(row.value))
-  else if (chartKind === 'places' && row.value !== undefined) parts.push(percent(row.value))
+  if (chartKind === 'series' && row.value !== undefined) {
+    parts.push(perspectivePercentLabel(percent(row.value), perspectiveLabel))
+  } else if (chartKind === 'places' && row.value !== undefined) parts.push(percent(row.value))
   else if (row.selectedClass) parts.push(row.selectedClass)
   else if (row.value !== undefined) parts.push(percent(row.value))
+  else if (chartKind === 'series' && perspectiveLabel) parts.push(perspectiveLabel)
   return parts.join(' · ')
 }
