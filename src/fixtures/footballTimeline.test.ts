@@ -8,6 +8,7 @@ import {
   getHalftimeModelInput,
   getWinLikelihoodModelInput,
   footballFixtureWinLikelihoodInputFields,
+  footballPerspectiveLabel,
   validateFootballFixture,
 } from './footballTimeline'
 
@@ -23,6 +24,9 @@ describe('pinned Seahawks Jev fixture', () => {
       home_team: 'NE',
       home_score: 13,
     })
+    expect(footballFixture.manifest.filter.posteam).toBe('SEA')
+    expect(footballPerspectiveLabel).toBe(footballFixture.manifest.filter.posteam)
+    expect(footballPerspectiveLabel).not.toBe(footballFixture.manifest.identity.home_team)
     expect(footballFixture.manifest.parquet_sha256).toBe('c6ecedd6d678cc37ed316b23ef84ee1ec6abb69c514bb11868a7ebd5a367df29')
     expect(footballFixture.manifest.csv_fallback_sha256).toBe('2f135887790a013fd004e609e37096bb4816d5cc80b9f19122e1bad478961978')
     expect(footballFixture.manifest.identity_manifest_sha256).toBe('12a5c62f81c2cf6e50c383bbd96f0e5b80e05bfffb830151b787d32d39804564')

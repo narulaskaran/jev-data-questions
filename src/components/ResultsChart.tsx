@@ -3,11 +3,11 @@ import { classDistribution, distributionAt } from '../dataset/classDistribution'
 import { classColor } from '../runView/classColor'
 import { areChartPropsEqual, barWidth } from '../runView/chartProps'
 import { clampPlayhead, playDomainCount, playIndexFromRatio, type PlayheadMotion } from '../runView/playhead'
-import { areaPath, formatPercentTick, jevSeriesPoints, linePath, seriesX } from '../runView/seriesPath'
+import { areaPath, jevSeriesPoints, linePath, seriesX } from '../runView/seriesPath'
 import { normalizePoints, projectPlaces } from '../runView/places'
 import { chartVisualFor, inferQuestionKind, type ChartVisualKind, type JevQuestionKind } from '../shared/questionKind'
 import type { AnalysisResultRow, AnalysisRowInput } from '../shared/analysis'
-import { chartHeading } from '../runView/format'
+import { chartHeading, seriesPlayStatus } from '../runView/format'
 import { Button } from './ui/button'
 
 const EMPTY_CLASSES: readonly string[] = []
@@ -52,6 +52,7 @@ export const ResultsChart = memo(function ResultsChart({
   playing = false,
   playbackEnabled = false,
   sourceRows,
+  perspectiveLabel,
   onSeek,
   onTogglePlayback,
 }: {
@@ -65,6 +66,7 @@ export const ResultsChart = memo(function ResultsChart({
   playing?: boolean
   playbackEnabled?: boolean
   sourceRows?: readonly AnalysisRowInput[]
+  perspectiveLabel?: string
   onSeek: (index: number, phase?: 'scrub' | 'release') => void
   onTogglePlayback?: () => void
 }) {
@@ -86,7 +88,7 @@ export const ResultsChart = memo(function ResultsChart({
   )
   const classified = visual === 'bars' ? values.reduce((sum, item) => sum + item.count, 0) : series.length
   const scale = Math.max(totalRows, classified, 1)
-  const heading = chartHeading(kind, visual)
+  const heading = chartHeading(kind, visual, perspectiveLabel)
   const placeRows = useMemo(() => {
     if (visual !== 'places') return []
     if (rows.length > 0) return rows
@@ -105,14 +107,14 @@ export const ResultsChart = memo(function ResultsChart({
   const latestLabel = completedCount === 0
     ? (visual === 'places' && placeRows.length > 0 ? `${placeRows.length} places` : 'Waiting')
     : visual === 'series'
-      ? `Play ${prefixCount}${playheadValue === undefined ? '' : ` · ${formatPercentTick(playheadValue)}`}`
+      ? seriesPlayStatus(prefixCount, playheadValue, perspectiveLabel)
       : visual === 'places'
         ? `${placeRows.length} places`
         : `Through row ${prefixCount}`
   const aria = waiting
     ? 'Waiting for the first row'
     : visual === 'series'
-      ? `${chartHeading(kind, visual)} over play index`
+      ? `${chartHeading(kind, visual, perspectiveLabel)} over play index`
       : visual === 'places'
         ? (places.hasMap ? 'Places map of eating locations' : 'Ranked places')
         : 'Class distribution visualization'

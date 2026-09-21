@@ -284,6 +284,9 @@ export function getEvaluationLabel(fixture: FootballFixture = footballFixture): 
 export const footballFixture = rawFixture as unknown as FootballFixture
 validateFootballFixture(footballFixture)
 
+/** Whose series this fixture is: posteam filter, not home/away. SEA for the sample. */
+export const footballPerspectiveLabel = footballFixture.manifest.filter.posteam
+
 export const footballFixtureDisclosure = footballFixture.manifest.disclosure
 export const footballFixtureSchema = FOOTBALL_FIXTURE_SCHEMA
 export const footballFixtureModelInputFields = Object.freeze([...MODEL_INPUT_FIELDS])

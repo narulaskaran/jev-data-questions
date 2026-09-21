@@ -1,6 +1,7 @@
 import type { DatasetPreview } from '../shared/dataset'
-import { FOOTBALL_FIXTURE_ID } from '../fixtures/footballTimeline'
+import { FOOTBALL_FIXTURE_ID, footballPerspectiveLabel } from '../fixtures/footballTimeline'
 import { SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensus'
+import { asPerspectiveLabel, perspectiveMetricTitle } from '../teamMetadata'
 import {
   SAMPLE_PLAY_QUALITY_LEVELS,
   SAMPLE_PLAY_QUALITY_QUERY,
@@ -32,6 +33,8 @@ export interface InsightProposal {
   questionKind: JevQuestionKind
   classes: string[]
   cannedQuery?: string
+  /** Compact team code when the series is one team's perspective (SEA for the sample). */
+  perspectiveLabel?: string
 }
 
 const uniqueClasses = (values: readonly string[], max = 16): string[] => {
@@ -69,26 +72,45 @@ const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
   cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
 })
 
-const winLikelihoodInsight = (): InsightProposal => ({
+export const perspectiveLabelFor = (input: {
+  datasetId?: string
+  fixtureId?: string
+  rows?: readonly AnalysisRowInput[]
+}): string | undefined => {
+  const id = input.datasetId || input.fixtureId
+  if (id === FOOTBALL_FIXTURE_ID) return footballPerspectiveLabel
+  const codes = new Set<string>()
+  for (const row of input.rows ?? []) {
+    const code = asPerspectiveLabel(row.posteam)
+    if (!code) continue
+    codes.add(code)
+    if (codes.size > 1) return undefined
+  }
+  return codes.size === 1 ? [...codes][0] : undefined
+}
+
+const winLikelihoodInsight = (perspectiveLabel?: string): InsightProposal => ({
   id: 'series-win',
-  title: 'Win likelihood',
+  title: perspectiveMetricTitle('win probability', perspectiveLabel),
   reason: 'Sequential play state — P(win) line.',
   visual: 'series',
   task: SAMPLE_WIN_LIKELIHOOD_TASK,
   questionKind: 'noul',
   classes: [],
   cannedQuery: SAMPLE_WIN_NOUL_QUERY,
+  perspectiveLabel,
 })
 
-const playQualityInsight = (): InsightProposal => ({
+const playQualityInsight = (perspectiveLabel?: string): InsightProposal => ({
   id: 'series-play-quality',
-  title: 'Play quality',
+  title: perspectiveMetricTitle('play quality', perspectiveLabel),
   reason: 'Sequential play state — quality over play index.',
   visual: 'series',
   task: SAMPLE_PLAY_QUALITY_TASK,
   questionKind: 'score',
   classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
   cannedQuery: SAMPLE_PLAY_QUALITY_QUERY,
+  perspectiveLabel,
 })
 
 export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'columns' | 'previewRows' | 'sourceType'>): InsightProposal[] => {
@@ -96,8 +118,12 @@ export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'col
   const insights: InsightProposal[] = []
 
   if (dataset.datasetId === FOOTBALL_FIXTURE_ID || (shape.hasPlayState && shape.sequential)) {
-    insights.push(winLikelihoodInsight())
-    if (insights.length < 2) insights.push(playQualityInsight())
+    const perspectiveLabel = perspectiveLabelFor({
+      datasetId: dataset.datasetId,
+      rows: dataset.previewRows,
+    })
+    insights.push(winLikelihoodInsight(perspectiveLabel))
+    if (insights.length < 2) insights.push(playQualityInsight(perspectiveLabel))
   }
 
   if (dataset.datasetId === SQUIRREL_FIXTURE_ID || (shape.hasEating && (shape.geo || shape.placeColumns.length > 0))) {

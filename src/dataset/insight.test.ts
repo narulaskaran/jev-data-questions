@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FOOTBALL_FIXTURE_ID } from '../fixtures/footballTimeline'
+import { FOOTBALL_FIXTURE_ID, footballPerspectiveLabel } from '../fixtures/footballTimeline'
 import { SQUIRREL_EATING_NOUL_QUERY, SQUIRREL_EATING_TASK, SQUIRREL_FIXTURE_ID, getSquirrelDatasetPreview } from '../fixtures/squirrelCensus'
 import { getSampleDatasetPreview } from './sampleDataset'
 import { inspectDatasetShape, schemaColumnLabel, schemaStripParts } from './shape'
@@ -8,6 +8,7 @@ import {
   defaultInsightFor,
   isJunkLocationActivitySplit,
   looksLikePlaceEatingTask,
+  perspectiveLabelFor,
   proposeInsights,
   resolveChartVisual,
 } from './insight'
@@ -71,11 +72,15 @@ describe('shape → viz routing', () => {
     const insight = defaultInsightFor(dataset)
     expect(insight).toEqual(expect.objectContaining({
       id: 'series-win',
-      title: 'Win likelihood',
+      title: 'SEA win probability',
       visual: 'series',
       task: SAMPLE_WIN_LIKELIHOOD_TASK,
       cannedQuery: SAMPLE_WIN_NOUL_QUERY,
+      perspectiveLabel: footballPerspectiveLabel,
     }))
+    expect(insight?.title).not.toBe('Win probability')
+    expect(insight?.title).not.toBe('Win likelihood')
+    expect(footballPerspectiveLabel).toBe('SEA')
     expect(resolveChartVisual({
       datasetId: FOOTBALL_FIXTURE_ID,
       task: SAMPLE_WIN_LIKELIHOOD_TASK,
@@ -85,13 +90,15 @@ describe('shape → viz routing', () => {
     const insights = proposeInsights(dataset)
     expect(insights.some((item) => item.visual === 'places')).toBe(false)
     expect(insights.find((item) => item.id === 'series-play-quality')).toEqual(expect.objectContaining({
-      title: 'Play quality',
+      title: 'SEA play quality',
       visual: 'series',
       task: SAMPLE_PLAY_QUALITY_TASK,
       questionKind: 'score',
       cannedQuery: SAMPLE_PLAY_QUALITY_QUERY,
       classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+      perspectiveLabel: footballPerspectiveLabel,
     }))
+    expect(insights.find((item) => item.id === 'series-play-quality')?.title).not.toBe('Play quality')
     expect(resolveChartVisual({
       datasetId: FOOTBALL_FIXTURE_ID,
       task: 'Evaluate the quality of the plays.',
@@ -124,5 +131,27 @@ describe('shape → viz routing', () => {
       classes: ['fruit', 'vehicle'],
     }))
     expect(insights[0]?.classes).not.toEqual(['Location', 'Activity'])
+  })
+})
+
+describe('team perspective labels', () => {
+  it('reads SEA from Seahawks fixture metadata, not a hardcoded home team', () => {
+    const dataset = getSampleDatasetPreview()
+    expect(perspectiveLabelFor({ datasetId: dataset.datasetId, rows: dataset.previewRows })).toBe(footballPerspectiveLabel)
+    expect(footballPerspectiveLabel).toBe('SEA')
+    expect(footballPerspectiveLabel).not.toBe('NE')
+    expect(perspectiveLabelFor({ datasetId: FOOTBALL_FIXTURE_ID, rows: [{ play_id: 1 }] })).toBe('SEA')
+  })
+
+  it('labels a sequential play-state table from a unique posteam and skips mixed teams', () => {
+    expect(perspectiveLabelFor({
+      datasetId: 'upload-plays',
+      rows: [{ play_id: 1, posteam: 'SEA' }, { play_id: 2, posteam: 'SEA' }],
+    })).toBe('SEA')
+    expect(perspectiveLabelFor({
+      datasetId: 'upload-plays',
+      rows: [{ play_id: 1, posteam: 'SEA' }, { play_id: 2, posteam: 'NE' }],
+    })).toBeUndefined()
+    expect(perspectiveLabelFor({ datasetId: SQUIRREL_FIXTURE_ID, rows: [{ location: 'Ground Plane' }] })).toBeUndefined()
   })
 })
