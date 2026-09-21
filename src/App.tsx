@@ -311,7 +311,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     setError(undefined)
     setRunLatency(undefined)
     setSelectedInsight(undefined)
-    setJsonOpen(false)
+    setJsonOpen(engineerMode)
     setInsightRunning(false)
     setInsightVisual(undefined)
   }
