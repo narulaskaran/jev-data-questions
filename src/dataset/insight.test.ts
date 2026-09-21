@@ -49,9 +49,12 @@ describe('shape → viz routing', () => {
       questionKind: 'noul',
       cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
     }))
+    expect(insights.length).toBeGreaterThanOrEqual(2)
+    expect(insights.length).toBeLessThanOrEqual(3)
     expect(insights[0]?.reason).not.toMatch(/not class bars|location vs activity/i)
-    expect(insights.some((item) => item.visual === 'bars')).toBe(false)
+    expect(insights.some((item) => item.id === 'places-geo')).toBe(true)
     expect(insights.flatMap((item) => item.classes)).not.toEqual(expect.arrayContaining(['Location', 'Activity']))
+    expect(insights.every((item) => !/location vs activity/i.test(`${item.title} ${item.reason}`))).toBe(true)
     expect(resolveChartVisual({
       datasetId: SQUIRREL_FIXTURE_ID,
       task: 'identify common locations where squirrels are spotted eating',
@@ -88,7 +91,10 @@ describe('shape → viz routing', () => {
     })).toBe('series')
     expect(chartIsRowStreamed('series')).toBe(true)
     const insights = proposeInsights(dataset)
+    expect(insights.length).toBe(2)
+    expect(insights.map((item) => item.id)).toEqual(['series-win', 'series-play-quality'])
     expect(insights.some((item) => item.visual === 'places')).toBe(false)
+    expect(insights.some((item) => /classify sea/i.test(item.title))).toBe(false)
     expect(insights.find((item) => item.id === 'series-play-quality')).toEqual(expect.objectContaining({
       title: 'SEA play quality',
       visual: 'series',
@@ -125,12 +131,30 @@ describe('shape → viz routing', () => {
         { id: 2, text: 'truck', label_hint: 'vehicle' },
       ],
     })
+    expect(insights.length).toBeGreaterThanOrEqual(2)
+    expect(insights.length).toBeLessThanOrEqual(3)
     expect(insights[0]).toEqual(expect.objectContaining({
       visual: 'bars',
       questionKind: 'choice',
       classes: ['fruit', 'vehicle'],
     }))
     expect(insights[0]?.classes).not.toEqual(['Location', 'Activity'])
+    expect(insights.every((item) => !/location vs activity/i.test(`${item.title} ${item.reason}`))).toBe(true)
+  })
+
+  it('still proposes two heuristic cards when a BYOD preview has no label split', () => {
+    const insights = proposeInsights({
+      datasetId: 'tickets',
+      sourceType: 'upload',
+      columns: [
+        { name: 'message', normalizedName: 'message', inferredType: 'string' },
+        { name: 'tier', normalizedName: 'tier', inferredType: 'string' },
+      ],
+      previewRows: [{ message: 'hello', tier: 'gold' }],
+    })
+    expect(insights.length).toBeGreaterThanOrEqual(2)
+    expect(insights.length).toBeLessThanOrEqual(3)
+    expect(insights.every((item) => typeof item.title === 'string' && item.title.length > 0)).toBe(true)
   })
 })
 

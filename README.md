@@ -2,7 +2,7 @@
 
 Bring a dataset. Inspect its shape. See the right chart. Jev fills the values.
 
-This is a Jev playground: open a one-click sample, upload a CSV, or paste a public CSV URL. The UI inspects schema/shape and proposes a viz; Jev still fills values. It is not a live sports product or production analytics.
+This is Jev data analysis: open a one-click sample, upload a CSV, or paste a public CSV URL. The UI inspects schema/shape and proposes insights; Jev still fills values. It is not a live sports product.
 
 Start with `CURSOR.md` and `PLAN.md`. The API contract is `docs/analysis-api.md`.
 
@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL. QA this locally — do not wait on a Production deploy. The landing page has two one-click samples — **2026 Super Bowl Demo** (P(win) line) and **Squirrel census** (places where they eat) — plus **Bring your own** (CSV upload or public HTTPS CSV URL). After a pick, a schema strip and insight cards appear. Use **Run insight**. Advanced **Edit Jev JSON** stays collapsed.
+Open the Vite URL. QA this locally — do not wait on a Production deploy. The landing page has two one-click samples — **2026 Super Bowl Demo** (P(win) line) and **Squirrel census** (places where they eat) — plus **Bring your own** (CSV upload or public HTTPS CSV URL). After a pick, a schema strip and 2–3 insight cards appear. Use **Run**. Draft / Edit Jev JSON stay behind `?mode=engineer`.
 
 Visiting or sharing a page never starts a paid Jev run. The browser never calls Jev, OpenRouter, ESPN, UploadThing, or privileged Convex writes. Tests never make a paid provider request.
 
