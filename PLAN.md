@@ -46,15 +46,15 @@ The active product is no longer a live football gamecast. The old ESPN/game-stat
 The product should feel like a clear analysis workbench, not an AI-agent control panel. Chart type is chosen from data shape (categorical / numeric / time / geo / cardinality), not a fixed Choice-bars vs Noul-line pairing. The primary flow is:
 
 ```text
-landing page
+landing page (Dynamic insights from your data.)
   → choose 2026 Super Bowl Demo, Squirrel census, or BYOD
   → quiet schema strip (columns · types · cardinality)
-  → 1–2 proposed insight cards from shape; CTA Run insight
-  → optional Advanced: Edit Jev JSON (collapsed; class chips if Choice)
+  → 2–3 proposed insight cards from shape; CTA Run
   → bounded row-by-row execution when Jev runs
   → proposed viz as hero (P(win) line, places map/ranked locations, or class bars)
   → row rail only if the viz is row-streamed
   → durable replay/share page
+  → optional Engineer (`?mode=engineer`): Edit Jev JSON / Draft task / Run Jev
 ```
 
 ### MVP scope

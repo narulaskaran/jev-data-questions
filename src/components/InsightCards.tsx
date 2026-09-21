@@ -45,16 +45,18 @@ export const InsightCards = ({
   insights,
   selectedId,
   running,
+  onSelect,
   onRun,
 }: {
   insights: readonly InsightProposal[]
   selectedId?: string
   running?: boolean
+  onSelect?: (insight: InsightProposal) => void
   onRun: (insight: InsightProposal) => void
 }) => {
   if (insights.length === 0) return null
   return (
-    <section className="insight-panel" aria-label="Proposed insights">
+    <section className="insight-panel" aria-label="Proposed insights" data-insight-count={insights.length}>
       <div className="insight-cards">
         {insights.map((insight) => {
           const selected = insight.id === selectedId
@@ -64,6 +66,8 @@ export const InsightCards = ({
               className={`insight-card${selected ? ' is-selected' : ''}`}
               data-insight-id={insight.id}
               data-visual={insight.visual}
+              aria-pressed={selected}
+              onClick={() => onSelect?.(insight)}
             >
               <CardHeader className="section-heading flex-row items-start justify-between space-y-0">
                 <div>
@@ -80,10 +84,14 @@ export const InsightCards = ({
                   className="run-button"
                   variant="run"
                   type="button"
-                  onClick={() => onRun(insight)}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onSelect?.(insight)
+                    onRun(insight)
+                  }}
                   disabled={running}
                 >
-                  {running && selected ? 'Starting…' : 'Run insight'}
+                  {running && selected ? 'Starting…' : 'Run'}
                 </Button>
               </CardFooter>
             </Card>

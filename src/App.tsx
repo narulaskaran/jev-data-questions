@@ -107,9 +107,32 @@ export const defaultAnalysisApi: AnalysisApiClient = {
 }
 
 const DEFAULT_TASK = 'Classify each row using the visible columns.'
+export const PRODUCT_TITLE = 'Dynamic insights from your data.'
+export const ENGINEER_MODE_PARAM = 'mode'
+export const ENGINEER_MODE_VALUE = 'engineer'
 
 const fixtureIdFor = (dataset?: { sourceType?: string; datasetId?: string }): string | undefined => (
   dataset?.sourceType === 'fixture' ? dataset.datasetId : undefined
+)
+
+export const isEngineerMode = (search = typeof window === 'undefined' ? '' : window.location.search): boolean => (
+  new URLSearchParams(search.startsWith('?') || search.length === 0 ? search : `?${search}`).get(ENGINEER_MODE_PARAM) === ENGINEER_MODE_VALUE
+)
+
+const engineerHref = (on: boolean): string => {
+  if (typeof window === 'undefined') return on ? `/?${ENGINEER_MODE_PARAM}=${ENGINEER_MODE_VALUE}` : '/'
+  const url = new URL(window.location.href)
+  if (on) url.searchParams.set(ENGINEER_MODE_PARAM, ENGINEER_MODE_VALUE)
+  else url.searchParams.delete(ENGINEER_MODE_PARAM)
+  return `${url.pathname}${url.search}${url.hash}`
+}
+
+const queryFromInsight = (insight: InsightProposal): string => (
+  formatDraftQueryForEditor({
+    query: insight.cannedQuery ?? insight.task,
+    questionKind: insight.questionKind,
+    classes: insight.classes,
+  })
 )
 
 export const hasRunnableQuery = (query: string): boolean => looksLikeJevQueryJson(query)
@@ -205,10 +228,17 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const [jsonOpen, setJsonOpen] = useState(false)
   const [insightRunning, setInsightRunning] = useState(false)
   const [insightVisual, setInsightVisual] = useState<InsightProposal['visual'] | undefined>()
+  const [engineerMode, setEngineerMode] = useState(isEngineerMode)
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setFoldAnimate(true))
     return () => window.cancelAnimationFrame(frame)
+  }, [])
+
+  useEffect(() => {
+    const sync = () => setEngineerMode(isEngineerMode())
+    window.addEventListener('popstate', sync)
+    return () => window.removeEventListener('popstate', sync)
   }, [])
 
   useEffect(() => {
@@ -315,37 +345,37 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     } finally { setStarting(false) }
   }
 
+  const selectInsight = (insight: InsightProposal) => {
+    setSelectedInsight(insight)
+    setTask(insight.task)
+    const nextQuery = queryFromInsight(insight)
+    if (hasRunnableQuery(nextQuery)) setQuery(nextQuery)
+  }
+
   const handleRunInsight = async (insight: InsightProposal) => {
     if (!datasetId) { setError('Choose a dataset first.'); return }
-    setSelectedInsight(insight)
+    selectInsight(insight)
     setInsightVisual(insight.visual)
-    setTask(insight.task)
-    const canned = insight.cannedQuery
-      ? formatDraftQueryForEditor({
-        query: insight.cannedQuery,
-        questionKind: insight.questionKind,
-        classes: insight.classes,
-      })
-      : undefined
-    if (canned) setQuery(canned)
-    setDrafting(true); setInsightRunning(true); setError(undefined); setIntakeError(undefined); setQueryCopyMessage(''); setShareMessage('')
+    const nextQuery = queryFromInsight(insight)
+    setInsightRunning(true); setError(undefined); setIntakeError(undefined); setQueryCopyMessage(''); setShareMessage('')
     try {
+      if (hasRunnableQuery(nextQuery)) {
+        await handleRun(nextQuery)
+        return
+      }
+      setDrafting(true)
       const result = await api.draft({ datasetId, fixtureId: fixtureIdFor(dataset), task: insight.task })
       setDraft(result)
-      const nextQuery = formatDraftQueryForEditor({
+      const drafted = formatDraftQueryForEditor({
         query: result.query,
         questionKind: result.metadata.questionKind,
         classes: result.metadata.classes,
       })
-      setQuery(nextQuery)
+      setQuery(drafted)
       setDrafting(false)
-      await handleRun(nextQuery)
+      await handleRun(drafted)
     } catch (draftError) {
       setDrafting(false)
-      if (canned && hasRunnableQuery(canned)) {
-        await handleRun(canned)
-        return
-      }
       setError(shortError(draftError, 'Could not draft a Jev query'))
     } finally {
       setInsightRunning(false)
@@ -391,12 +421,9 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     setSelectedInsight(insight)
     const nextTask = preferredTask ?? insight?.task ?? DEFAULT_TASK
     setTask(nextTask)
-    if (insight?.cannedQuery) {
-      setQuery(formatDraftQueryForEditor({
-        query: insight.cannedQuery,
-        questionKind: insight.questionKind,
-        classes: insight.classes,
-      }))
+    if (insight) {
+      const nextQuery = queryFromInsight(insight)
+      if (hasRunnableQuery(nextQuery)) setQuery(nextQuery)
     }
   }
 
@@ -453,8 +480,14 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const insights = useMemo(() => (dataset ? proposeInsights(dataset) : []), [dataset])
   const showIntake = !isShareView
   const showShape = !isShareView && Boolean(dataset)
-  const showAdvanced = showShape
+  const showAdvanced = showShape && engineerMode
   const showRun = Boolean(snapshot)
+  const toggleEngineerMode = () => {
+    const next = !engineerMode
+    window.history.pushState({}, '', engineerHref(next))
+    setEngineerMode(next)
+    if (!next) setJsonOpen(false)
+  }
   const canRun = Boolean(datasetId && canConfirmJevRun({ query, starting: starting || drafting }))
   const parsedQuery = parseJevQueryJson(query)
   const querySummary = parsedQuery?.instructions
@@ -474,13 +507,13 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   return (
     <main className="analysis-shell" data-stage={stage}>
       <header className="site-header">
-        <a className="brand" href="/" aria-label="Jev playground home">Jev</a>
+        <a className="brand" href="/" aria-label="Jev home">Jev</a>
         <div className="site-header-actions">
           <ThemeToggle />
         </div>
       </header>
       <section className="hero" aria-labelledby="page-title">
-        <h1 id="page-title">{isShareView ? 'Inspect a saved run.' : 'Run Jev on a CSV.'}</h1>
+        <h1 id="page-title">{isShareView ? 'Inspect a saved run.' : PRODUCT_TITLE}</h1>
         {isShareView ? <p className="hero-copy">A saved Jev run, replayed from stored predictions.</p> : null}
       </section>
       <div className="workspace">
@@ -504,6 +537,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
                 insights={insights}
                 selectedId={selectedInsight?.id}
                 running={insightRunning}
+                onSelect={selectInsight}
                 onRun={(insight) => void handleRunInsight(insight)}
               />
             </div>
@@ -613,6 +647,20 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
           ) : null}
         </StageFold>
       </div>
+      {!isShareView ? (
+        <footer className="site-footer">
+          <a
+            className="engineer-link"
+            href={engineerHref(!engineerMode)}
+            onClick={(event) => {
+              event.preventDefault()
+              toggleEngineerMode()
+            }}
+          >
+            {engineerMode ? 'Product' : 'Engineer'}
+          </a>
+        </footer>
+      ) : null}
     </main>
   )
 }

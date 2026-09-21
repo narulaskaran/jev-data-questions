@@ -19,10 +19,12 @@ import {
   type ChartVisualKind,
   type JevQuestionKind,
 } from '../shared/questionKind'
-import { inspectDatasetShape, type DatasetShape } from './shape'
+import { inspectDatasetShape, type ColumnShape, type DatasetShape } from './shape'
 import type { AnalysisRowInput } from './csvTypes'
 
 export { isJunkLocationActivitySplit, looksLikePlaceEatingTask } from '../shared/questionKind'
+
+export const MAX_INSIGHTS = 3
 
 export interface InsightProposal {
   id: string
@@ -52,13 +54,23 @@ const uniqueClasses = (values: readonly string[], max = 16): string[] => {
   return classes
 }
 
-const placeValues = (shape: DatasetShape, rows: readonly AnalysisRowInput[]): string[] => {
-  const column = shape.placeColumns.find((name) => name.toLowerCase() === 'location') ?? shape.placeColumns[0]
-  if (!column) return []
-  return uniqueClasses(rows.map((row) => {
+const classesEqual = (left: readonly string[], right: readonly string[]): boolean => {
+  if (left.length !== right.length) return false
+  const expected = new Set(right.map((name) => name.toLowerCase()))
+  return left.every((name) => expected.has(name.toLowerCase()))
+}
+
+const columnValues = (rows: readonly AnalysisRowInput[], column: string): string[] => (
+  uniqueClasses(rows.map((row) => {
     const value = row[column]
     return typeof value === 'string' || typeof value === 'number' ? String(value) : ''
   }))
+)
+
+const placeValues = (shape: DatasetShape, rows: readonly AnalysisRowInput[]): string[] => {
+  const column = shape.placeColumns.find((name) => name.toLowerCase() === 'location') ?? shape.placeColumns[0]
+  if (!column) return []
+  return columnValues(rows, column)
 }
 
 const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
@@ -70,6 +82,61 @@ const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
   questionKind: 'noul',
   classes: [],
   cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
+})
+
+const geoPlacesInsight = (): InsightProposal => ({
+  id: 'places-geo',
+  title: 'Places',
+  reason: 'Latitude and longitude — map of rows.',
+  visual: 'places',
+  task: 'Where are these rows?',
+  questionKind: 'noul',
+  classes: [],
+  cannedQuery: 'Does this row represent an active sighting at this place?',
+})
+
+const rankedPlacesInsight = (): InsightProposal => ({
+  id: 'places-ranked',
+  title: 'Places',
+  reason: 'Location column — ranked places.',
+  visual: 'places',
+  task: 'Where do these rows happen?',
+  questionKind: 'noul',
+  classes: [],
+  cannedQuery: 'Does this row happen at a notable place?',
+})
+
+const classifyInsight = (id: string, title: string, classes: string[]): InsightProposal => ({
+  id,
+  title,
+  reason: 'Low-cardinality labels — class bars.',
+  visual: 'bars',
+  task: `Classify each row as ${classes.join(' or ')} using the visible columns.`,
+  questionKind: 'choice',
+  classes,
+  cannedQuery: `Classify each row as ${classes.join(' or ')} using the visible columns.`,
+})
+
+const notableInsight = (): InsightProposal => ({
+  id: 'noul-notable',
+  title: 'Notable rows',
+  reason: 'Yes/no per row — series.',
+  visual: 'series',
+  task: 'Is this row notable given the visible columns?',
+  questionKind: 'noul',
+  classes: [],
+  cannedQuery: 'Is this row notable given the visible columns?',
+})
+
+const rateInsight = (): InsightProposal => ({
+  id: 'score-rate',
+  title: 'Rate each row',
+  reason: 'Score over row index.',
+  visual: 'series',
+  task: 'Rate this row given the visible columns.',
+  questionKind: 'score',
+  classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+  cannedQuery: 'Rate this row given the visible columns.',
 })
 
 export const perspectiveLabelFor = (input: {
@@ -113,6 +180,21 @@ const playQualityInsight = (perspectiveLabel?: string): InsightProposal => ({
   perspectiveLabel,
 })
 
+const pushInsight = (insights: InsightProposal[], insight: InsightProposal | undefined): void => {
+  if (!insight || insights.length >= MAX_INSIGHTS) return
+  if (insights.some((item) => item.id === insight.id)) return
+  insights.push(insight)
+}
+
+const classifyFromColumn = (column: ColumnShape, rows: readonly AnalysisRowInput[]): InsightProposal | undefined => {
+  if (column.role !== 'categorical') return undefined
+  if (column.cardinality < 2 || column.cardinality > 8) return undefined
+  const classes = columnValues(rows, column.name)
+  if (classes.length < 2 || isJunkLocationActivitySplit(classes)) return undefined
+  const key = column.normalizedName || column.name
+  return classifyInsight(`bars-${key}`, `Classify ${classes.slice(0, 2).join(' / ')}`, classes)
+}
+
 export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'columns' | 'previewRows' | 'sourceType'>): InsightProposal[] => {
   const shape = inspectDatasetShape(dataset.columns, dataset.previewRows)
   const insights: InsightProposal[] = []
@@ -122,59 +204,44 @@ export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'col
       datasetId: dataset.datasetId,
       rows: dataset.previewRows,
     })
-    insights.push(winLikelihoodInsight(perspectiveLabel))
-    if (insights.length < 2) insights.push(playQualityInsight(perspectiveLabel))
+    pushInsight(insights, winLikelihoodInsight(perspectiveLabel))
+    pushInsight(insights, playQualityInsight(perspectiveLabel))
   }
 
   if (dataset.datasetId === SQUIRREL_FIXTURE_ID || (shape.hasEating && (shape.geo || shape.placeColumns.length > 0))) {
-    insights.push(eatingPlacesInsight(shape))
-  } else if (shape.geo && insights.length < 2) {
-    insights.push({
-      id: 'places-geo',
-      title: 'Places',
-      reason: 'Latitude and longitude — map of rows.',
-      visual: 'places',
-      task: 'Where are these rows?',
-      questionKind: 'noul',
-      classes: [],
-      cannedQuery: 'Does this row represent an active sighting at this place?',
-    })
+    pushInsight(insights, eatingPlacesInsight(shape))
+  }
+  if (shape.geo) {
+    pushInsight(insights, geoPlacesInsight())
   }
 
-  if (insights.length < 2) {
-    const labels = classesFromLabelColumns(
-      dataset.columns.map((column) => column.name),
-      dataset.previewRows,
-    )
-    if (labels.length >= 2 && !isJunkLocationActivitySplit(labels)) {
-      insights.push({
-        id: 'bars-labels',
-        title: `Classify ${labels.slice(0, 2).join(' / ')}`,
-        reason: 'Low-cardinality labels — class bars.',
-        visual: 'bars',
-        task: `Classify each row as ${labels.join(' or ')} using the visible columns.`,
-        questionKind: 'choice',
-        classes: labels,
-      })
-    }
+  const labels = classesFromLabelColumns(
+    dataset.columns.map((column) => column.name),
+    dataset.previewRows,
+  )
+  if (labels.length >= 2 && !isJunkLocationActivitySplit(labels)) {
+    pushInsight(insights, classifyInsight('bars-labels', `Classify ${labels.slice(0, 2).join(' / ')}`, labels))
   }
 
-  if (insights.length < 2 && shape.placeColumns.length > 0 && !insights.some((item) => item.visual === 'places')) {
+  if (!insights.some((item) => item.visual === 'places') && shape.placeColumns.length > 0) {
     const classes = placeValues(shape, dataset.previewRows)
     if (classes.length >= 2 && !isJunkLocationActivitySplit(classes)) {
-      insights.push({
-        id: 'places-ranked',
-        title: 'Places',
-        reason: 'Location column — ranked places.',
-        visual: 'places',
-        task: 'Where do these rows happen?',
-        questionKind: 'noul',
-        classes: [],
-      })
+      pushInsight(insights, rankedPlacesInsight())
     }
   }
 
-  return insights.slice(0, 2)
+  for (const column of shape.columns) {
+    if (insights.length >= MAX_INSIGHTS) break
+    const insight = classifyFromColumn(column, dataset.previewRows)
+    if (!insight) continue
+    if (insights.some((item) => classesEqual(item.classes, insight.classes))) continue
+    pushInsight(insights, insight)
+  }
+
+  if (insights.length < 2) pushInsight(insights, notableInsight())
+  if (insights.length < 2) pushInsight(insights, rateInsight())
+
+  return insights.slice(0, MAX_INSIGHTS)
 }
 
 export const resolveChartVisual = (input: {
