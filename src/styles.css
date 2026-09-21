@@ -905,6 +905,7 @@ h3 {
   min-width: 0;
   overflow: visible;
   display: block;
+  clip-path: inset(0 calc((1 - var(--series-extent, 1)) * 100%) 0 0);
 }
 
 .series-fill { fill: var(--run); fill-opacity: 0.16; }
@@ -915,9 +916,6 @@ h3 {
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
-}
-.series-svg {
-  clip-path: inset(0 calc((1 - var(--series-extent, 1)) * 100%) 0 0);
 }
 .chart-shell[data-motion='tick'] .series-svg {
   transition: clip-path 200ms ease-out;
