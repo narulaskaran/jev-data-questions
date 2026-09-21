@@ -27,6 +27,24 @@ describe('shape inspection', () => {
     expect(schemaColumnLabel(shape.columns.find((column) => column.name === 'location')!)).toMatch(/location 2/)
   })
 
+  it('treats an activity column with eating values as an eating table', () => {
+    const shape = inspectDatasetShape(
+      [
+        { name: 'x', normalizedName: 'x', inferredType: 'number' },
+        { name: 'y', normalizedName: 'y', inferredType: 'number' },
+        { name: 'location', normalizedName: 'location', inferredType: 'string' },
+        { name: 'activity', normalizedName: 'activity', inferredType: 'string' },
+      ],
+      [
+        { x: -73.97, y: 40.78, location: 'Ground Plane', activity: 'eating' },
+        { x: -73.96, y: 40.79, location: 'Above Ground', activity: 'running' },
+      ],
+    )
+    expect(shape.geo).toEqual({ lat: 'y', lng: 'x' })
+    expect(shape.hasEating).toBe(true)
+    expect(shape.placeColumns).toEqual(expect.arrayContaining(['location']))
+  })
+
   it('reads sequential play state from the Seahawks fixture and does not invent geo', () => {
     const dataset = getSampleDatasetPreview()
     const shape = inspectDatasetShape(dataset.columns, dataset.previewRows)
@@ -54,7 +72,8 @@ describe('shape → viz routing', () => {
     expect(insights[0]?.reason).not.toMatch(/not class bars|location vs activity/i)
     expect(insights.some((item) => item.id === 'places-geo')).toBe(true)
     expect(insights.flatMap((item) => item.classes)).not.toEqual(expect.arrayContaining(['Location', 'Activity']))
-    expect(insights.every((item) => !/location vs activity/i.test(`${item.title} ${item.reason}`))).toBe(true)
+    expect(insights.every((item) => !/location vs activity|not class bars/i.test(`${item.title} ${item.reason}`))).toBe(true)
+    expect(insights.every((item) => !/class bars/i.test(item.reason))).toBe(true)
     expect(resolveChartVisual({
       datasetId: SQUIRREL_FIXTURE_ID,
       task: 'identify common locations where squirrels are spotted eating',
@@ -139,7 +158,8 @@ describe('shape → viz routing', () => {
       classes: ['fruit', 'vehicle'],
     }))
     expect(insights[0]?.classes).not.toEqual(['Location', 'Activity'])
-    expect(insights.every((item) => !/location vs activity/i.test(`${item.title} ${item.reason}`))).toBe(true)
+    expect(insights.every((item) => !/location vs activity|not class bars/i.test(`${item.title} ${item.reason}`))).toBe(true)
+    expect(insights.every((item) => !/class bars/i.test(item.reason))).toBe(true)
   })
 
   it('still proposes two heuristic cards when a BYOD preview has no label split', () => {
@@ -155,6 +175,60 @@ describe('shape → viz routing', () => {
     expect(insights.length).toBeGreaterThanOrEqual(2)
     expect(insights.length).toBeLessThanOrEqual(3)
     expect(insights.every((item) => typeof item.title === 'string' && item.title.length > 0)).toBe(true)
+    expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
+    expect(insights.every((item) => !/hello|world/i.test(item.title))).toBe(true)
+  })
+
+  it('proposes places first for a messy BYOD table with geo, location, activity, and eating', () => {
+    const insights = proposeInsights({
+      datasetId: 'dataset-messy-squirrel',
+      sourceType: 'upload',
+      columns: [
+        { name: 'x', normalizedName: 'x', inferredType: 'number' },
+        { name: 'y', normalizedName: 'y', inferredType: 'number' },
+        { name: 'location', normalizedName: 'location', inferredType: 'string' },
+        { name: 'activity', normalizedName: 'activity', inferredType: 'string' },
+        { name: 'eating', normalizedName: 'eating', inferredType: 'boolean' },
+        { name: 'primary_fur_color', normalizedName: 'primary_fur_color', inferredType: 'string' },
+      ],
+      previewRows: [
+        { x: -73.97, y: 40.78, location: 'Ground Plane', activity: 'eating', eating: true, primary_fur_color: 'Gray' },
+        { x: -73.96, y: 40.79, location: 'Above Ground', activity: 'running', eating: false, primary_fur_color: 'Cinnamon' },
+        { x: -73.975, y: 40.782, location: 'Ground Plane', activity: 'foraging', eating: true, primary_fur_color: 'Black' },
+      ],
+    })
+    expect(insights.length).toBeGreaterThanOrEqual(2)
+    expect(insights.length).toBeLessThanOrEqual(3)
+    expect(insights[0]).toEqual(expect.objectContaining({
+      id: 'places-eating',
+      visual: 'places',
+      questionKind: 'noul',
+    }))
+    expect(insights.some((item) => item.id === 'places-geo')).toBe(true)
+    expect(insights.flatMap((item) => item.classes)).not.toEqual(expect.arrayContaining(['Location', 'Activity']))
+    expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
+    expect(insights.every((item) => !/location vs activity|not class bars/i.test(`${item.title} ${item.reason}`))).toBe(true)
+    expect(insights.every((item) => !/class bars/i.test(item.reason))).toBe(true)
+    expect(insights.some((item) => item.visual === 'places')).toBe(true)
+  })
+
+  it('does not propose Location vs Activity bars when a type column holds those meta labels', () => {
+    const insights = proposeInsights({
+      datasetId: 'dataset-meta-split',
+      sourceType: 'upload',
+      columns: [
+        { name: 'type', normalizedName: 'type', inferredType: 'string' },
+        { name: 'name', normalizedName: 'name', inferredType: 'string' },
+      ],
+      previewRows: [
+        { type: 'Location', name: 'park' },
+        { type: 'Activity', name: 'eating' },
+      ],
+    })
+    expect(insights.length).toBeGreaterThanOrEqual(2)
+    expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
+    expect(insights.every((item) => item.classes.join(' ').toLowerCase() !== 'location activity')).toBe(true)
+    expect(insights[0]?.classes).not.toEqual(['Location', 'Activity'])
   })
 })
 

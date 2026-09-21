@@ -76,7 +76,7 @@ const placeValues = (shape: DatasetShape, rows: readonly AnalysisRowInput[]): st
 const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
   id: 'places-eating',
   title: 'Where they eat',
-  reason: shape.geo ? 'Lat/lng + eating — map of places.' : 'Location values among eating sightings — ranked places.',
+  reason: shape.geo ? 'Map of eating places.' : 'Ranked eating places.',
   visual: 'places',
   task: SQUIRREL_EATING_TASK,
   questionKind: 'noul',
@@ -87,7 +87,7 @@ const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
 const geoPlacesInsight = (): InsightProposal => ({
   id: 'places-geo',
   title: 'Places',
-  reason: 'Latitude and longitude — map of rows.',
+  reason: 'Map of these rows.',
   visual: 'places',
   task: 'Where are these rows?',
   questionKind: 'noul',
@@ -98,7 +98,7 @@ const geoPlacesInsight = (): InsightProposal => ({
 const rankedPlacesInsight = (): InsightProposal => ({
   id: 'places-ranked',
   title: 'Places',
-  reason: 'Location column — ranked places.',
+  reason: 'Ranked locations.',
   visual: 'places',
   task: 'Where do these rows happen?',
   questionKind: 'noul',
@@ -109,7 +109,7 @@ const rankedPlacesInsight = (): InsightProposal => ({
 const classifyInsight = (id: string, title: string, classes: string[]): InsightProposal => ({
   id,
   title,
-  reason: 'Low-cardinality labels — class bars.',
+  reason: 'Labels in this table.',
   visual: 'bars',
   task: `Classify each row as ${classes.join(' or ')} using the visible columns.`,
   questionKind: 'choice',
@@ -120,7 +120,7 @@ const classifyInsight = (id: string, title: string, classes: string[]): InsightP
 const notableInsight = (): InsightProposal => ({
   id: 'noul-notable',
   title: 'Notable rows',
-  reason: 'Yes/no per row — series.',
+  reason: 'Yes or no for each row.',
   visual: 'series',
   task: 'Is this row notable given the visible columns?',
   questionKind: 'noul',
@@ -131,7 +131,7 @@ const notableInsight = (): InsightProposal => ({
 const rateInsight = (): InsightProposal => ({
   id: 'score-rate',
   title: 'Rate each row',
-  reason: 'Score over row index.',
+  reason: 'A score for each row.',
   visual: 'series',
   task: 'Rate this row given the visible columns.',
   questionKind: 'score',
@@ -186,13 +186,37 @@ const pushInsight = (insights: InsightProposal[], insight: InsightProposal | und
   insights.push(insight)
 }
 
-const classifyFromColumn = (column: ColumnShape, rows: readonly AnalysisRowInput[]): InsightProposal | undefined => {
+const TEXTISH_COLUMN_RE = /^(message|text|comment|comments|description|notes?|body|content|raw|sentence|utterance)$/i
+const META_PLACE_ACTIVITY_RE = /^(location|locations|activity|activities|place|places)$/i
+const BOOLEANISH_CLASSES = new Set(['true', 'false', 'yes', 'no', 'y', 'n', '0', '1'])
+
+const prettyColumnName = (name: string): string => name.replace(/[_-]+/g, ' ').trim()
+
+const isBooleanishClasses = (classes: readonly string[]): boolean => (
+  classes.length === 2 && classes.every((name) => BOOLEANISH_CLASSES.has(name.trim().toLowerCase()))
+)
+
+const looksLikeFreeTextColumn = (column: ColumnShape, classes: readonly string[], rowCount: number): boolean => {
+  if (TEXTISH_COLUMN_RE.test(column.name) || TEXTISH_COLUMN_RE.test(column.normalizedName)) return true
+  if (classes.some((name) => name.length > 40 || name.trim().split(/\s+/).length > 6)) return true
+  return rowCount > 8 && column.uniqueRatio > 0.5
+}
+
+const classifyFromColumn = (
+  column: ColumnShape,
+  rows: readonly AnalysisRowInput[],
+  shape: DatasetShape,
+): InsightProposal | undefined => {
   if (column.role !== 'categorical') return undefined
   if (column.cardinality < 2 || column.cardinality > 8) return undefined
+  if (META_PLACE_ACTIVITY_RE.test(column.name) || META_PLACE_ACTIVITY_RE.test(column.normalizedName)) {
+    if (shape.geo || shape.hasEating || shape.placeColumns.length > 0) return undefined
+  }
   const classes = columnValues(rows, column.name)
-  if (classes.length < 2 || isJunkLocationActivitySplit(classes)) return undefined
+  if (classes.length < 2 || isJunkLocationActivitySplit(classes) || isBooleanishClasses(classes)) return undefined
+  if (looksLikeFreeTextColumn(column, classes, shape.rowCount)) return undefined
   const key = column.normalizedName || column.name
-  return classifyInsight(`bars-${key}`, `Classify ${classes.slice(0, 2).join(' / ')}`, classes)
+  return classifyInsight(`bars-${key}`, `Classify by ${prettyColumnName(column.name)}`, classes)
 }
 
 export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'columns' | 'previewRows' | 'sourceType'>): InsightProposal[] => {
@@ -215,15 +239,6 @@ export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'col
   if (shape.geo) {
     pushInsight(insights, geoPlacesInsight())
   }
-
-  const labels = classesFromLabelColumns(
-    dataset.columns.map((column) => column.name),
-    dataset.previewRows,
-  )
-  if (labels.length >= 2 && !isJunkLocationActivitySplit(labels)) {
-    pushInsight(insights, classifyInsight('bars-labels', `Classify ${labels.slice(0, 2).join(' / ')}`, labels))
-  }
-
   if (!insights.some((item) => item.visual === 'places') && shape.placeColumns.length > 0) {
     const classes = placeValues(shape, dataset.previewRows)
     if (classes.length >= 2 && !isJunkLocationActivitySplit(classes)) {
@@ -231,20 +246,29 @@ export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'col
     }
   }
 
+  const labels = classesFromLabelColumns(
+    dataset.columns.map((column) => column.name),
+    dataset.previewRows,
+  )
+  if (labels.length >= 2 && !isJunkLocationActivitySplit(labels) && !isBooleanishClasses(labels)) {
+    pushInsight(insights, classifyInsight('bars-labels', `Classify ${labels.slice(0, 2).join(' / ')}`, labels))
+  }
+
   if (!playState) {
     for (const column of shape.columns) {
       if (insights.length >= MAX_INSIGHTS) break
-      const insight = classifyFromColumn(column, dataset.previewRows)
+      const insight = classifyFromColumn(column, dataset.previewRows, shape)
       if (!insight) continue
       if (insights.some((item) => classesEqual(item.classes, insight.classes))) continue
       pushInsight(insights, insight)
     }
   }
 
-  if (insights.length < 2) pushInsight(insights, notableInsight())
-  if (insights.length < 2) pushInsight(insights, rateInsight())
+  const clean = insights.filter((item) => !isJunkLocationActivitySplit(item.classes))
+  if (clean.length < 2) pushInsight(clean, notableInsight())
+  if (clean.length < 2) pushInsight(clean, rateInsight())
 
-  return insights.slice(0, MAX_INSIGHTS)
+  return clean.slice(0, MAX_INSIGHTS)
 }
 
 export const resolveChartVisual = (input: {

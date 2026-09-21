@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisResultRow } from '../shared/analysis'
-import { areaPath, jevSeriesPoints, linePath, seriesX } from './seriesPath'
+import { areaPath, jevSeriesPoints, linePath, seriesExtent, seriesX } from './seriesPath'
 
 const row = (rowIndex: number, value: number | undefined, wpa = 0.88): AnalysisResultRow => ({
   rowIndex,
@@ -38,6 +38,12 @@ describe('Jev series path', () => {
     expect(linePath(points).startsWith('M0 ')).toBe(true)
     expect(areaPath(points).endsWith('Z')).toBe(true)
     expect(linePath(points)).toContain('L')
+  })
+
+  it('clips the area+line to the latest row so the series grows left to right', () => {
+    expect(seriesExtent([], 71)).toBe(0)
+    expect(seriesExtent(jevSeriesPoints([row(0, 0.2)], 1, 71), 71)).toBeCloseTo(1 / 70)
+    expect(seriesExtent(jevSeriesPoints([row(0, 0.2), row(70, 0.8)], 2, 71), 71)).toBe(1)
   })
 
   it('builds a left-to-right area and line that grow with persisted Jev values', () => {

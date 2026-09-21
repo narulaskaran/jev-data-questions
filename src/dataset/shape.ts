@@ -35,6 +35,8 @@ const TIME_NAME_RE = /(date|time|timestamp|seconds_remaining|play_id|qtr|week)$/
 const PLACE_NAME_RE = /^(location|specific_location|hectare|place|park|neighborhood|venue|city|area)$/i
 const ID_NAME_RE = /(^id$|_id$|uuid|unique_)/i
 const EATING_NAME_RE = /^(eating|foraging)$/i
+const ACTIVITY_NAME_RE = /^(activity|activities|behavior|behaviours?|action)$/i
+const EATING_VALUE_RE = /^(eating|foraging|eat)$/i
 
 const finiteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 
@@ -133,6 +135,25 @@ const isMonotonic = (values: readonly number[]): boolean => {
   return increases / (values.length - 1) >= 0.85
 }
 
+const isEatingValue = (value: unknown): boolean => {
+  if (value === true) return true
+  if (typeof value === 'string') return EATING_VALUE_RE.test(value.trim())
+  return false
+}
+
+const hasEatingSignal = (
+  columns: readonly DatasetColumn[],
+  shaped: readonly ColumnShape[],
+  rows: readonly AnalysisRowInput[],
+  names: ReadonlySet<string>,
+): boolean => {
+  if (names.has('eating') || names.has('foraging')) return true
+  if (shaped.some((column) => column.role === 'boolean' && EATING_NAME_RE.test(column.name))) return true
+  const activity = columns.find((column) => ACTIVITY_NAME_RE.test(column.name) || ACTIVITY_NAME_RE.test(column.normalizedName))
+  if (!activity) return false
+  return rows.some((row) => isEatingValue(row[activity.name]))
+}
+
 export const inspectDatasetShape = (
   columns: readonly DatasetColumn[],
   rows: readonly AnalysisRowInput[],
@@ -168,7 +189,7 @@ export const inspectDatasetShape = (
     timeColumns,
     booleanColumns,
     sequential,
-    hasEating: booleanColumns.some((name) => EATING_NAME_RE.test(name)) || names.has('eating') || names.has('foraging'),
+    hasEating: hasEatingSignal(columns, shaped, rows, names),
     hasPlayState,
   }
 }

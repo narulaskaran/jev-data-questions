@@ -3,7 +3,7 @@ import { classDistribution, distributionAt } from '../dataset/classDistribution'
 import { classColor } from '../runView/classColor'
 import { areChartPropsEqual, barWidth } from '../runView/chartProps'
 import { clampPlayhead, playDomainCount, playIndexFromRatio, type PlayheadMotion } from '../runView/playhead'
-import { areaPath, jevSeriesPoints, linePath, seriesX } from '../runView/seriesPath'
+import { areaPath, jevSeriesPoints, linePath, seriesExtent, seriesX } from '../runView/seriesPath'
 import { normalizePoints, projectPlaces } from '../runView/places'
 import { chartVisualFor, inferQuestionKind, type ChartVisualKind, type JevQuestionKind } from '../shared/questionKind'
 import type { AnalysisResultRow, AnalysisRowInput } from '../shared/analysis'
@@ -158,6 +158,7 @@ export const ResultsChart = memo(function ResultsChart({
   }
 
   const cursorX = seriesX(playheadIndex, domainCount)
+  const extent = visual === 'series' ? seriesExtent(series, domainCount) : 1
 
   return (
     <section className="distribution-card chart-hero" aria-labelledby="distribution-heading">
@@ -197,7 +198,14 @@ export const ResultsChart = memo(function ResultsChart({
           ) : null}
           {waiting ? <p className="chart-empty">Waiting for the first row…</p> : null}
           {visual === 'series' && series.length > 0 ? (
-            <svg className="series-svg" viewBox="0 0 1 1" preserveAspectRatio="none" data-series-points={series.length}>
+            <svg
+              className="series-svg"
+              viewBox="0 0 1 1"
+              preserveAspectRatio="none"
+              data-series-points={series.length}
+              data-series-extent={extent}
+              style={{ '--series-extent': String(extent) } as CSSProperties}
+            >
               <path className="series-fill" d={areaPath(series)} />
               <path className="series-line" d={linePath(series)} />
               <line className="series-cursor" data-play-cursor="true" x1={cursorX} x2={cursorX} y1="0" y2="1" />

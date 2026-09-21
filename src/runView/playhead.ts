@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { usePrefersReducedMotion } from '../lib/motion'
+
+export { prefersReducedMotion, usePrefersReducedMotion } from '../lib/motion'
 
 export const clampPlayhead = (index: number, completedCount: number): number => {
   if (completedCount <= 0) return 0
@@ -28,11 +31,6 @@ export const REDUCED_PLAYBACK_INTERVAL_MS = 500
 export const playbackIntervalMs = (reducedMotion: boolean): number => (
   reducedMotion ? REDUCED_PLAYBACK_INTERVAL_MS : PLAYBACK_INTERVAL_MS
 )
-
-export const prefersReducedMotion = (): boolean => {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-}
 
 export const startPlaybackIndex = (index: number, completedCount: number): number => {
   if (completedCount < 2) return clampPlayhead(index, completedCount)
@@ -79,20 +77,11 @@ export const useRunPlayhead = (completedCount: number, runId?: string) => {
   const [followLive, setFollowLive] = useState(true)
   const [scrubbing, setScrubbing] = useState(false)
   const [playing, setPlaying] = useState(false)
-  const [reducedMotion, setReducedMotion] = useState(prefersReducedMotion)
+  const reducedMotion = usePrefersReducedMotion()
   const indexRef = useRef(index)
   const playingRef = useRef(playing)
   indexRef.current = index
   playingRef.current = playing
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const sync = () => setReducedMotion(media.matches)
-    sync()
-    media.addEventListener('change', sync)
-    return () => media.removeEventListener('change', sync)
-  }, [])
 
   useEffect(() => {
     setFollowLive(true)
