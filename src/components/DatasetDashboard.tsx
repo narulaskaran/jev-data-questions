@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react'
 import { DashboardTile, type DashboardTileModel } from './DashboardTile'
 import type { AnalysisRowInput } from '../shared/analysis'
 
+export const FINDING_INSIGHTS_COPY = 'Finding insights…'
+export const EMPTY_INSIGHTS_COPY = 'No insights for this table.'
+
 export const DatasetDashboard = ({
   tiles,
+  proposing,
   sourceRows,
   onResume,
   resumingId,
@@ -11,6 +15,7 @@ export const DatasetDashboard = ({
   onCopyShare,
 }: {
   tiles: readonly DashboardTileModel[]
+  proposing?: boolean
   sourceRows?: readonly AnalysisRowInput[]
   onResume?: (insightId: string) => void
   resumingId?: string
@@ -18,15 +23,35 @@ export const DatasetDashboard = ({
   onCopyShare?: (analysisId: string) => void
 }) => {
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const live = tiles.some((tile) => tile.snapshot?.status === 'queued' || tile.snapshot?.status === 'running')
+  const live = tiles.some((tile) => (
+    tile.starting || tile.snapshot?.status === 'queued' || tile.snapshot?.status === 'running'
+  ))
 
   useEffect(() => {
-    if (!live) return undefined
+    if (!live && !proposing) return undefined
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
     return () => window.clearInterval(timer)
-  }, [live])
+  }, [live, proposing])
 
-  if (tiles.length === 0) return null
+  if (proposing) {
+    return (
+      <section className="dashboard-empty" aria-label="Dataset dashboard" role="status">
+        <p className="thinking">
+          <span className="thinking-dot" aria-hidden="true" />
+          {FINDING_INSIGHTS_COPY}
+        </p>
+      </section>
+    )
+  }
+
+  if (tiles.length === 0) {
+    return (
+      <section className="dashboard-empty" aria-label="Dataset dashboard" role="status">
+        <p className="empty-copy">{EMPTY_INSIGHTS_COPY}</p>
+      </section>
+    )
+  }
+
   const visualKindCount = new Set(tiles.map((tile) => tile.insight.visual)).size
   return (
     <section

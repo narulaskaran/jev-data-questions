@@ -27,8 +27,11 @@ const displayNameFrom = (filenameOrUrl: string | undefined, fallback: string): s
   }
 }
 
-const requireIntake = (options: DatasetIntakeServiceOptions): void => {
+const requireConvex = (options: DatasetIntakeServiceOptions): void => {
   if (!options.convexConfigured) throw new AnalysisError('ANALYSIS_STORAGE_NOT_CONFIGURED', 'Durable storage is not configured on this deployment.', 503, true)
+}
+
+const requireBlobs = (options: DatasetIntakeServiceOptions): void => {
   if (!options.blobs.isConfigured()) throw new DatasetError('UPLOADTHING_NOT_CONFIGURED', 'CSV storage is not configured on this deployment.', 503)
 }
 
@@ -48,7 +51,8 @@ export class DatasetIntakeService {
   }
 
   async fromCsvText(input: { csvText: string; filename?: string; displayName?: string }): Promise<DatasetPreview> {
-    requireIntake(this.options)
+    requireConvex(this.options)
+    requireBlobs(this.options)
     if (typeof input.csvText !== 'string' || !input.csvText.trim()) throw new DatasetError('CSV_EMPTY', 'The CSV has no data rows.')
     const validated = validateCsvText(input.csvText)
     const bytes = new TextEncoder().encode(input.csvText)
@@ -56,13 +60,14 @@ export class DatasetIntakeService {
   }
 
   async fromCsvBytes(input: { bytes: Uint8Array; filename?: string; displayName?: string }): Promise<DatasetPreview> {
-    requireIntake(this.options)
+    requireConvex(this.options)
+    requireBlobs(this.options)
     const validated = validateCsvBytes(input.bytes)
     return this.persist({ bytes: input.bytes, validated, sourceType: 'upload', displayName: input.displayName || displayNameFrom(input.filename, 'Uploaded CSV'), filename: input.filename || 'upload.csv' })
   }
 
   async fromPublicUrl(input: { url: string; displayName?: string }): Promise<DatasetPreview> {
-    requireIntake(this.options)
+    requireConvex(this.options)
     const fetched = await fetchPublicCsv(input.url, { fetch: this.options.fetch, lookup: this.options.lookup })
     const validated = validateCsvBytes(fetched.bytes)
     const sanitizedUrl = fetched.finalUrl
@@ -98,20 +103,25 @@ export class DatasetIntakeService {
     filename: string
     sourceUrl?: string
   }): Promise<DatasetPreview> {
-    let blob
-    try {
-      blob = await this.options.blobs.putCsv({ bytes: input.bytes, filename: input.filename, contentType: 'text/csv' })
-    } catch (error) {
-      if (error instanceof DatasetError || error instanceof AnalysisError) throw error
-      const name = error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,40}$/.test(error.name) ? error.name : 'Error'
-      throw new DatasetError('UPLOADTHING_FAILED', `UploadThing ingest failed (${name}).`, 503, 'INGEST_RUNTIME')
+    let blobKey: string | undefined
+    if (this.options.blobs.isConfigured()) {
+      try {
+        const blob = await this.options.blobs.putCsv({ bytes: input.bytes, filename: input.filename, contentType: 'text/csv' })
+        blobKey = blob.blobKey
+      } catch (error) {
+        if (error instanceof DatasetError || error instanceof AnalysisError) throw error
+        const name = error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,40}$/.test(error.name) ? error.name : 'Error'
+        throw new DatasetError('UPLOADTHING_FAILED', `UploadThing ingest failed (${name}).`, 503, 'INGEST_RUNTIME')
+      }
+    } else if (input.sourceType !== 'public_url' || !input.sourceUrl) {
+      requireBlobs(this.options)
     }
     const record = toDatasetRecord({
       sourceType: input.sourceType,
       displayName: input.displayName,
       validated: input.validated,
       contentHash: hashBytes(input.bytes),
-      blobKey: blob.blobKey,
+      blobKey,
       sourceUrl: input.sourceUrl,
       createdAt: this.options.now?.() ?? Date.now(),
     })

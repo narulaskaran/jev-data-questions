@@ -6,17 +6,21 @@ import { inspectDatasetShape, schemaColumnLabel, schemaStripParts } from './shap
 import {
   chartIsRowStreamed,
   defaultInsightFor,
+  hasNamedHeuristicCuts,
   isBannedRawColumnClassInsight,
   isJunkLocationActivitySplit,
   looksLikePlaceEatingTask,
   perspectiveLabelFor,
   proposeInsights,
   resolveChartVisual,
+  resolveDashboardInsights,
+  sanitizeLlmInsightProposals,
   dashboardVisualQaOk,
   hasDiverseChartTypes,
+  insightEyebrow,
   isJunkDashboardInsight,
 } from './insight'
-import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_PLAY_QUALITY_TASK, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_ACTIVITY_QUERY, SQUIRREL_ACTIVITY_TASK } from '../shared/questionKind'
+import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_PLAY_QUALITY_TASK, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY } from '../shared/questionKind'
 
 describe('shape inspection', () => {
   it('reads geo, place, eating, and cardinality from the squirrel fixture', () => {
@@ -27,8 +31,9 @@ describe('shape inspection', () => {
     expect(shape.hasEating).toBe(true)
     expect(shape.hasPlayState).toBe(false)
     expect(shape.columns.find((column) => column.name === 'location')?.cardinality).toBe(2)
-    expect(schemaStripParts(shape).join(' · ')).toMatch(/geo/)
-    expect(schemaColumnLabel(shape.columns.find((column) => column.name === 'location')!)).toMatch(/location 2/)
+    expect(schemaStripParts(shape).join(' · ')).toMatch(/Places/)
+    expect(schemaStripParts(shape).join(' · ')).not.toMatch(/\bgeo\b/)
+    expect(schemaColumnLabel(shape.columns.find((column) => column.name === 'location')!).toLowerCase()).toMatch(/places/)
   })
 
   it('treats an activity column with eating values as an eating table', () => {
@@ -65,7 +70,7 @@ describe('shape → viz routing', () => {
     const insights = proposeInsights(dataset)
     expect(insights[0]).toEqual(expect.objectContaining({
       id: 'places-eating',
-      title: 'Where they eat',
+      title: 'Where are they eating?',
       visual: 'places',
       task: SQUIRREL_EATING_TASK,
       questionKind: 'noul',
@@ -75,15 +80,18 @@ describe('shape → viz routing', () => {
     expect(insights.length).toBeLessThanOrEqual(4)
     expect(hasDiverseChartTypes(insights)).toBe(true)
     expect(insights[0]?.reason).not.toMatch(/not class bars|location vs activity/i)
-    expect(insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'series-activity']))
-    expect(insights.find((item) => item.id === 'series-activity')).toEqual(expect.objectContaining({
-      title: 'On the move',
-      visual: 'series',
+    expect(insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'bars-eating-places']))
+    expect(insights.find((item) => item.id === 'bars-eating-places')).toEqual(expect.objectContaining({
+      title: 'Which places have the most eating?',
+      visual: 'bars',
       questionKind: 'noul',
-      task: SQUIRREL_ACTIVITY_TASK,
-      cannedQuery: SQUIRREL_ACTIVITY_QUERY,
+      task: SQUIRREL_EATING_TASK,
+      cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
     }))
-    expect(insights.find((item) => item.id === 'series-activity')?.classes).toEqual([])
+    expect(insights.find((item) => item.id === 'bars-eating-places')?.classes).toEqual([])
+    expect(insightEyebrow(insights[0]!)).toBe('Eating')
+    expect(insightEyebrow(insights.find((item) => item.id === 'bars-eating-places')!)).toBe('Most eating')
+    expect(insights.some((item) => item.id === 'series-activity')).toBe(false)
     expect(new Set(insights.map((item) => item.visual)).size).toBeGreaterThanOrEqual(2)
     expect(insights.some((item) => /classify by shift|labels in this table/i.test(`${item.title} ${item.reason}`))).toBe(false)
     expect(insights.some((item) => item.classes.some((name) => /^(am|pm)$/i.test(name)) && item.classes.length <= 2)).toBe(false)
@@ -111,7 +119,7 @@ describe('shape → viz routing', () => {
     const insight = defaultInsightFor(dataset)
     expect(insight).toEqual(expect.objectContaining({
       id: 'series-win',
-      title: 'SEA win probability',
+      title: 'Will SEA win?',
       visual: 'series',
       task: SAMPLE_WIN_LIKELIHOOD_TASK,
       cannedQuery: SAMPLE_WIN_NOUL_QUERY,
@@ -136,7 +144,7 @@ describe('shape → viz routing', () => {
     expect(insights.some((item) => item.visual === 'places')).toBe(false)
     expect(insights.some((item) => /classify sea/i.test(item.title))).toBe(false)
     expect(insights.find((item) => item.id === 'series-play-quality')).toEqual(expect.objectContaining({
-      title: 'SEA play quality',
+      title: "How good were SEA's plays?",
       visual: 'series',
       task: SAMPLE_PLAY_QUALITY_TASK,
       questionKind: 'score',
@@ -223,8 +231,9 @@ describe('shape → viz routing', () => {
       visual: 'places',
       questionKind: 'noul',
     }))
-    expect(insights.some((item) => item.id === 'series-activity')).toBe(true)
-    expect(insights.some((item) => item.visual === 'series')).toBe(true)
+    expect(insights.some((item) => item.id === 'bars-eating-places')).toBe(true)
+    expect(insights.some((item) => item.visual === 'bars')).toBe(true)
+    expect(insights.some((item) => item.id === 'series-activity')).toBe(false)
     expect(insights.flatMap((item) => item.classes)).not.toEqual(expect.arrayContaining(['Location', 'Activity']))
     expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
     expect(insights.every((item) => !/location vs activity|not class bars/i.test(`${item.title} ${item.reason}`))).toBe(true)
@@ -257,9 +266,10 @@ describe('shape → viz routing', () => {
     const insights = proposeInsights(dataset)
     expect(insights[0]).toEqual(expect.objectContaining({
       id: 'places-eating',
-      title: 'Where they eat',
+      title: 'Where are they eating?',
       visual: 'places',
     }))
+    expect(insights.some((item) => item.id === 'bars-eating-places')).toBe(true)
     expect(insights.some((item) => /classify by shift/i.test(item.title))).toBe(false)
     expect(isBannedRawColumnClassInsight({
       title: 'Classify by shift',
@@ -287,6 +297,93 @@ describe('shape → viz routing', () => {
     expect(hasDiverseChartTypes(proposeInsights(getSampleDatasetPreview()))).toBe(false)
     expect(hasDiverseChartTypes(proposeInsights(getSquirrelDatasetPreview()))).toBe(true)
     expect(dashboardVisualQaOk(proposeInsights(getSquirrelDatasetPreview()))).toBe(true)
+  })
+})
+
+describe('LLM insight proposals', () => {
+  const tickets = {
+    datasetId: 'tickets',
+    sourceType: 'upload' as const,
+    columns: [
+      { name: 'message', normalizedName: 'message', inferredType: 'string' as const },
+      { name: 'tier', normalizedName: 'tier', inferredType: 'string' as const },
+    ],
+    previewRows: [
+      { message: 'server down', tier: 'gold' },
+      { message: 'thanks', tier: 'silver' },
+    ],
+  }
+
+  it('packs valid LLM insights and lets the viz pack pick the chart', () => {
+    const insights = sanitizeLlmInsightProposals({
+      insights: [
+        {
+          title: 'Urgent tickets',
+          question: 'Is this ticket urgent given the message and tier?',
+          visual: 'places',
+          perspective: '',
+          preparation: 'Read message and tier.',
+          reason: 'Support load.',
+          questionKind: 'noul',
+        },
+        {
+          title: 'Frustrated customers',
+          question: 'Is this ticket frustrated given the message?',
+          visual: 'bars',
+          reason: 'Customer heat.',
+          questionKind: 'noul',
+        },
+      ],
+    }, tickets)
+    expect(insights.length).toBeGreaterThanOrEqual(2)
+    expect(insights.length).toBeLessThanOrEqual(4)
+    expect(insights.every((item) => item.question && item.title && item.reason)).toBe(true)
+    expect(insights.every((item) => item.visual !== 'places')).toBe(true)
+    expect(insights.some((item) => item.visual === 'series')).toBe(true)
+    expect(insights.every((item) => !isJunkDashboardInsight(item))).toBe(true)
+  })
+
+  it('drops raw-column junk such as AM/PM, shift, and labels-in-table', () => {
+    const insights = sanitizeLlmInsightProposals([
+      { title: 'Classify by shift', question: 'Is this AM or PM?', visual: 'bars', reason: 'Labels in this table.', classes: ['AM', 'PM'] },
+      { title: 'AM/PM', question: 'Classify each row by shift.', visual: 'bars', reason: 'Shift labels.', classes: ['AM', 'PM'] },
+      { title: 'Play success', question: 'Did the play convert?', visual: 'bars', reason: 'A call for each play.', classes: ['Converted', 'Did not'] },
+      { title: 'Urgent tickets', question: 'Is this ticket urgent given the message?', visual: 'series', reason: 'A real cut.', questionKind: 'noul' },
+    ], tickets)
+    expect(insights.every((item) => !/classify by shift|am\s*\/\s*pm|labels in this table/i.test(`${item.title} ${item.reason}`))).toBe(true)
+    expect(insights.every((item) => !isBannedRawColumnClassInsight(item))).toBe(true)
+    expect(insights.every((item) => !isJunkDashboardInsight(item))).toBe(true)
+    expect(insights.map((item) => item.title)).toEqual(['Urgent tickets'])
+  })
+
+  it('falls back to empty when every proposal is junk or missing', () => {
+    expect(sanitizeLlmInsightProposals({ insights: [{ title: 'Nope' }] }, tickets)).toEqual([])
+    expect(resolveDashboardInsights(tickets, { insights: [] }).insights).toEqual([])
+    expect(resolveDashboardInsights(tickets, { insights: [] }).source).toBe('empty')
+    expect(resolveDashboardInsights(tickets).source).toBe('empty')
+  })
+
+  it('keeps Seahawks and squirrel heuristics when those CSVs arrive as BYOD', () => {
+    const seahawks = {
+      ...getSampleDatasetPreview(),
+      datasetId: 'dataset-byod-sea',
+      sourceType: 'upload' as const,
+    }
+    const squirrel = {
+      ...getSquirrelDatasetPreview(),
+      datasetId: 'dataset-byod-squirrel',
+      sourceType: 'upload' as const,
+    }
+    const sea = resolveDashboardInsights(seahawks, {
+      insights: [{ title: 'Classify by shift', question: 'AM or PM?', visual: 'bars', reason: 'Labels in this table.', classes: ['AM', 'PM'] }],
+    })
+    expect(hasNamedHeuristicCuts(sea.insights)).toBe(true)
+    expect(sea.source).toBe('heuristic')
+    expect(sea.insights.map((item) => item.id)).toEqual(['series-win', 'series-play-quality'])
+    const places = resolveDashboardInsights(squirrel, { insights: [] })
+    expect(hasNamedHeuristicCuts(places.insights)).toBe(true)
+    expect(places.insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'bars-eating-places']))
+    expect(places.insights.some((item) => item.id === 'series-activity')).toBe(false)
   })
 })
 

@@ -147,9 +147,44 @@ describe('ResultsChart motion', () => {
       />,
     )
     expect(screen.getByRole('heading', { name: 'Places' })).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /places map of eating locations/i })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /map of where they are eating, with counts per place/i })).toBeInTheDocument()
     expect(document.querySelector('[data-chart-kind="places"]')).toBeTruthy()
     expect(document.querySelector('[data-place-points="2"]')).toBeTruthy()
+    expect(document.querySelector('[data-place-label="On the ground"]')).toHaveAttribute('data-eating-count', '1')
+    expect(document.querySelector('[data-place-label="In the trees"]')).toHaveAttribute('data-eating-count', '0')
+    expect(screen.getByText('On the ground · 1 eating')).toBeInTheDocument()
+    expect(screen.getByText('Each dot is a sighting')).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: /eating map legend/i })).toBeInTheDocument()
+    expect(screen.getByText('Eating · 1')).toBeInTheDocument()
+    expect(screen.getByText('Not eating · 1')).toBeInTheDocument()
+    expect(document.querySelector('[data-class="Location"]')).toBeNull()
+    expect(screen.queryByRole('slider', { name: /chart playhead/i })).not.toBeInTheDocument()
+  })
+
+  it('ranks places by eating count instead of a P(moving) series', () => {
+    const rows = [
+      { rowIndex: 0, input: { x: -73.97, y: 40.78, location: 'Ground Plane', eating: true }, model: 'jev', questionKind: 'noul' as const, value: 0.9 },
+      { rowIndex: 1, input: { x: -73.96, y: 40.79, location: 'Above Ground', eating: false }, model: 'jev', questionKind: 'noul' as const, value: 0.05 },
+      { rowIndex: 2, input: { x: -73.975, y: 40.782, location: 'Ground Plane', eating: true }, model: 'jev', questionKind: 'noul' as const, value: 0.8 },
+    ]
+    render(
+      <ResultsChart
+        rows={rows}
+        playheadIndex={2}
+        totalRows={3}
+        questionKind="noul"
+        chartKind="bars"
+        rankPlaces
+        heading="Which places have the most eating?"
+        onSeek={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('heading', { name: 'Which places have the most eating?' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /eating count by place/i })).toBeInTheDocument()
+    expect(screen.getByText('Eating count')).toBeInTheDocument()
+    expect(document.querySelector('[data-rank-kind="eating"]')).toBeTruthy()
+    expect(document.querySelector('[data-class="On the ground"]')).toHaveAttribute('data-count', '2')
+    expect(document.querySelector('[data-class="In the trees"]')).toHaveAttribute('data-count', '0')
     expect(document.querySelector('[data-class="Location"]')).toBeNull()
     expect(screen.queryByRole('slider', { name: /chart playhead/i })).not.toBeInTheDocument()
   })

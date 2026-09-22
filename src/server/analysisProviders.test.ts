@@ -78,6 +78,27 @@ describe('OpenRouter analysis draft adapter', () => {
     })
     await expect(new OpenRouterDraftProvider({ apiKey: 'placeholder', fetch: timeout, timeoutMs: 5 }).draft({ fixtureId: FOOTBALL_FIXTURE_ID, datasetId: FOOTBALL_FIXTURE_ID, task: 'task', classes: ['A', 'B'] })).rejects.toMatchObject({ code: 'OPENROUTER_TIMEOUT', statusCode: 504 })
   })
+
+  it('parses a structured insight list for BYOD proposals', async () => {
+    const fetcher: typeof fetch = async () => fetchResponse(draftBody({
+      insights: [
+        { title: 'Urgent tickets', question: 'Is this ticket urgent given the message?', visual: 'series', reason: 'Support load.' },
+        { title: 'Frustrated customers', question: 'Is this message frustrated?', visual: 'series', reason: 'Tone.' },
+      ],
+    }))
+    const result = await new OpenRouterDraftProvider({ apiKey: 'placeholder', fetch: fetcher }).propose({
+      fixtureId: 'tickets',
+      datasetId: 'tickets',
+      columns: ['message'],
+      sampleRows: [{ message: 'hello' }],
+      sourceType: 'upload',
+    })
+    expect(result.model).toBe('openrouter/test')
+    expect(result.insights).toEqual([
+      expect.objectContaining({ title: 'Urgent tickets', question: 'Is this ticket urgent given the message?' }),
+      expect.objectContaining({ title: 'Frustrated customers' }),
+    ])
+  })
 })
 
 describe('editable Jev classifier adapter', () => {

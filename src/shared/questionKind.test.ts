@@ -140,6 +140,8 @@ describe('draft honors the user prompt', () => {
 
   it('rewrites Location vs Activity drafts for a where-they-eat task into eating Noul', () => {
     expect(looksLikePlaceEatingTask('Identify common locations where squirrels are spotted eating.')).toBe(true)
+    expect(looksLikePlaceEatingTask('Where are they eating?')).toBe(true)
+    expect(looksLikePlaceEatingTask('Which places have the most eating?')).toBe(true)
     expect(isJunkLocationActivitySplit(['Location', 'Activity'])).toBe(true)
     expect(isJunkLocationActivitySplit(['Place', 'Activity'])).toBe(true)
     expect(isJunkLocationActivitySplit(['Ground Plane', 'Above Ground'])).toBe(false)

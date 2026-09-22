@@ -47,8 +47,17 @@ import {
   parseJevQueryJson,
   stringifyJevQuery,
 } from '../shared/jevQuery.js'
-import { asAnalysisRow } from '../shared/dataset.js'
+import { asAnalysisRow, type DatasetPreview } from '../shared/dataset.js'
 import { SAMPLE_DATASET_NAME } from '../shared/sampleDatasetName.js'
+import {
+  hasNamedHeuristicCuts,
+  proposeInsights,
+  resolveDashboardInsights,
+  type InsightProposal,
+  type InsightProposalSource,
+} from '../dataset/insight.js'
+import { inferSampleColumns } from '../dataset/sampleColumns.js'
+import { inspectDatasetShape } from '../dataset/shape.js'
 import {
   FOOTBALL_FIXTURE_ID,
   footballFixture,
@@ -66,6 +75,20 @@ import {
 
 export type { AnalysisClassification, AnalysisDraftInput, AnalysisDraftResult, AnalysisResultRow, AnalysisSnapshot, AnalysisStartInput, AnalysisStorage } from '../shared/analysis.js'
 export { ANALYSIS_CLASS_NAMES, ANALYSIS_MAX_CALLS, ANALYSIS_MAX_QUERY_LENGTH, ANALYSIS_MAX_ROWS, ANALYSIS_MAX_TASK_LENGTH } from '../shared/analysis.js'
+export type { InsightProposal, InsightProposalSource } from '../dataset/insight.js'
+
+export interface AnalysisProposeInput {
+  fixtureId?: string
+  datasetId?: string
+}
+
+export interface AnalysisProposeResult {
+  datasetId: string
+  fixtureId: string
+  sourceType: DatasetSourceType
+  insights: InsightProposal[]
+  source: InsightProposalSource
+}
 
 /** Bounded Jev pool size. Large BYOD runs overlap classify with Convex puts. */
 export const ANALYSIS_CLASSIFY_CONCURRENCY = 6
@@ -84,6 +107,21 @@ export interface AnalysisDatasetSource {
   get(datasetId: string): Promise<ResolvedAnalysisDataset | undefined> | ResolvedAnalysisDataset | undefined
 }
 
+export interface AnalysisInsightProposalInput {
+  fixtureId: string
+  datasetId: string
+  columns?: readonly string[]
+  sampleRows?: AnalysisRowInput[]
+  sourceType?: DatasetSourceType
+  shape?: {
+    geo?: boolean
+    placeColumns?: readonly string[]
+    sequential?: boolean
+    hasEating?: boolean
+    hasPlayState?: boolean
+  }
+}
+
 export interface AnalysisDraftProvider {
   draft(input: {
     fixtureId: string
@@ -95,6 +133,7 @@ export interface AnalysisDraftProvider {
     sourceType?: DatasetSourceType
     questionKindHint?: JevQuestionKind
   }): Promise<{ query: string; model: string; classes?: readonly string[]; questionKind?: JevQuestionKind }>
+  propose?(input: AnalysisInsightProposalInput): Promise<{ insights: unknown; model: string }>
 }
 
 export interface AnalysisClassifier {
@@ -143,6 +182,13 @@ const resolveDatasetHint = (input: { datasetId?: string; fixtureId?: string }): 
   if (typeof input.fixtureId === 'string' && input.fixtureId.trim()) return input.fixtureId.trim()
   return ''
 }
+
+const previewFromResolved = (dataset: ResolvedAnalysisDataset): Pick<DatasetPreview, 'datasetId' | 'columns' | 'previewRows' | 'sourceType'> => ({
+  datasetId: dataset.datasetId,
+  sourceType: dataset.sourceType,
+  columns: inferSampleColumns(dataset.rows, dataset.columns),
+  previewRows: dataset.rows.map((row) => ({ ...row })),
+})
 
 const cacheFailureReason = (error: unknown): string => {
   if (error instanceof Error && error.message.trim()) return error.message.replace(/\s+/g, ' ').slice(0, 240)
@@ -531,6 +577,60 @@ export class AnalysisService {
       return await pending
     } finally {
       if (this.draftInFlight.get(contentKey) === pending) this.draftInFlight.delete(contentKey)
+    }
+  }
+
+  async propose(input: AnalysisProposeInput): Promise<AnalysisProposeResult> {
+    const dataset = await this.requireDataset(input)
+    const preview = previewFromResolved(dataset)
+    const heuristic = proposeInsights(preview)
+    if (hasNamedHeuristicCuts(heuristic)) {
+      return { datasetId: dataset.datasetId, fixtureId: dataset.fixtureId, sourceType: dataset.sourceType, insights: heuristic, source: 'heuristic' }
+    }
+    const proposer = this.options.draftProvider.propose
+    if (!proposer) {
+      const resolved = resolveDashboardInsights(preview)
+      return {
+        datasetId: dataset.datasetId,
+        fixtureId: dataset.fixtureId,
+        sourceType: dataset.sourceType,
+        insights: resolved.insights,
+        source: resolved.insights.length > 0 ? resolved.source : 'empty',
+      }
+    }
+    try {
+      const shape = inspectDatasetShape(preview.columns, preview.previewRows)
+      const drafted = await proposer({
+        fixtureId: dataset.fixtureId,
+        datasetId: dataset.datasetId,
+        columns: [...dataset.columns],
+        sampleRows: dataset.rows.slice(0, 8).map((row) => ({ ...row })),
+        sourceType: dataset.sourceType,
+        shape: {
+          geo: Boolean(shape.geo),
+          placeColumns: shape.placeColumns,
+          sequential: shape.sequential,
+          hasEating: shape.hasEating,
+          hasPlayState: shape.hasPlayState,
+        },
+      })
+      const resolved = resolveDashboardInsights(preview, drafted.insights)
+      return {
+        datasetId: dataset.datasetId,
+        fixtureId: dataset.fixtureId,
+        sourceType: dataset.sourceType,
+        insights: resolved.insights,
+        source: resolved.insights.length > 0 ? resolved.source : 'empty',
+      }
+    } catch {
+      const resolved = resolveDashboardInsights(preview)
+      return {
+        datasetId: dataset.datasetId,
+        fixtureId: dataset.fixtureId,
+        sourceType: dataset.sourceType,
+        insights: resolved.insights,
+        source: resolved.insights.length > 0 ? 'heuristic' : 'empty',
+      }
     }
   }
 

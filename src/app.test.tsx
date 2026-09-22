@@ -121,6 +121,7 @@ const makeApi = (overrides: Partial<AnalysisApiClient> = {}): AnalysisApiClient 
   }),
   createFromCsv: vi.fn(async () => uploaded),
   createFromUrl: vi.fn(async (): Promise<DatasetPreview> => ({ ...uploaded, datasetId: 'dataset-url-1', sourceType: 'public_url', displayName: 'remote.csv' })),
+  propose: vi.fn(async (input) => ({ datasetId: input.datasetId ?? uploaded.datasetId, insights: [], source: 'empty' as const })),
   ...overrides,
 })
 
@@ -188,8 +189,11 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/location vs activity/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/football is the sample, not the product/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/same live chart as the sample/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /upload \.csv or public https csv url/i })).toBeInTheDocument()
-    expect(screen.getByLabelText(/upload csv/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /upload csv or public https csv url/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/^upload csv$/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^upload csv$/i })).toBeInTheDocument()
+    expect(screen.queryByText(/choose file/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/upload \.csv/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /use public csv url/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^squirrel census$/i })).not.toBeInTheDocument()
@@ -258,8 +262,8 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /draft task/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'SEA play quality' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: "How good were SEA's plays?" })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Play success' })).not.toBeInTheDocument()
     expectNamedDashboard()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
@@ -301,7 +305,7 @@ describe('Jev insight product flow', () => {
     expect(screen.getByText('Classifying 39 of 71 rows (H1 plays).')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^copy$/i })).toBeInTheDocument()
     expect(document.querySelector('[data-stage="dataset"]')).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
     fireEvent.click(runButton)
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(dashboardStarts + 1))
     expect(document.querySelector('[data-stage="run"]')).toBeTruthy()
@@ -334,7 +338,7 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: /jev query json/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /draft task/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
   })
 
   it('opens the JSON editor from ?mode=engineer without leaking onto /', async () => {
@@ -343,10 +347,10 @@ describe('Jev insight product flow', () => {
     render(<App api={api} />)
     expect(document.querySelector('[data-mode="engineer"]')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /upload \.csv or public https csv url/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /upload csv or public https csv url/i })).toBeInTheDocument()
     window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}?mode=engineer`)
     window.dispatchEvent(new PopStateEvent('popstate'))
-    expect(await screen.findByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
     expect(screen.getByLabelText(/^Jev query JSON$/i)).toBeInTheDocument()
     expect(document.querySelector('details.advanced-json')).toHaveAttribute('open')
     fireEvent.click(screen.getByRole('link', { name: /^product$/i }))
@@ -540,19 +544,21 @@ describe('Jev insight product flow', () => {
     expect(document.querySelector('[data-insight-id="series-play-quality"]')).toHaveAttribute('data-visual', 'series')
     expect(document.querySelector('[data-insight-id="bars-success"]')).toBeNull()
     expectNamedDashboard()
-    expect(screen.getByRole('heading', { name: 'SEA play quality' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: "How good were SEA's plays?" })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /^Play quality$/ })).not.toBeInTheDocument()
-    expect(screen.getByText('P(win) line')).toBeInTheDocument()
-    expect(screen.getByText('Quality')).toBeInTheDocument()
+    expect(screen.getByText('Win chance')).toBeInTheDocument()
+    expect(within(document.querySelector('[data-insight-id="series-win"]') as HTMLElement).getByText('Win chance')).toBeInTheDocument()
+    expect(within(document.querySelector('[data-insight-id="series-play-quality"]') as HTMLElement).getByText('Play quality')).toBeInTheDocument()
+    expect(screen.queryByText('P(win) line')).not.toBeInTheDocument()
     expect(screen.getByLabelText(/dataset shape/i)).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /^Win probability$/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /win likelihood/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /draft task/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
     const winTile = document.querySelector('[data-insight-id="series-win"]') as HTMLElement
-    expect(await within(winTile).findByRole('img', { name: /sea win probability over play index/i })).toBeInTheDocument()
+    expect(await within(winTile).findByRole('img', { name: /will sea win\? over play index/i })).toBeInTheDocument()
     expect(within(winTile).getByText('3 / 71')).toBeInTheDocument()
     expect(winTile.querySelector('[data-chart-kind="series"]')).toBeTruthy()
     expect(winTile.querySelector('[data-series-points="3"]')).toBeTruthy()
@@ -615,8 +621,8 @@ describe('Jev insight product flow', () => {
     expectNamedDashboard()
     expect(within(playQualityCard).queryByText(/class bars/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
-    expect(await within(playQualityCard).findByRole('img', { name: /sea play quality over play index/i })).toBeInTheDocument()
-    expect(within(playQualityCard).getByRole('heading', { name: 'SEA play quality' })).toBeInTheDocument()
+    expect(await within(playQualityCard).findByRole('img', { name: /how good were sea's plays\? over play index/i })).toBeInTheDocument()
+    expect(within(playQualityCard).getByRole('heading', { name: "How good were SEA's plays?" })).toBeInTheDocument()
     expect(within(playQualityCard).getByText('3 / 71')).toBeInTheDocument()
     expect(playQualityCard.querySelector('[data-chart-kind="series"]')).toBeTruthy()
     expect(document.querySelector('[data-class="Good Play"]')).toBeNull()
@@ -666,19 +672,16 @@ describe('Jev insight product flow', () => {
     })
     const api = makeApi({
       draft: vi.fn(async () => eatingDraft),
-      start: vi.fn(async (request) => (
-        /on the move/i.test(String(request.query))
-          ? { ...eatingRun, analysisId: 'analysis-squirrel-activity', query: request.query }
-          : eatingRun
-      )),
+      start: vi.fn(async () => eatingRun),
       read: vi.fn(async () => eatingRun),
     })
     openFixture(api, SQUIRREL_FIXTURE_ID)
     expect(window.location.pathname).toBe(`/dataset/${SQUIRREL_FIXTURE_ID}`)
     expect(screen.getByLabelText(/dataset shape/i)).toBeInTheDocument()
     expect(screen.queryByText(/location vs activity/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /where they eat/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /on the move/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Where are they eating?' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Which places have the most eating?' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /on the move/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /how active/i })).not.toBeInTheDocument()
     expect(Number(document.querySelector('.dashboard-grid')?.getAttribute('data-insight-count'))).toBeGreaterThanOrEqual(2)
     expectDiverseDashboard()
@@ -692,10 +695,19 @@ describe('Jev insight product flow', () => {
     const placesTile = document.querySelector('[data-insight-id="places-eating"]') as HTMLElement
     expect(placesTile).toHaveAttribute('data-lead')
     expect(placesTile).toHaveAttribute('data-visual', 'places')
-    expect(await within(placesTile).findByRole('img', { name: /places map of eating locations/i })).toBeInTheDocument()
+    expect(await within(placesTile).findByRole('img', { name: /map of where they are eating, with counts per place/i })).toBeInTheDocument()
+    expect(within(placesTile).getByRole('list', { name: /eating map legend/i })).toBeInTheDocument()
+    expect(within(placesTile).getByText('Each dot is a sighting')).toBeInTheDocument()
+    expect(placesTile.querySelector('[data-place-label="On the ground"]')).toBeTruthy()
     expect(screen.queryByText(/using saved run/i)).not.toBeInTheDocument()
     expect(placesTile.querySelector('[data-chart-kind="places"]')).toBeTruthy()
     expect(placesTile.querySelector('[data-place-points]')).toBeTruthy()
+    const barsTile = document.querySelector('[data-insight-id="bars-eating-places"]') as HTMLElement
+    expect(barsTile).toHaveAttribute('data-visual', 'bars')
+    expect(within(barsTile).getByRole('img', { name: /eating count by place/i })).toBeInTheDocument()
+    expect(within(barsTile).getByText('Eating count')).toBeInTheDocument()
+    expect(within(placesTile).getByText('Eating')).toBeInTheDocument()
+    expect(within(barsTile).getByText('Most eating')).toBeInTheDocument()
     expect(document.querySelector('[data-class="Location"]')).toBeNull()
     expect(document.querySelector('[data-class="Activity"]')).toBeNull()
     expect(document.querySelector('[data-class="AM"]')).toBeNull()
@@ -707,7 +719,8 @@ describe('Jev insight product flow', () => {
       questionKind: 'noul',
       classes: [],
     }))
-    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: expect.stringMatching(/on the move/i) }))
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: expect.stringMatching(/eating given this sighting/i) }))
+    expect(api.start).not.toHaveBeenCalledWith(expect.objectContaining({ query: expect.stringMatching(/on the move/i) }))
   })
 
   it('follows the live edge until the user scrubs back, then seeks from the row rail', async () => {
@@ -804,6 +817,8 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/classify by /i)).not.toBeInTheDocument()
+    await waitFor(() => expect(api.propose).toHaveBeenCalled())
+    expect(await screen.findByText(/no insights for this table/i)).toBeInTheDocument()
     expect(document.querySelector('.dashboard-grid')).toBeNull()
     expect(api.start).not.toHaveBeenCalled()
     expect(screen.queryByRole('region', { name: /current row inspector/i })).not.toBeInTheDocument()
@@ -890,6 +905,9 @@ describe('Jev insight product flow', () => {
     })
     render(<App api={api} />)
     await waitFor(() => expect(screen.getByLabelText(/upload csv/i)).toBeDisabled())
+    expect(screen.getByRole('button', { name: /use public csv url/i })).toBeEnabled()
+    expect(screen.getByLabelText(/public https csv url/i)).toBeEnabled()
+    expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
     expect(screen.queryByText(/not configured on this deployment/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/durable storage/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/uploadthing/i)).not.toBeInTheDocument()
@@ -898,9 +916,26 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByRole('button', { name: /^squirrel census$/i })).not.toBeInTheDocument()
     window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}`)
     window.dispatchEvent(new PopStateEvent('popstate'))
-    expect(await screen.findByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
     expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
     await waitFor(() => expect(api.start).toHaveBeenCalled())
+  })
+
+  it('keeps public CSV URL live when only file upload storage is down', async () => {
+    const api = makeApi({
+      intakeStatus: vi.fn(async (): Promise<DatasetIntakeStatus> => ({ convex: true, uploadThing: false, sampleAvailable: true })),
+    })
+    render(<App api={api} />)
+    await waitFor(() => expect(screen.getByLabelText(/upload csv/i)).toBeDisabled())
+    expect(screen.getByRole('button', { name: /use public csv url/i })).toBeEnabled()
+    expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
+    fireEvent.change(screen.getByLabelText(/public https csv url/i), {
+      target: { value: 'https://jev-gamecast.vercel.app/samples/nyc-squirrel-census.csv' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))
+    expect(await screen.findByRole('heading', { name: 'remote.csv' })).toBeInTheDocument()
+    expect(api.createFromUrl).toHaveBeenCalledWith({ url: 'https://jev-gamecast.vercel.app/samples/nyc-squirrel-census.csv' })
+    expect(api.createFromCsv).not.toHaveBeenCalled()
   })
 
   it('shows a short BYOD error without durable-storage jargon', async () => {
@@ -1187,6 +1222,8 @@ describe('Jev insight product flow', () => {
     fireEvent.change(screen.getByLabelText(/public https csv url/i), { target: { value: 'https://example.com/nyc.csv' } })
     fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))
     expect(await screen.findByText(/loading dataset/i)).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: /loading dataset/i })).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: /loading dataset/i })).toHaveAttribute('data-indeterminate')
     finish?.({ ...uploaded, datasetId: 'dataset-url-1', sourceType: 'public_url', displayName: 'nyc.csv' })
     expect(await screen.findByRole('heading', { name: 'nyc.csv' })).toBeInTheDocument()
     expect(screen.queryByText(/loading dataset/i)).not.toBeInTheDocument()
@@ -1210,8 +1247,8 @@ describe('Jev insight product flow', () => {
     const api = makeApi()
     window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}`)
     render(<App api={api} />)
-    expect(await screen.findByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'SEA play quality' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: "How good were SEA's plays?" })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Play success' })).not.toBeInTheDocument()
     expect(document.querySelector('[data-stage="dataset"]')).toBeTruthy()
     expectNamedDashboard()
@@ -1219,5 +1256,115 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByRole('heading', { name: /choose a dataset/i })).not.toBeInTheDocument()
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
     expect(vi.mocked(api.start).mock.calls.map((call) => call[0]?.questionKind).sort()).toEqual(['noul', 'score'])
+  })
+
+  it('fills BYOD tiles from sanitized LLM proposals in parallel', async () => {
+    const proposals = [
+      {
+        id: 'series-urgent',
+        title: 'Urgent tickets',
+        question: 'Is this ticket urgent given the message?',
+        visual: 'series' as const,
+        reason: 'Support load.',
+        task: 'Is this ticket urgent given the message?',
+        questionKind: 'noul' as const,
+        classes: [] as string[],
+        cannedQuery: 'Is this ticket urgent given the message?',
+      },
+      {
+        id: 'series-frustrated',
+        title: 'Frustrated customers',
+        question: 'Is this message frustrated?',
+        visual: 'series' as const,
+        reason: 'Tone.',
+        task: 'Is this message frustrated?',
+        questionKind: 'noul' as const,
+        classes: [] as string[],
+        cannedQuery: 'Is this message frustrated?',
+      },
+    ]
+    const api = makeApi({
+      propose: vi.fn(async () => ({ datasetId: uploaded.datasetId, insights: proposals, source: 'llm' as const })),
+    })
+    render(<App api={api} />)
+    const file = new File(['message,tier\nhello,gold\n'], 'tickets.csv', { type: 'text/csv' })
+    fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
+    expect(await screen.findByRole('heading', { name: 'Urgent tickets' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Frustrated customers' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /classify by shift/i })).not.toBeInTheDocument()
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
+    expect(document.querySelectorAll('[aria-label$="progress"]').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('shows an honest empty dashboard when LLM proposals fail', async () => {
+    const api = makeApi({
+      propose: vi.fn(async () => { throw new Error('OPENROUTER_MALFORMED') }),
+    })
+    render(<App api={api} />)
+    const file = new File(['message,tier\nhello,gold\n'], 'tickets.csv', { type: 'text/csv' })
+    fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
+    expect(await screen.findByText(/no insights for this table/i)).toBeInTheDocument()
+    expect(document.querySelector('.dashboard-grid')).toBeNull()
+    expect(api.start).not.toHaveBeenCalled()
+  })
+
+  it('keeps Seahawks heuristics when that CSV is uploaded via BYOD', async () => {
+    const preview: DatasetPreview = {
+      ...getFixtureDatasetPreview(FOOTBALL_FIXTURE_ID)!,
+      datasetId: 'dataset-byod-sea',
+      sourceType: 'upload',
+      displayName: 'seahawks-super-bowl-2026.csv',
+    }
+    const api = makeApi({
+      createFromCsv: vi.fn(async () => preview),
+      propose: vi.fn(async () => ({ datasetId: preview.datasetId, insights: [], source: 'empty' as const })),
+    })
+    render(<App api={api} />)
+    const file = new File(['play_id\n1\n'], 'seahawks-super-bowl-2026.csv', { type: 'text/csv' })
+    fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
+    expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: "How good were SEA's plays?" })).toBeInTheDocument()
+    expect(api.propose).not.toHaveBeenCalled()
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
+  })
+
+  it('humanizes the schema strip and keeps the preview table secondary', async () => {
+    const api = makeApi()
+    openFixture(api)
+    expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
+    expect(document.querySelector('.schema-strip-summary')?.textContent).toMatch(/Places|Numbers|Text/)
+    expect(document.querySelector('.schema-strip-summary')?.textContent).not.toMatch(/\bgeo\b|\bnumber\b|\bstring\b/)
+    expect(document.querySelector('.schema-strip-summary')?.textContent).not.toMatch(/posteam|play_id|location/)
+    const advanced = document.querySelector('.schema-strip-advanced') as HTMLDetailsElement
+    expect(advanced).toBeTruthy()
+    expect(advanced.open).toBe(false)
+    expect(advanced.textContent).toMatch(/column types/i)
+    const fold = document.querySelector('.preview-fold') as HTMLDetailsElement
+    expect(fold).toBeTruthy()
+    expect(fold.open).toBe(true)
+    expect(screen.getByText(/preview table/i)).toBeInTheDocument()
+    expect(document.querySelector('.dataset-preview.is-secondary')).toBeTruthy()
+  })
+
+  it('collapses the preview table at 390px', async () => {
+    const matchMedia = vi.fn((query: string) => ({
+      matches: query.includes('390px'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      onchange: null,
+    }))
+    vi.stubGlobal('matchMedia', matchMedia)
+    try {
+      const api = makeApi()
+      openFixture(api)
+      expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
+      expect((document.querySelector('.preview-fold') as HTMLDetailsElement).open).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

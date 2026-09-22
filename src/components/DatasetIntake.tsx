@@ -1,13 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { ANALYSIS_STALL_AFTER_MS } from '../shared/analysis'
+import { STILL_WORKING_COPY } from '../runView/format'
 import { plainDatasetError } from '../dataset/csvTypes'
 import type { DatasetIntakeStatus } from '../shared/dataset'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
+import { Progress } from './ui/progress'
 
 const INTAKE_ERROR_HEADING = "Couldn't load dataset"
 const EMPTY_URL_MESSAGE = 'Enter a public HTTPS CSV URL first.'
+export const UPLOAD_CSV_COPY = 'Upload CSV'
+export const USE_PUBLIC_CSV_URL_COPY = 'Use public CSV URL'
+export const LOADING_DATASET_COPY = 'Loading dataset…'
+
+export const isFileUploadBlocked = (status?: DatasetIntakeStatus, busy = false): boolean => (
+  busy || status?.uploadThing === false
+)
+
+export const isPublicUrlBlocked = (_status?: DatasetIntakeStatus, busy = false): boolean => busy
 
 export const DatasetIntake = ({
   status,
@@ -24,39 +36,65 @@ export const DatasetIntake = ({
   disabled?: boolean
   resetToken?: number
 }) => {
-  const byodBlocked = status?.convex === false || status?.uploadThing === false
+  const fileBlocked = isFileUploadBlocked(status, disabled)
+  const urlBlocked = isPublicUrlBlocked(status, disabled)
   const [csvUrl, setCsvUrl] = useState('')
   const [urlHint, setUrlHint] = useState<string>()
+  const [busySince, setBusySince] = useState<number>()
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setCsvUrl('')
     setUrlHint(undefined)
   }, [resetToken])
 
+  useEffect(() => {
+    if (!disabled) {
+      setBusySince(undefined)
+      return undefined
+    }
+    setBusySince((current) => current ?? Date.now())
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [disabled])
+
+  const stillWorking = Boolean(busySince && nowMs - busySince >= ANALYSIS_STALL_AFTER_MS)
+
   return (
     <section className="intake-panel" aria-labelledby="intake-heading" aria-busy={disabled || undefined}>
       <h2 id="intake-heading">Choose a dataset</h2>
       <div className="intake-cards">
-        <Card className={`intake-card ${disabled || byodBlocked ? 'is-disabled' : ''}`}>
+        <Card className={`intake-card${disabled ? ' is-disabled' : ''}`}>
           <CardHeader>
             <p className="eyebrow">Bring your own</p>
-            <CardTitle>Upload .csv or public HTTPS CSV URL</CardTitle>
+            <CardTitle>Upload CSV or public HTTPS CSV URL</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="byod-file">
-              <Label htmlFor="csv-file">Upload .csv</Label>
-              <Input
+              <Label htmlFor="csv-file">{UPLOAD_CSV_COPY}</Label>
+              <input
+                ref={fileInputRef}
                 id="csv-file"
+                className="sr-only"
                 type="file"
                 accept=".csv,text/csv"
-                aria-label="Upload CSV"
-                disabled={disabled || byodBlocked}
+                aria-label={UPLOAD_CSV_COPY}
+                disabled={fileBlocked}
                 onChange={(event) => {
                   const file = event.target.files?.[0]
                   event.target.value = ''
                   if (file) onUploadFile(file)
                 }}
               />
+              <Button
+                variant="secondary"
+                type="button"
+                disabled={fileBlocked}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {UPLOAD_CSV_COPY}
+              </Button>
             </div>
             <form
               className="byod-url"
@@ -78,7 +116,7 @@ export const DatasetIntake = ({
                 type="url"
                 placeholder="https://example.com/data.csv"
                 value={csvUrl}
-                disabled={disabled || byodBlocked}
+                disabled={urlBlocked}
                 aria-invalid={Boolean(urlHint) || undefined}
                 aria-describedby={urlHint ? 'csv-url-hint' : undefined}
                 onChange={(event) => {
@@ -87,16 +125,20 @@ export const DatasetIntake = ({
                 }}
               />
               {urlHint ? <p id="csv-url-hint" className="field-hint" role="alert">{urlHint}</p> : null}
-              <Button variant="secondary" type="submit" disabled={disabled || byodBlocked}>Use public CSV URL</Button>
+              <Button variant="secondary" type="submit" disabled={urlBlocked}>{USE_PUBLIC_CSV_URL_COPY}</Button>
             </form>
           </CardContent>
         </Card>
       </div>
       {disabled ? (
-        <p className="thinking" role="status">
-          <span className="thinking-dot" aria-hidden="true" />
-          Loading dataset…
-        </p>
+        <div className="intake-progress" role="status">
+          <p className="thinking">
+            <span className="thinking-dot" aria-hidden="true" />
+            {LOADING_DATASET_COPY}
+          </p>
+          <Progress indeterminate aria-label={LOADING_DATASET_COPY} />
+          {stillWorking ? <p className="run-stall">{STILL_WORKING_COPY}</p> : null}
+        </div>
       ) : null}
       {intakeError && (
         <div className="error-banner" role="alert">
