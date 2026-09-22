@@ -6,13 +6,17 @@ import { inspectDatasetShape, schemaColumnLabel, schemaStripParts } from './shap
 import {
   chartIsRowStreamed,
   defaultInsightFor,
+  isBannedRawColumnClassInsight,
   isJunkLocationActivitySplit,
   looksLikePlaceEatingTask,
   perspectiveLabelFor,
   proposeInsights,
   resolveChartVisual,
+  dashboardVisualQaOk,
+  hasDiverseChartTypes,
+  isJunkDashboardInsight,
 } from './insight'
-import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_PLAY_QUALITY_TASK, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY } from '../shared/questionKind'
+import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_PLAY_QUALITY_TASK, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_ACTIVITY_QUERY, SQUIRREL_ACTIVITY_TASK } from '../shared/questionKind'
 
 describe('shape inspection', () => {
   it('reads geo, place, eating, and cardinality from the squirrel fixture', () => {
@@ -68,12 +72,25 @@ describe('shape → viz routing', () => {
       cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
     }))
     expect(insights.length).toBeGreaterThanOrEqual(2)
-    expect(insights.length).toBeLessThanOrEqual(3)
+    expect(insights.length).toBeLessThanOrEqual(4)
+    expect(hasDiverseChartTypes(insights)).toBe(true)
     expect(insights[0]?.reason).not.toMatch(/not class bars|location vs activity/i)
-    expect(insights.some((item) => item.id === 'places-geo')).toBe(true)
+    expect(insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'series-activity']))
+    expect(insights.find((item) => item.id === 'series-activity')).toEqual(expect.objectContaining({
+      title: 'On the move',
+      visual: 'series',
+      questionKind: 'noul',
+      task: SQUIRREL_ACTIVITY_TASK,
+      cannedQuery: SQUIRREL_ACTIVITY_QUERY,
+    }))
+    expect(insights.find((item) => item.id === 'series-activity')?.classes).toEqual([])
+    expect(new Set(insights.map((item) => item.visual)).size).toBeGreaterThanOrEqual(2)
+    expect(insights.some((item) => /classify by shift|labels in this table/i.test(`${item.title} ${item.reason}`))).toBe(false)
+    expect(insights.some((item) => item.classes.some((name) => /^(am|pm)$/i.test(name)) && item.classes.length <= 2)).toBe(false)
     expect(insights.flatMap((item) => item.classes)).not.toEqual(expect.arrayContaining(['Location', 'Activity']))
     expect(insights.every((item) => !/location vs activity|not class bars/i.test(`${item.title} ${item.reason}`))).toBe(true)
     expect(insights.every((item) => !/class bars/i.test(item.reason))).toBe(true)
+    expect(insights.every((item) => !isBannedRawColumnClassInsight(item))).toBe(true)
     expect(resolveChartVisual({
       datasetId: SQUIRREL_FIXTURE_ID,
       task: 'identify common locations where squirrels are spotted eating',
@@ -110,8 +127,12 @@ describe('shape → viz routing', () => {
     })).toBe('series')
     expect(chartIsRowStreamed('series')).toBe(true)
     const insights = proposeInsights(dataset)
-    expect(insights.length).toBe(2)
     expect(insights.map((item) => item.id)).toEqual(['series-win', 'series-play-quality'])
+    expect(insights.find((item) => item.id === 'series-win')).toBe(insights[0])
+    expect(insights.find((item) => item.id === 'series-play-quality')).toBe(insights[1])
+    expect(dashboardVisualQaOk(insights)).toBe(true)
+    expect(insights.every((item) => item.visual === 'series')).toBe(true)
+    expect(insights.some((item) => item.id === 'bars-success')).toBe(false)
     expect(insights.some((item) => item.visual === 'places')).toBe(false)
     expect(insights.some((item) => /classify sea/i.test(item.title))).toBe(false)
     expect(insights.find((item) => item.id === 'series-play-quality')).toEqual(expect.objectContaining({
@@ -136,7 +157,7 @@ describe('shape → viz routing', () => {
     })).toBe('series')
   })
 
-  it('proposes label-class bars for a fruit/vehicle table without a place split', () => {
+  it('does not replay fruit/vehicle labels as class-bar tiles', () => {
     const insights = proposeInsights({
       datasetId: 'classify',
       sourceType: 'upload',
@@ -150,19 +171,15 @@ describe('shape → viz routing', () => {
         { id: 2, text: 'truck', label_hint: 'vehicle' },
       ],
     })
-    expect(insights.length).toBeGreaterThanOrEqual(2)
-    expect(insights.length).toBeLessThanOrEqual(3)
-    expect(insights[0]).toEqual(expect.objectContaining({
-      visual: 'bars',
-      questionKind: 'choice',
-      classes: ['fruit', 'vehicle'],
-    }))
-    expect(insights[0]?.classes).not.toEqual(['Location', 'Activity'])
+    expect(insights.every((item) => item.classes.join(' ').toLowerCase() !== 'fruit vehicle')).toBe(true)
+    expect(insights.every((item) => !/^classify by /i.test(item.title))).toBe(true)
+    expect(insights.every((item) => !/labels in this table/i.test(item.reason))).toBe(true)
+    expect(insights.every((item) => !isJunkDashboardInsight(item))).toBe(true)
     expect(insights.every((item) => !/location vs activity|not class bars/i.test(`${item.title} ${item.reason}`))).toBe(true)
     expect(insights.every((item) => !/class bars/i.test(item.reason))).toBe(true)
   })
 
-  it('still proposes two heuristic cards when a BYOD preview has no label split', () => {
+  it('omits junk filler tiles when a BYOD preview has no named cut', () => {
     const insights = proposeInsights({
       datasetId: 'tickets',
       sourceType: 'upload',
@@ -172,11 +189,12 @@ describe('shape → viz routing', () => {
       ],
       previewRows: [{ message: 'hello', tier: 'gold' }],
     })
-    expect(insights.length).toBeGreaterThanOrEqual(2)
-    expect(insights.length).toBeLessThanOrEqual(3)
-    expect(insights.every((item) => typeof item.title === 'string' && item.title.length > 0)).toBe(true)
+    expect(insights.every((item) => !isJunkDashboardInsight(item))).toBe(true)
     expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
     expect(insights.every((item) => !/hello|world/i.test(item.title))).toBe(true)
+    expect(insights.every((item) => !/^classify by /i.test(item.title))).toBe(true)
+    expect(insights.every((item) => item.classes.join(' ').toLowerCase() !== 'gold silver')).toBe(true)
+    expect(insights.every((item) => !/^(notable rows|rate each row|yes or no)$/i.test(item.title))).toBe(true)
   })
 
   it('proposes places first for a messy BYOD table with geo, location, activity, and eating', () => {
@@ -198,13 +216,15 @@ describe('shape → viz routing', () => {
       ],
     })
     expect(insights.length).toBeGreaterThanOrEqual(2)
-    expect(insights.length).toBeLessThanOrEqual(3)
+    expect(insights.length).toBeLessThanOrEqual(4)
+    expect(hasDiverseChartTypes(insights)).toBe(true)
     expect(insights[0]).toEqual(expect.objectContaining({
       id: 'places-eating',
       visual: 'places',
       questionKind: 'noul',
     }))
-    expect(insights.some((item) => item.id === 'places-geo')).toBe(true)
+    expect(insights.some((item) => item.id === 'series-activity')).toBe(true)
+    expect(insights.some((item) => item.visual === 'series')).toBe(true)
     expect(insights.flatMap((item) => item.classes)).not.toEqual(expect.arrayContaining(['Location', 'Activity']))
     expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
     expect(insights.every((item) => !/location vs activity|not class bars/i.test(`${item.title} ${item.reason}`))).toBe(true)
@@ -225,10 +245,48 @@ describe('shape → viz routing', () => {
         { type: 'Activity', name: 'eating' },
       ],
     })
-    expect(insights.length).toBeGreaterThanOrEqual(2)
     expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
+    expect(insights.every((item) => !isJunkDashboardInsight(item))).toBe(true)
     expect(insights.every((item) => item.classes.join(' ').toLowerCase() !== 'location activity')).toBe(true)
-    expect(insights[0]?.classes).not.toEqual(['Location', 'Activity'])
+    expect(insights[0]?.classes ?? []).not.toEqual(['Location', 'Activity'])
+    expect(insights.every((item) => !/^classify by /i.test(item.title))).toBe(true)
+  })
+
+  it('never leads squirrel with AM/PM or raw-column class bars', () => {
+    const dataset = getSquirrelDatasetPreview()
+    const insights = proposeInsights(dataset)
+    expect(insights[0]).toEqual(expect.objectContaining({
+      id: 'places-eating',
+      title: 'Where they eat',
+      visual: 'places',
+    }))
+    expect(insights.some((item) => /classify by shift/i.test(item.title))).toBe(false)
+    expect(isBannedRawColumnClassInsight({
+      title: 'Classify by shift',
+      reason: 'Labels in this table.',
+      visual: 'bars',
+      questionKind: 'choice',
+      classes: ['AM', 'PM'],
+    })).toBe(true)
+    expect(insights.every((item) => !isBannedRawColumnClassInsight(item, inspectDatasetShape(dataset.columns, dataset.previewRows), dataset.previewRows))).toBe(true)
+    expect(hasDiverseChartTypes(insights)).toBe(true)
+  })
+
+  it('fails QA if every dashboard tile is the same viz kind', () => {
+    expect(hasDiverseChartTypes([{ visual: 'series' }, { visual: 'series' }])).toBe(false)
+    expect(hasDiverseChartTypes([{ visual: 'series' }, { visual: 'bars' }])).toBe(true)
+    expect(hasDiverseChartTypes([{ visual: 'places' }, { visual: 'series' }])).toBe(true)
+    expect(isJunkDashboardInsight({
+      title: 'Play success',
+      reason: 'A call for each play.',
+      visual: 'bars',
+      questionKind: 'choice',
+      classes: ['Converted', 'Did not'],
+    })).toBe(true)
+    expect(dashboardVisualQaOk(proposeInsights(getSampleDatasetPreview()))).toBe(true)
+    expect(hasDiverseChartTypes(proposeInsights(getSampleDatasetPreview()))).toBe(false)
+    expect(hasDiverseChartTypes(proposeInsights(getSquirrelDatasetPreview()))).toBe(true)
+    expect(dashboardVisualQaOk(proposeInsights(getSquirrelDatasetPreview()))).toBe(true)
   })
 })
 

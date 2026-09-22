@@ -48,12 +48,11 @@ The product should feel like a clear analysis workbench, not an AI-agent control
 ```text
 landing page (Dynamic insights from your data.)
   → choose 2026 Super Bowl Demo, Squirrel census, or BYOD
-  → quiet schema strip (columns · types · cardinality)
-  → 2–3 proposed insight cards from shape; CTA Run
-  → bounded row-by-row execution when Jev runs
-  → proposed viz as hero (P(win) line, places map/ranked locations, or class bars)
-  → row rail only if the viz is row-streamed
-  → durable replay/share page
+  → /dataset/:id dashboard (2–4 tiles start in parallel; skeletons OK)
+  → quiet schema strip + dataset preview under the tiles
+  → diverse chart types on one page when the cuts are real (map + series); never three identical viz
+  → Seahawks: SEA win probability + SEA play quality side by side
+  → Squirrel lead: Where they eat places map + On the move (never AM/PM class bars)
   → optional Engineer (`?mode=engineer`): Edit Jev JSON / Draft task / Run Jev
 ```
 
@@ -63,7 +62,7 @@ landing page (Dynamic insights from your data.)
 - The fixture contains sequential rows representing game-state checkpoints/events and is shaped exactly like a future user dataset.
 - CSV upload and direct public HTTPS CSV intake remain the next BYOD expansion stage; their full requirements stay in this plan but are not prerequisites for the first working demo.
 - One analysis task per run.
-- User explicitly starts each Jev run; opening or sharing a page never starts a paid run.
+- Enter/Open a dataset starts the dashboard fan-out (one Jev run per tile). Visiting `/` or a share URL never starts a paid run.
 - One Jev classifier decision per accepted row unless the final contract requires a different batching model.
 - Natural-language task drafting through a normal OpenRouter LLM; generated query is reviewable and manually editable before execution.
 - Live progress through Convex realtime updates, with a current-row panel and an incremental chart/table.

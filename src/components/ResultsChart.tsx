@@ -53,6 +53,9 @@ export const ResultsChart = memo(function ResultsChart({
   playbackEnabled = false,
   sourceRows,
   perspectiveLabel,
+  compact = false,
+  heading: headingOverride,
+  headingId = 'distribution-heading',
   onSeek,
   onTogglePlayback,
 }: {
@@ -67,6 +70,9 @@ export const ResultsChart = memo(function ResultsChart({
   playbackEnabled?: boolean
   sourceRows?: readonly AnalysisRowInput[]
   perspectiveLabel?: string
+  compact?: boolean
+  heading?: string
+  headingId?: string
   onSeek: (index: number, phase?: 'scrub' | 'release') => void
   onTogglePlayback?: () => void
 }) {
@@ -88,7 +94,7 @@ export const ResultsChart = memo(function ResultsChart({
   )
   const classified = visual === 'bars' ? values.reduce((sum, item) => sum + item.count, 0) : series.length
   const scale = Math.max(totalRows, classified, 1)
-  const heading = chartHeading(kind, visual, perspectiveLabel)
+  const heading = headingOverride ?? chartHeading(kind, visual, perspectiveLabel)
   const placeRows = useMemo(() => {
     if (visual !== 'places') return []
     if (rows.length > 0) return rows
@@ -114,7 +120,7 @@ export const ResultsChart = memo(function ResultsChart({
   const aria = waiting
     ? 'Waiting for the first row'
     : visual === 'series'
-      ? `${chartHeading(kind, visual, perspectiveLabel)} over play index`
+      ? `${heading} over ${headingOverride && !perspectiveLabel ? 'each row' : 'play index'}`
       : visual === 'places'
         ? (places.hasMap ? 'Places map of eating locations' : 'Ranked places')
         : 'Class distribution visualization'
@@ -161,14 +167,20 @@ export const ResultsChart = memo(function ResultsChart({
   const extent = visual === 'series' ? seriesExtent(series, domainCount) : 1
 
   return (
-    <section className="distribution-card chart-hero" aria-labelledby="distribution-heading">
+    <section
+      className={`distribution-card chart-hero${compact ? ' is-compact' : ''}`}
+      aria-labelledby={compact ? undefined : headingId}
+      aria-label={compact ? aria : undefined}
+    >
+      {compact ? null : (
       <div className="section-heading">
         <div>
           <p className="eyebrow">Live chart</p>
-          <h3 id="distribution-heading">{heading}</h3>
+          <h3 id={headingId}>{heading}</h3>
         </div>
         <span className="table-count">{latestLabel}</span>
       </div>
+      )}
       <div
         className="chart-shell"
         data-motion={motion}
@@ -196,7 +208,7 @@ export const ResultsChart = memo(function ResultsChart({
               <span>0%</span>
             </div>
           ) : null}
-          {waiting ? <p className="chart-empty">Waiting for the first row…</p> : null}
+          {waiting && !compact ? <p className="chart-empty">Waiting for the first row…</p> : null}
           {visual === 'series' && series.length > 0 ? (
             <svg
               className="series-svg"
@@ -253,7 +265,7 @@ export const ResultsChart = memo(function ResultsChart({
             </div>
           ) : null}
         </div>
-        {visual === 'places' ? null : (
+        {visual === 'places' || compact ? null : (
         <div className="chart-transport">
           {playbackEnabled ? (
             <Button
