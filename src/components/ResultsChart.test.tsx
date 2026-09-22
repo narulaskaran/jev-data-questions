@@ -149,14 +149,14 @@ describe('ResultsChart motion', () => {
       />,
     )
     expect(screen.getByRole('heading', { name: 'Places' })).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /map of where they are eating, with counts per place/i })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /map of where they are eating/i })).toBeInTheDocument()
     expect(document.querySelector('[data-chart-kind="places"]')).toBeTruthy()
     expect(document.querySelector('[data-place-points="2"]')).toBeTruthy()
-    expect(document.querySelector('[data-place-label="On the ground"]')).toHaveAttribute('data-eating-count', '1')
-    expect(document.querySelector('[data-place-label="In the trees"]')).toHaveAttribute('data-eating-count', '0')
-    expect(screen.getByText('On the ground · 1 eating')).toBeInTheDocument()
-    expect(screen.getByText('In the trees · 0 eating')).toBeInTheDocument()
-    expect(document.querySelector('[data-visible-labels="2"]')).toBeTruthy()
+    expect(document.querySelector('[data-place-labels="0"]')).toBeTruthy()
+    expect(document.querySelectorAll('.place-pin')).toHaveLength(0)
+    expect(document.querySelectorAll('[data-place-label]')).toHaveLength(0)
+    expect(screen.queryByText('On the ground · 1 eating')).not.toBeInTheDocument()
+    expect(screen.queryByText('In the trees · 0 eating')).not.toBeInTheDocument()
     expect(screen.getByText('Each dot is a sighting')).toBeInTheDocument()
     expect(screen.getByRole('list', { name: /eating map legend/i })).toBeInTheDocument()
     expect(screen.getByText('Eating · 1')).toBeInTheDocument()
@@ -227,7 +227,7 @@ describe('ResultsChart motion', () => {
     }
   })
 
-  it('keeps squirrel map labels from stacking on top of each other', () => {
+  it('renders zero pin labels on the eating map', () => {
     const rows = getSquirrelModelInput().map((input, rowIndex) => ({
       rowIndex,
       input,
@@ -235,7 +235,6 @@ describe('ResultsChart motion', () => {
       questionKind: 'noul' as const,
       value: input.eating ? 0.9 : 0.1,
     }))
-    const placeCount = projectPlaces(rows).ranks.length
     render(
       <ResultsChart
         rows={rows}
@@ -246,11 +245,13 @@ describe('ResultsChart motion', () => {
         onSeek={vi.fn()}
       />,
     )
-    const pins = [...document.querySelectorAll('.place-pin')] as HTMLElement[]
-    expect(pins.length).toBeGreaterThanOrEqual(1)
-    expect(pins.length).toBeLessThanOrEqual(Math.min(6, placeCount))
-    const keys = new Set(pins.map((pin) => `${pin.getAttribute('data-label-px')}:${pin.getAttribute('data-label-py')}`))
-    expect(keys.size).toBe(pins.length)
+    expect(document.querySelector('[data-place-points]')).toBeTruthy()
+    expect(document.querySelectorAll('.place-dot').length).toBe(rows.length)
+    expect(document.querySelector('[data-place-labels="0"]')).toBeTruthy()
+    expect(document.querySelectorAll('.place-pin')).toHaveLength(0)
+    expect(document.querySelectorAll('[data-place-label]')).toHaveLength(0)
+    expect(document.querySelector('.place-labels')).toBeNull()
+    expect(screen.getByRole('list', { name: /eating map legend/i })).toBeInTheDocument()
   })
 
   it('does not plot CSV wpa as if Jev produced the series', () => {
