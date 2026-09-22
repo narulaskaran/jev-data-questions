@@ -27,11 +27,13 @@ export const DatasetDashboard = ({
   }, [live])
 
   if (tiles.length === 0) return null
+  const visualKindCount = new Set(tiles.map((tile) => tile.insight.visual)).size
   return (
     <section
       className="dashboard-grid"
       aria-label="Dataset dashboard"
       data-insight-count={tiles.length}
+      data-visual-kind-count={visualKindCount}
     >
       {tiles.map((tile, index) => (
         <DashboardTile

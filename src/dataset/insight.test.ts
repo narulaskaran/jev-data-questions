@@ -12,6 +12,7 @@ import {
   perspectiveLabelFor,
   proposeInsights,
   resolveChartVisual,
+  hasDiverseChartTypes,
 } from './insight'
 import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_PLAY_QUALITY_TASK, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_ACTIVITY_QUERY, SQUIRREL_ACTIVITY_TASK } from '../shared/questionKind'
 
@@ -70,6 +71,7 @@ describe('shape → viz routing', () => {
     }))
     expect(insights.length).toBeGreaterThanOrEqual(2)
     expect(insights.length).toBeLessThanOrEqual(4)
+    expect(hasDiverseChartTypes(insights)).toBe(true)
     expect(insights[0]?.reason).not.toMatch(/not class bars|location vs activity/i)
     expect(insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'series-activity']))
     expect(insights.find((item) => item.id === 'series-activity')).toEqual(expect.objectContaining({
@@ -121,9 +123,22 @@ describe('shape → viz routing', () => {
     })).toBe('series')
     expect(chartIsRowStreamed('series')).toBe(true)
     const insights = proposeInsights(dataset)
-    expect(insights.length).toBe(2)
-    expect(insights.map((item) => item.id)).toEqual(['series-win', 'series-play-quality'])
+    expect(insights.length).toBeGreaterThanOrEqual(3)
+    expect(insights.length).toBeLessThanOrEqual(4)
+    expect(insights.map((item) => item.id)).toEqual(expect.arrayContaining(['series-win', 'series-play-quality', 'bars-success']))
+    expect(insights.find((item) => item.id === 'series-win')).toBe(insights[0])
+    expect(insights.find((item) => item.id === 'series-play-quality')).toBe(insights[1])
+    expect(hasDiverseChartTypes(insights)).toBe(true)
+    expect(insights.some((item) => item.visual === 'series')).toBe(true)
+    expect(insights.some((item) => item.visual === 'bars')).toBe(true)
     expect(insights.some((item) => item.visual === 'places')).toBe(false)
+    expect(insights.find((item) => item.id === 'bars-success')).toEqual(expect.objectContaining({
+      title: 'Play success',
+      visual: 'bars',
+      questionKind: 'choice',
+      classes: ['Converted', 'Did not'],
+    }))
+    expect(insights.find((item) => item.id === 'bars-success')?.classes).not.toEqual(expect.arrayContaining(['Good Play', 'Bad Play']))
     expect(insights.some((item) => /classify sea/i.test(item.title))).toBe(false)
     expect(insights.find((item) => item.id === 'series-play-quality')).toEqual(expect.objectContaining({
       title: 'SEA play quality',
@@ -163,6 +178,7 @@ describe('shape → viz routing', () => {
     })
     expect(insights.length).toBeGreaterThanOrEqual(2)
     expect(insights.length).toBeLessThanOrEqual(4)
+    expect(hasDiverseChartTypes(insights)).toBe(true)
     expect(insights.every((item) => item.classes.join(' ').toLowerCase() !== 'fruit vehicle')).toBe(true)
     expect(insights.every((item) => !/^classify by /i.test(item.title))).toBe(true)
     expect(insights.every((item) => !/labels in this table/i.test(item.reason))).toBe(true)
@@ -183,6 +199,7 @@ describe('shape → viz routing', () => {
     })
     expect(insights.length).toBeGreaterThanOrEqual(2)
     expect(insights.length).toBeLessThanOrEqual(4)
+    expect(hasDiverseChartTypes(insights)).toBe(true)
     expect(insights.every((item) => typeof item.title === 'string' && item.title.length > 0)).toBe(true)
     expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
     expect(insights.every((item) => !/hello|world/i.test(item.title))).toBe(true)
@@ -210,6 +227,7 @@ describe('shape → viz routing', () => {
     })
     expect(insights.length).toBeGreaterThanOrEqual(2)
     expect(insights.length).toBeLessThanOrEqual(4)
+    expect(hasDiverseChartTypes(insights)).toBe(true)
     expect(insights[0]).toEqual(expect.objectContaining({
       id: 'places-eating',
       visual: 'places',
@@ -239,6 +257,7 @@ describe('shape → viz routing', () => {
     })
     expect(insights.length).toBeGreaterThanOrEqual(2)
     expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
+    expect(hasDiverseChartTypes(insights)).toBe(true)
     expect(insights.every((item) => item.classes.join(' ').toLowerCase() !== 'location activity')).toBe(true)
     expect(insights[0]?.classes).not.toEqual(['Location', 'Activity'])
     expect(insights.every((item) => !/^classify by /i.test(item.title))).toBe(true)
@@ -261,6 +280,15 @@ describe('shape → viz routing', () => {
       classes: ['AM', 'PM'],
     })).toBe(true)
     expect(insights.every((item) => !isBannedRawColumnClassInsight(item, inspectDatasetShape(dataset.columns, dataset.previewRows), dataset.previewRows))).toBe(true)
+    expect(hasDiverseChartTypes(insights)).toBe(true)
+  })
+
+  it('fails QA if every dashboard tile is the same viz kind', () => {
+    expect(hasDiverseChartTypes([{ visual: 'series' }, { visual: 'series' }])).toBe(false)
+    expect(hasDiverseChartTypes([{ visual: 'series' }, { visual: 'bars' }])).toBe(true)
+    expect(hasDiverseChartTypes([{ visual: 'places' }, { visual: 'series' }])).toBe(true)
+    expect(hasDiverseChartTypes(proposeInsights(getSampleDatasetPreview()))).toBe(true)
+    expect(hasDiverseChartTypes(proposeInsights(getSquirrelDatasetPreview()))).toBe(true)
   })
 })
 

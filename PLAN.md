@@ -50,7 +50,8 @@ landing page (Dynamic insights from your data.)
   → choose 2026 Super Bowl Demo, Squirrel census, or BYOD
   → /dataset/:id dashboard (2–4 tiles start in parallel; skeletons OK)
   → quiet schema strip + dataset preview under the tiles
-  → Seahawks: SEA win probability + SEA play quality on one page
+  → diverse chart types on one page (fail if every tile is the same viz)
+  → Seahawks: SEA win probability + SEA play quality on one page (plus a non-series tile)
   → Squirrel lead: Where they eat places map (never AM/PM class bars)
   → optional Engineer (`?mode=engineer`): Edit Jev JSON / Draft task / Run Jev
 ```
