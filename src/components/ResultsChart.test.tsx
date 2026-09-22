@@ -4,6 +4,8 @@ import { ResultsChart } from './ResultsChart'
 import { AnalysisRunView } from './AnalysisRunView'
 import { PLAYBACK_INTERVAL_MS, useRunPlayhead } from '../runView/playhead'
 import type { AnalysisResultRow, AnalysisSnapshot } from '../shared/analysis'
+import { getSquirrelModelInput } from '../fixtures/squirrelCensus'
+import { placeCountLabel, projectPlaces } from '../runView/places'
 
 const row = (rowIndex: number, selectedClass: string): AnalysisResultRow => ({
   rowIndex,
@@ -153,6 +155,8 @@ describe('ResultsChart motion', () => {
     expect(document.querySelector('[data-place-label="On the ground"]')).toHaveAttribute('data-eating-count', '1')
     expect(document.querySelector('[data-place-label="In the trees"]')).toHaveAttribute('data-eating-count', '0')
     expect(screen.getByText('On the ground · 1 eating')).toBeInTheDocument()
+    expect(screen.getByText('In the trees · 0 eating')).toBeInTheDocument()
+    expect(document.querySelector('[data-visible-labels="2"]')).toBeTruthy()
     expect(screen.getByText('Each dot is a sighting')).toBeInTheDocument()
     expect(screen.getByRole('list', { name: /eating map legend/i })).toBeInTheDocument()
     expect(screen.getByText('Eating · 1')).toBeInTheDocument()
@@ -185,8 +189,68 @@ describe('ResultsChart motion', () => {
     expect(document.querySelector('[data-rank-kind="eating"]')).toBeTruthy()
     expect(document.querySelector('[data-class="On the ground"]')).toHaveAttribute('data-count', '2')
     expect(document.querySelector('[data-class="In the trees"]')).toHaveAttribute('data-count', '0')
+    expect(document.querySelector('[data-rank-end-label="On the ground · 2"]')).toBeTruthy()
+    expect(document.querySelector('[data-rank-end-label="In the trees · 0"]')).toBeTruthy()
+    expect(screen.getByText('On the ground · 2')).toBeInTheDocument()
+    expect(screen.getByText('In the trees · 0')).toBeInTheDocument()
     expect(document.querySelector('[data-class="Location"]')).toBeNull()
     expect(screen.queryByRole('slider', { name: /chart playhead/i })).not.toBeInTheDocument()
+  })
+
+  it('shows every ranked eating end label, including the last place · count', () => {
+    const rows = getSquirrelModelInput().map((input, rowIndex) => ({
+      rowIndex,
+      input,
+      model: 'jev',
+      questionKind: 'noul' as const,
+      value: input.eating ? 0.9 : 0.1,
+    }))
+    const ranks = projectPlaces(rows).ranks
+    expect(ranks.length).toBeGreaterThan(2)
+    render(
+      <ResultsChart
+        rows={rows}
+        playheadIndex={rows.length - 1}
+        totalRows={rows.length}
+        questionKind="noul"
+        chartKind="bars"
+        rankPlaces
+        heading="Which places have the most eating?"
+        onSeek={vi.fn()}
+      />,
+    )
+    const last = ranks[ranks.length - 1]!
+    expect(screen.getByText(placeCountLabel(last.name, last.eating))).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-rank-end-label]')).toHaveLength(ranks.length)
+    for (const rank of ranks) {
+      expect(document.querySelector(`[data-rank-end-label="${placeCountLabel(rank.name, rank.eating)}"]`)).toBeTruthy()
+    }
+  })
+
+  it('keeps squirrel map labels from stacking on top of each other', () => {
+    const rows = getSquirrelModelInput().map((input, rowIndex) => ({
+      rowIndex,
+      input,
+      model: 'jev',
+      questionKind: 'noul' as const,
+      value: input.eating ? 0.9 : 0.1,
+    }))
+    const placeCount = projectPlaces(rows).ranks.length
+    render(
+      <ResultsChart
+        rows={rows}
+        playheadIndex={rows.length - 1}
+        totalRows={rows.length}
+        questionKind="noul"
+        chartKind="places"
+        onSeek={vi.fn()}
+      />,
+    )
+    const pins = [...document.querySelectorAll('.place-pin')] as HTMLElement[]
+    expect(pins.length).toBeGreaterThanOrEqual(1)
+    expect(pins.length).toBeLessThanOrEqual(Math.min(6, placeCount))
+    const keys = new Set(pins.map((pin) => `${pin.getAttribute('data-label-px')}:${pin.getAttribute('data-label-py')}`))
+    expect(keys.size).toBe(pins.length)
   })
 
   it('does not plot CSV wpa as if Jev produced the series', () => {

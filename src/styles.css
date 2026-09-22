@@ -686,6 +686,14 @@ h3 {
   min-height: 240px;
 }
 
+.dashboard-tile .chart-shell[data-rank-places='true'] .chart-plot,
+.chart-shell[data-rank-places='true'] .chart-plot {
+  height: max(240px, calc(var(--rank-rows, 4) * 22px + 48px));
+  min-height: 240px;
+  contain: none;
+  overflow: visible;
+}
+
 .chart-skeleton {
   display: grid;
   gap: 10px;
@@ -757,6 +765,10 @@ h3 {
   }
   .dashboard-grid[data-insight-count="2"] .dashboard-tile .chart-plot {
     height: 240px;
+    min-height: 240px;
+  }
+  .dashboard-grid[data-insight-count="2"] .dashboard-tile .chart-shell[data-rank-places='true'] .chart-plot {
+    height: max(240px, calc(var(--rank-rows, 4) * 22px + 48px));
     min-height: 240px;
   }
   .dashboard-grid:not([data-insight-count="2"]) .dashboard-tile.is-lead[data-visual="places"] {
@@ -845,10 +857,9 @@ h3 {
 
 .place-pin {
   position: absolute;
-  transform: translate(-50%, -120%);
-  max-width: 70%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  transform: translate(-50%, -50%);
+  max-width: none;
+  overflow: visible;
   white-space: nowrap;
   padding: 1px 6px;
   border-radius: 6px;
@@ -918,8 +929,55 @@ h3 {
 }
 
 .chart-hero .distribution-chart[data-rank-kind='eating'] {
-  padding-top: 16px;
+  align-content: start;
+  gap: 6px;
+  padding: 28px 10px 10px 12px;
+  overflow: visible;
 }
+
+.rank-row {
+  display: grid;
+  grid-template-columns: minmax(40px, 1fr) max-content;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.rank-track {
+  height: 10px;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--muted);
+}
+
+.rank-track span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  width: var(--bar-width, 0%);
+  border-radius: inherit;
+  background: var(--bar-color, var(--run));
+}
+
+.rank-end-label {
+  justify-self: start;
+  min-width: max-content;
+  max-width: none;
+  overflow: visible;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.chart-shell[data-motion='tick'] .rank-track span {
+  transition: width 200ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+.chart-shell[data-motion='seek'] .rank-track span { transition: none; }
 
 
 .intake-card.is-disabled { opacity: 0.62; }
@@ -997,6 +1055,15 @@ h3 {
 .chart-shell[data-chart-kind='places'] .chart-plot,
 .chart-shell[data-rank-places='true'] .chart-plot {
   cursor: default;
+}
+
+.chart-shell[data-chart-kind='places'] .chart-plot {
+  overflow: hidden;
+}
+
+.chart-shell[data-rank-places='true'] .chart-plot {
+  contain: none;
+  overflow: visible;
 }
 
 .chart-axes {
@@ -1336,6 +1403,14 @@ h3 {
   .run-view, .run-view-main, .run-rail, .chart-hero, .chart-shell, .chart-plot, .series-svg, .places-svg, .chart-transport, .table-scroll:not(.preview-table), .query-card, .query-json, .task-card, .stage-fold, .workspace, .schema-strip, .dashboard-grid, .dashboard-tile, .dashboard-empty, .advanced-json {
     overflow-x: hidden;
   }
+  .chart-shell[data-rank-places='true'] .chart-plot,
+  .chart-hero .distribution-chart[data-rank-kind='eating'],
+  .rank-end-label {
+    overflow-x: visible;
+  }
+  .rank-end-label {
+    white-space: nowrap;
+  }
   .results-card table {
     min-width: 0;
     width: 100%;
@@ -1355,6 +1430,7 @@ h3 {
   .progress-fill.is-indeterminate,
   .progress-track span,
   .chart-shell .distribution-track span,
+  .chart-shell .rank-track span,
   .series-fill,
   .series-line,
   .series-svg,

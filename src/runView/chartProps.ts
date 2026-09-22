@@ -23,6 +23,7 @@ type ChartVisual = {
   playbackEnabled?: boolean
   perspectiveLabel?: string
   compact?: boolean
+  rankPlaces?: boolean
   heading?: string
   headingId?: string
   sourceRows?: readonly unknown[]
@@ -39,6 +40,7 @@ export const areChartPropsEqual = (prev: ChartVisual, next: ChartVisual): boolea
   && prev.chartKind === next.chartKind
   && prev.perspectiveLabel === next.perspectiveLabel
   && prev.compact === next.compact
+  && prev.rankPlaces === next.rankPlaces
   && prev.heading === next.heading
   && prev.headingId === next.headingId
   && (prev.sourceRows?.length ?? 0) === (next.sourceRows?.length ?? 0)
