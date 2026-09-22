@@ -194,25 +194,41 @@ export const inspectDatasetShape = (
   }
 }
 
+export const HUMAN_TYPE_LABELS = {
+  geo: 'Places',
+  place: 'Places',
+  number: 'Numbers',
+  numeric: 'Numbers',
+  string: 'Text',
+  boolean: 'Yes/no',
+  empty: 'Empty',
+  time: 'Time',
+} as const
+
 export const schemaStripParts = (shape: DatasetShape): string[] => {
   const parts = [`${shape.rowCount} × ${shape.columnCount}`]
-  if (shape.geo) parts.push('geo')
+  if (shape.geo || shape.placeColumns.length > 0) parts.push(HUMAN_TYPE_LABELS.geo)
   const typeCounts = new Map<string, number>()
   for (const column of shape.columns) {
-    const key = column.role === 'geo' ? 'geo' : column.inferredType
+    if (column.role === 'geo' || column.role === 'place') continue
+    const key = column.inferredType
     typeCounts.set(key, (typeCounts.get(key) ?? 0) + 1)
   }
   for (const key of ['number', 'string', 'boolean', 'empty'] as const) {
     const count = typeCounts.get(key)
-    if (count) parts.push(`${key} ${count}`)
+    if (!count) continue
+    parts.push(count === 1 ? HUMAN_TYPE_LABELS[key] : `${HUMAN_TYPE_LABELS[key]} ${count}`)
   }
   return parts
 }
 
 export const schemaColumnLabel = (column: ColumnShape): string => {
-  if (column.role === 'geo') return `${column.name} geo`
-  if (column.role === 'boolean') return `${column.name} bool`
-  if (column.role === 'place' || column.role === 'categorical') return `${column.name} ${column.cardinality}`
-  if (column.role === 'time') return `${column.name} time`
-  return `${column.name} ${column.inferredType}`
+  if (column.role === 'geo' || column.role === 'place') return `${column.name} ${HUMAN_TYPE_LABELS.geo}`
+  if (column.role === 'boolean') return `${column.name} ${HUMAN_TYPE_LABELS.boolean}`
+  if (column.role === 'categorical') return `${column.name} ${column.cardinality}`
+  if (column.role === 'time') return `${column.name} ${HUMAN_TYPE_LABELS.time}`
+  if (column.inferredType === 'number') return `${column.name} ${HUMAN_TYPE_LABELS.number}`
+  if (column.inferredType === 'string') return `${column.name} ${HUMAN_TYPE_LABELS.string}`
+  if (column.inferredType === 'boolean') return `${column.name} ${HUMAN_TYPE_LABELS.boolean}`
+  return `${column.name} ${HUMAN_TYPE_LABELS.empty}`
 }

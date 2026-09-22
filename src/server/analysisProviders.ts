@@ -97,6 +97,22 @@ const contentDraft = (content: unknown): { query: string; classes?: string[]; qu
   }
 }
 
+const contentInsights = (content: unknown): unknown => {
+  const parse = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value
+    if (isRecord(value) && Array.isArray(value.insights)) return value.insights
+    return undefined
+  }
+  if (Array.isArray(content) || isRecord(content)) return parse(content)
+  if (typeof content !== 'string') return undefined
+  const stripped = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  try {
+    return parse(JSON.parse(stripped))
+  } catch {
+    return undefined
+  }
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
 export interface OpenRouterDraftProviderOptions {
@@ -123,16 +139,7 @@ export class OpenRouterDraftProvider implements AnalysisDraftProvider {
     this.fetcher = options.fetch ?? globalThis.fetch
   }
 
-  async draft(input: {
-    fixtureId: string
-    datasetId: string
-    task: string
-    classes?: readonly string[]
-    columns?: readonly string[]
-    sampleRows?: Array<Record<string, unknown>>
-    sourceType?: string
-    questionKindHint?: JevQuestionKind
-  }): Promise<{ query: string; model: string; classes?: string[]; questionKind?: JevQuestionKind }> {
+  private async complete(system: string, user: unknown): Promise<{ content: unknown; model: string }> {
     if (!this.apiKey) throw new OpenRouterConfigurationError()
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
@@ -144,27 +151,8 @@ export class OpenRouterDraftProvider implements AnalysisDraftProvider {
           model: this.model,
           temperature: 0,
           messages: [
-            { role: 'system', content: 'Return JSON only: a Jev query object {"type":"noul"|"score"|"choice","instructions":"...","criteria":...}. Honor the user task; do not ignore it. Noul is {"type":"noul","instructions":"..."} (yes/no probability 0-1). Use "Will SEA win given this play state?" only when the user asked for per-play win likelihood. For play quality / grading / good-vs-bad play asks on sequential football rows, prefer Score {"type":"score","instructions":"Rate the quality of this play given this play state?","criteria":["Low","Medium","High"]} (a rate over play index), never Choice classes named Good Play vs Bad Play, and never the leftover H1 player-yards classifier. For "where they eat" / location-of-an-activity questions, prefer Noul ("is this row that activity?") so the UI can map or rank places; Choice classes must be actual location values from the columns (Ground Plane, Above Ground), never meta-labels named Location vs Activity. Score is {"type":"score","instructions":"...","criteria":["Low","Medium","High"]}. Choice is {"type":"choice","instructions":"...","criteria":{"Label":"what this class means"}} with at least two criteria keys taken from the user task (for example fruit and vehicle). Never return empty or single-class criteria. Do not return a natural-language paraphrase of the task as the query. Do not substitute a leftover demo player-yards classifier (K.Walker, C.Kupp, J.Smith-Njigba, Other). Do not treat CSV columns such as wpa or epa as the model output. Do not include credentials or executable code.' },
-            { role: 'user', content: JSON.stringify({
-              fixtureId: input.fixtureId,
-              datasetId: input.datasetId,
-              task: input.task,
-              ...(input.classes && input.classes.length >= 2 ? { classes: input.classes } : {}),
-              columns: input.columns,
-              sampleRows: input.sampleRows,
-              sourceType: input.sourceType,
-              questionKindHint: input.questionKindHint,
-            }) },
-            { role: 'user', content: JSON.stringify({
-              fixtureId: input.fixtureId,
-              datasetId: input.datasetId,
-              task: input.task,
-              ...(input.classes && input.classes.length >= 2 ? { classes: input.classes } : {}),
-              columns: input.columns,
-              sampleRows: input.sampleRows,
-              sourceType: input.sourceType,
-              questionKindHint: input.questionKindHint,
-            }) },
+            { role: 'system', content: system },
+            { role: 'user', content: JSON.stringify(user) },
           ],
         }),
         signal: controller.signal,
@@ -177,11 +165,9 @@ export class OpenRouterDraftProvider implements AnalysisDraftProvider {
       try { body = await response.json() } catch { throw new OpenRouterProviderError('OPENROUTER_MALFORMED', 502, false) }
       const choices = isRecord(body) && Array.isArray(body.choices) ? body.choices : []
       const first = choices[0]
-      const message = isRecord(first) && isRecord(first.message) ? first.message.content : undefined
-      const draft = contentDraft(message)
-      if (!draft?.query) throw new OpenRouterProviderError('OPENROUTER_MALFORMED', 502, false)
+      const content = isRecord(first) && isRecord(first.message) ? first.message.content : undefined
       const model = isRecord(body) && typeof body.model === 'string' && body.model.trim() ? body.model.trim() : this.model
-      return { query: draft.query, model, ...(draft.classes ? { classes: draft.classes } : {}), ...(draft.questionKind ? { questionKind: draft.questionKind } : {}) }
+      return { content, model }
     } catch (error) {
       if (error instanceof AnalysisError) throw error
       if (isAbortError(error)) throw new OpenRouterProviderError('OPENROUTER_TIMEOUT', 504, true)
@@ -189,6 +175,64 @@ export class OpenRouterDraftProvider implements AnalysisDraftProvider {
     } finally {
       clearTimeout(timer)
     }
+  }
+
+  async draft(input: {
+    fixtureId: string
+    datasetId: string
+    task: string
+    classes?: readonly string[]
+    columns?: readonly string[]
+    sampleRows?: Array<Record<string, unknown>>
+    sourceType?: string
+    questionKindHint?: JevQuestionKind
+  }): Promise<{ query: string; model: string; classes?: string[]; questionKind?: JevQuestionKind }> {
+    const { content, model } = await this.complete(
+      'Return JSON only: a Jev query object {"type":"noul"|"score"|"choice","instructions":"...","criteria":...}. Honor the user task; do not ignore it. Noul is {"type":"noul","instructions":"..."} (yes/no probability 0-1). Use "Will SEA win given this play state?" only when the user asked for per-play win likelihood. For play quality / grading / good-vs-bad play asks on sequential football rows, prefer Score {"type":"score","instructions":"Rate the quality of this play given this play state?","criteria":["Low","Medium","High"]} (a rate over play index), never Choice classes named Good Play vs Bad Play, and never the leftover H1 player-yards classifier. For "where they eat" / location-of-an-activity questions, prefer Noul ("is this row that activity?") so the UI can map or rank places; Choice classes must be actual location values from the columns (Ground Plane, Above Ground), never meta-labels named Location vs Activity. Score is {"type":"score","instructions":"...","criteria":["Low","Medium","High"]}. Choice is {"type":"choice","instructions":"...","criteria":{"Label":"what this class means"}} with at least two criteria keys taken from the user task (for example fruit and vehicle). Never return empty or single-class criteria. Do not return a natural-language paraphrase of the task as the query. Do not substitute a leftover demo player-yards classifier (K.Walker, C.Kupp, J.Smith-Njigba, Other). Do not treat CSV columns such as wpa or epa as the model output. Do not include credentials or executable code.',
+      {
+        fixtureId: input.fixtureId,
+        datasetId: input.datasetId,
+        task: input.task,
+        ...(input.classes && input.classes.length >= 2 ? { classes: input.classes } : {}),
+        columns: input.columns,
+        sampleRows: input.sampleRows,
+        sourceType: input.sourceType,
+        questionKindHint: input.questionKindHint,
+      },
+    )
+    const draft = contentDraft(content)
+    if (!draft?.query) throw new OpenRouterProviderError('OPENROUTER_MALFORMED', 502, false)
+    return { query: draft.query, model, ...(draft.classes ? { classes: draft.classes } : {}), ...(draft.questionKind ? { questionKind: draft.questionKind } : {}) }
+  }
+
+  async propose(input: {
+    fixtureId: string
+    datasetId: string
+    columns?: readonly string[]
+    sampleRows?: Array<Record<string, unknown>>
+    sourceType?: string
+    shape?: {
+      geo?: boolean
+      placeColumns?: readonly string[]
+      sequential?: boolean
+      hasEating?: boolean
+      hasPlayState?: boolean
+    }
+  }): Promise<{ insights: unknown; model: string }> {
+    const { content, model } = await this.complete(
+      'Return JSON only: {"insights":[{"title":"...","question":"...","visual":"series"|"bars"|"places","perspective":"...","preparation":"...","reason":"...","questionKind":"noul"|"score"|"choice","classes":["..."]}]}. Propose 2-4 real per-row insights for this table. title is a short named cut. question is the Jev ask for one row. visual is a hint; the product will pick the chart. Never classify by a raw column (shift, AM/PM, labels already in the table). Never Location vs Activity, never "Labels in this table", never "Classify by …". Skip junk fillers (Notable rows, Rate each row, Yes or no, Play success). Prefer named questions the data can actually support. Do not invent maps without coordinates. Do not include credentials or executable code.',
+      {
+        fixtureId: input.fixtureId,
+        datasetId: input.datasetId,
+        columns: input.columns,
+        sampleRows: input.sampleRows,
+        sourceType: input.sourceType,
+        shape: input.shape,
+      },
+    )
+    const insights = contentInsights(content)
+    if (insights === undefined) throw new OpenRouterProviderError('OPENROUTER_MALFORMED', 502, false)
+    return { insights, model }
   }
 }
 

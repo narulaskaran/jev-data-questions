@@ -1,6 +1,6 @@
 # Jev Data Analysis API contract
 
-The playground accepts three dataset sources: a checked-in sample fixture (via `/dataset/:id` or server `fixtureId`), a CSV file upload, and a public HTTPS CSV URL. Landing is BYOD only — there are no sample demo buttons. QA CSVs for a from-scratch upload/URL pass are `public/samples/seahawks-super-bowl-2026.csv` and `public/samples/nyc-squirrel-census.csv` (served as `/samples/…`). All three sources use the same draft → edit Jev query JSON → run worker. Chart type follows the drafted query: Noul/Score render a live series; Choice renders class-distribution bars. The sample default task is win likelihood per play (Jev Noul). The browser never calls Jev, OpenRouter, UploadThing, or privileged Convex writes.
+The playground accepts three dataset sources: a checked-in sample fixture (via `/dataset/:id` or server `fixtureId`), a CSV file upload, and a public HTTPS CSV URL. Landing is BYOD only — there are no sample demo buttons. QA CSVs for a from-scratch upload/URL pass are `public/samples/seahawks-super-bowl-2026.csv` and `public/samples/nyc-squirrel-census.csv` (served as `/samples/…`). BYOD dashboard tiles come from `POST /api/analysis/propose` (LLM, sanitized) or named heuristics for fixture-shaped tables, then draft → run. Chart type follows the viz pack. The sample default task is win likelihood per play (Jev Noul). The browser never calls Jev, OpenRouter, UploadThing, or privileged Convex writes.
 
 The checked-in football fixture is `seahawks-super-bowl-2026-jev-v1` (71 Seattle run/pass/sack plays, ordered by `play_id`). The sample win-likelihood / Noul path and play-quality / Score path send the full game, including in-progress `posteam_score`, `defteam_score`, `score_differential`, and clock/situation. H1→H2 yards evaluation still uses 39 first-half rows without absolute scores, and only when the ask is an explicit player/yards classifier (K.Walker / C.Kupp / etc.); identity, final scores, and postgame fields never enter either path. Super Bowl copy is illustrative sample data only.
 
@@ -33,6 +33,41 @@ BYOD upload uses the v7 server-side ingest path (`UTApi.uploadFiles`): the adapt
 Public URLs must be HTTPS, have no credentials, return CSV directly, and must not target localhost/private/metadata addresses. Caps: 5 MB, 5,000 rows, 100 columns. Stable error codes include `CSV_TOO_LARGE`, `NOT_CSV`, `CSV_PARSE_FAILED`, `URL_NOT_PUBLIC`, `URL_NOT_HTTPS`, `URL_TIMEOUT`, `URL_NOT_FOUND`, `URL_FETCH_FAILED`, and `URL_UNSAFE`. After validation the server stores the original blob in UploadThing and dataset metadata plus immutable row refs in Convex.
 
 `GET /api/datasets/<datasetId>` returns the sanitized table (all accepted rows and columns) for the playground preview. Durable Convex metadata still stores a short `previewRows` cap; row bodies live in `datasetRows`. The playground preview virtualizes large tables in the browser so every accepted row stays reachable without locking the main thread. `GET /api/browse` lists public dataset metadata only.
+
+## Propose dashboard insights
+
+`POST /api/analysis/propose`
+
+Request JSON:
+
+```json
+{"datasetId":"dataset-upload-1"}
+```
+
+`fixtureId` remains accepted. The route inspects schema/shape first. Named fixture-shaped cuts (Seahawks SEA win probability + play quality; squirrel where-they-eat map + on-the-move) return those heuristics without calling OpenRouter — including when those CSVs were uploaded via BYOD. Other BYOD tables call the server-only OpenRouter adapter for **2–4** structured insights:
+
+```json
+{
+  "datasetId":"dataset-upload-1",
+  "source":"llm",
+  "insights":[
+    {
+      "id":"series-urgent-tickets",
+      "title":"Urgent tickets",
+      "question":"Is this ticket urgent given the message and tier?",
+      "visual":"series",
+      "perspective":"",
+      "preparation":"Read message and tier.",
+      "reason":"Support load.",
+      "task":"Is this ticket urgent given the message and tier?",
+      "questionKind":"noul",
+      "classes":[]
+    }
+  ]
+}
+```
+
+The server validates and sanitizes every proposal. Raw-column junk (`Classify by shift`, AM/PM, “Labels in this table”, Location vs Activity) is dropped. The viz pack assigns `visual` from data shape + question kind; the model’s `visual` field is only a hint. If the provider fails or every proposal is junk, the response is HTTP 200 with `"source":"empty"` and `"insights":[]` — the playground shows an honest empty dashboard and does not mint filler tiles. Visiting this route never starts Jev.
 
 ## Draft a classifier query
 

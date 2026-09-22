@@ -48,6 +48,10 @@ describe('DatasetPreviewCard', () => {
     expect(screen.getByText(/^7 columns$/)).toBeInTheDocument()
     expect(screen.queryByText(/showing first/i)).not.toBeInTheDocument()
     expect(document.querySelector('.preview-table')).toBeTruthy()
+    expect(document.querySelector('.preview-fold')).toBeTruthy()
+    expect((document.querySelector('.preview-fold') as HTMLDetailsElement).open).toBe(true)
+    expect(screen.getByText(/preview table/i)).toBeInTheDocument()
+    expect(document.querySelector('.dataset-preview.is-secondary')).toBeTruthy()
     expect(table.querySelectorAll('th.is-sticky, td.is-sticky').length).toBe(1 + dataset.acceptedRowCount)
   })
 

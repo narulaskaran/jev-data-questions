@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { FOOTBALL_FIXTURE_ID } from '../fixtures/footballTimeline'
 import { SAMPLE_WIN_NOUL_QUERY } from '../shared/questionKind'
 import { AnalysisService, InMemoryAnalysisStore, InMemoryDatasetSource, type AnalysisClassifier, type AnalysisDraftProvider } from './analysis'
-import { createAnalysisDraftHandler, createAnalysisReadHandler, createAnalysisRunHandler } from './analysisApi'
+import { createAnalysisDraftHandler, createAnalysisProposeHandler, createAnalysisReadHandler, createAnalysisRunHandler } from './analysisApi'
 
 type ResponseState = { code?: number; body?: unknown; headers: Record<string, string> }
 const response = (state: ResponseState) => ({
@@ -284,5 +284,122 @@ describe('analysis API contract', () => {
     expect(second.code).toBe(200)
     expect(second.body).toEqual(expect.objectContaining({ analysisId, status: 'complete' }))
     expect(calls).toHaveLength(3)
+  })
+
+  it('proposes named fixture insights without calling the LLM', async () => {
+    const draftCalls: unknown[] = []
+    const proposeCalls: unknown[] = []
+    const instance = new AnalysisService({
+      store: new InMemoryAnalysisStore(),
+      draftProvider: {
+        async draft(input) { draftCalls.push(input); return { query, model: 'openrouter/test' } },
+        async propose(input) { proposeCalls.push(input); return { insights: [], model: 'openrouter/test' } },
+      } satisfies AnalysisDraftProvider,
+      classifier: { async classify() { return { model: 'jev-latest', selectedClass: 'K.Walker', probabilities: { 'K.Walker': 0.7, 'C.Kupp': 0.1, 'J.Smith-Njigba': 0.1, 'Other/Tie': 0.1 }, confidence: 0.7 } } } satisfies AnalysisClassifier,
+      idFactory: () => 'propose-api-1',
+      now: () => 1_800_000_000_000,
+    })
+    const state: ResponseState = { headers: {} }
+    await createAnalysisProposeHandler(instance)({ method: 'POST', headers: {}, body: { fixtureId: FOOTBALL_FIXTURE_ID } }, response(state))
+    expect(state.code).toBe(200)
+    expect(state.body).toEqual(expect.objectContaining({
+      source: 'heuristic',
+      insights: expect.arrayContaining([
+        expect.objectContaining({ id: 'series-win', title: 'SEA win probability' }),
+        expect.objectContaining({ id: 'series-play-quality', title: 'SEA play quality' }),
+      ]),
+    }))
+    expect(proposeCalls).toHaveLength(0)
+    expect(draftCalls).toHaveLength(0)
+  })
+
+  it('sanitizes LLM BYOD proposals and returns empty when they are junk', async () => {
+    const instance = new AnalysisService({
+      store: new InMemoryAnalysisStore(),
+      datasets: new InMemoryDatasetSource([{
+        datasetId: 'tickets',
+        fixtureId: 'tickets',
+        sourceType: 'upload',
+        displayName: 'tickets.csv',
+        columns: ['message', 'tier'],
+        rows: [{ message: 'one', tier: 'gold' }, { message: 'two', tier: 'silver' }],
+      }]),
+      draftProvider: {
+        async draft() { return { query, model: 'openrouter/test' } },
+        async propose() {
+          return {
+            insights: [
+              { title: 'Classify by shift', question: 'AM or PM?', visual: 'bars', reason: 'Labels in this table.', classes: ['AM', 'PM'] },
+            ],
+            model: 'openrouter/test',
+          }
+        },
+      } satisfies AnalysisDraftProvider,
+      classifier: { async classify() { return { model: 'jev-latest', selectedClass: 'urgent', probabilities: { urgent: 0.7, routine: 0.3 } } } } satisfies AnalysisClassifier,
+      idFactory: () => 'propose-api-2',
+      now: () => 1_800_000_000_000,
+    })
+    const junk: ResponseState = { headers: {} }
+    await createAnalysisProposeHandler(instance)({ method: 'POST', headers: {}, body: { datasetId: 'tickets' } }, response(junk))
+    expect(junk.code).toBe(200)
+    expect(junk.body).toEqual(expect.objectContaining({ source: 'empty', insights: [] }))
+
+    const valid = new AnalysisService({
+      store: new InMemoryAnalysisStore(),
+      datasets: new InMemoryDatasetSource([{
+        datasetId: 'tickets',
+        fixtureId: 'tickets',
+        sourceType: 'upload',
+        displayName: 'tickets.csv',
+        columns: ['message', 'tier'],
+        rows: [{ message: 'one', tier: 'gold' }, { message: 'two', tier: 'silver' }],
+      }]),
+      draftProvider: {
+        async draft() { return { query, model: 'openrouter/test' } },
+        async propose() {
+          return {
+            insights: [
+              { title: 'Urgent tickets', question: 'Is this ticket urgent given the message?', visual: 'series', reason: 'Support load.', questionKind: 'noul' },
+              { title: 'Frustrated customers', question: 'Is this message frustrated?', visual: 'series', reason: 'Tone.', questionKind: 'noul' },
+            ],
+            model: 'openrouter/test',
+          }
+        },
+      } satisfies AnalysisDraftProvider,
+      classifier: { async classify() { return { model: 'jev-latest', selectedClass: 'urgent', probabilities: { urgent: 0.7, routine: 0.3 } } } } satisfies AnalysisClassifier,
+      idFactory: () => 'propose-api-3',
+      now: () => 1_800_000_000_000,
+    })
+    const ok: ResponseState = { headers: {} }
+    await createAnalysisProposeHandler(valid)({ method: 'POST', headers: {}, body: { datasetId: 'tickets' } }, response(ok))
+    expect(ok.code).toBe(200)
+    const body = ok.body as { source: string; insights: Array<{ title: string; visual: string; question: string }> }
+    expect(body.source).toBe('llm')
+    expect(body.insights.length).toBeGreaterThanOrEqual(2)
+    expect(body.insights.every((item) => item.visual === 'series')).toBe(true)
+    expect(body.insights.map((item) => item.title)).toEqual(expect.arrayContaining(['Urgent tickets', 'Frustrated customers']))
+
+    const failed = new AnalysisService({
+      store: new InMemoryAnalysisStore(),
+      datasets: new InMemoryDatasetSource([{
+        datasetId: 'tickets',
+        fixtureId: 'tickets',
+        sourceType: 'upload',
+        displayName: 'tickets.csv',
+        columns: ['message'],
+        rows: [{ message: 'one' }, { message: 'two' }],
+      }]),
+      draftProvider: {
+        async draft() { return { query, model: 'openrouter/test' } },
+        async propose() { throw new Error('provider down') },
+      } satisfies AnalysisDraftProvider,
+      classifier: { async classify() { return { model: 'jev-latest', selectedClass: 'urgent', probabilities: { urgent: 0.7, routine: 0.3 } } } } satisfies AnalysisClassifier,
+      idFactory: () => 'propose-api-4',
+      now: () => 1_800_000_000_000,
+    })
+    const empty: ResponseState = { headers: {} }
+    await createAnalysisProposeHandler(failed)({ method: 'POST', headers: {}, body: { datasetId: 'tickets' } }, response(empty))
+    expect(empty.code).toBe(200)
+    expect(empty.body).toEqual(expect.objectContaining({ source: 'empty', insights: [] }))
   })
 })

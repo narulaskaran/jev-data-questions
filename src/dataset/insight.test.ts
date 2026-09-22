@@ -6,12 +6,15 @@ import { inspectDatasetShape, schemaColumnLabel, schemaStripParts } from './shap
 import {
   chartIsRowStreamed,
   defaultInsightFor,
+  hasNamedHeuristicCuts,
   isBannedRawColumnClassInsight,
   isJunkLocationActivitySplit,
   looksLikePlaceEatingTask,
   perspectiveLabelFor,
   proposeInsights,
   resolveChartVisual,
+  resolveDashboardInsights,
+  sanitizeLlmInsightProposals,
   dashboardVisualQaOk,
   hasDiverseChartTypes,
   isJunkDashboardInsight,
@@ -27,8 +30,9 @@ describe('shape inspection', () => {
     expect(shape.hasEating).toBe(true)
     expect(shape.hasPlayState).toBe(false)
     expect(shape.columns.find((column) => column.name === 'location')?.cardinality).toBe(2)
-    expect(schemaStripParts(shape).join(' · ')).toMatch(/geo/)
-    expect(schemaColumnLabel(shape.columns.find((column) => column.name === 'location')!)).toMatch(/location 2/)
+    expect(schemaStripParts(shape).join(' · ')).toMatch(/Places/)
+    expect(schemaStripParts(shape).join(' · ')).not.toMatch(/\bgeo\b/)
+    expect(schemaColumnLabel(shape.columns.find((column) => column.name === 'location')!).toLowerCase()).toMatch(/places/)
   })
 
   it('treats an activity column with eating values as an eating table', () => {
@@ -287,6 +291,92 @@ describe('shape → viz routing', () => {
     expect(hasDiverseChartTypes(proposeInsights(getSampleDatasetPreview()))).toBe(false)
     expect(hasDiverseChartTypes(proposeInsights(getSquirrelDatasetPreview()))).toBe(true)
     expect(dashboardVisualQaOk(proposeInsights(getSquirrelDatasetPreview()))).toBe(true)
+  })
+})
+
+describe('LLM insight proposals', () => {
+  const tickets = {
+    datasetId: 'tickets',
+    sourceType: 'upload' as const,
+    columns: [
+      { name: 'message', normalizedName: 'message', inferredType: 'string' as const },
+      { name: 'tier', normalizedName: 'tier', inferredType: 'string' as const },
+    ],
+    previewRows: [
+      { message: 'server down', tier: 'gold' },
+      { message: 'thanks', tier: 'silver' },
+    ],
+  }
+
+  it('packs valid LLM insights and lets the viz pack pick the chart', () => {
+    const insights = sanitizeLlmInsightProposals({
+      insights: [
+        {
+          title: 'Urgent tickets',
+          question: 'Is this ticket urgent given the message and tier?',
+          visual: 'places',
+          perspective: '',
+          preparation: 'Read message and tier.',
+          reason: 'Support load.',
+          questionKind: 'noul',
+        },
+        {
+          title: 'Frustrated customers',
+          question: 'Is this ticket frustrated given the message?',
+          visual: 'bars',
+          reason: 'Customer heat.',
+          questionKind: 'noul',
+        },
+      ],
+    }, tickets)
+    expect(insights.length).toBeGreaterThanOrEqual(2)
+    expect(insights.length).toBeLessThanOrEqual(4)
+    expect(insights.every((item) => item.question && item.title && item.reason)).toBe(true)
+    expect(insights.every((item) => item.visual !== 'places')).toBe(true)
+    expect(insights.some((item) => item.visual === 'series')).toBe(true)
+    expect(insights.every((item) => !isJunkDashboardInsight(item))).toBe(true)
+  })
+
+  it('drops raw-column junk such as AM/PM, shift, and labels-in-table', () => {
+    const insights = sanitizeLlmInsightProposals([
+      { title: 'Classify by shift', question: 'Is this AM or PM?', visual: 'bars', reason: 'Labels in this table.', classes: ['AM', 'PM'] },
+      { title: 'AM/PM', question: 'Classify each row by shift.', visual: 'bars', reason: 'Shift labels.', classes: ['AM', 'PM'] },
+      { title: 'Play success', question: 'Did the play convert?', visual: 'bars', reason: 'A call for each play.', classes: ['Converted', 'Did not'] },
+      { title: 'Urgent tickets', question: 'Is this ticket urgent given the message?', visual: 'series', reason: 'A real cut.', questionKind: 'noul' },
+    ], tickets)
+    expect(insights.every((item) => !/classify by shift|am\s*\/\s*pm|labels in this table/i.test(`${item.title} ${item.reason}`))).toBe(true)
+    expect(insights.every((item) => !isBannedRawColumnClassInsight(item))).toBe(true)
+    expect(insights.every((item) => !isJunkDashboardInsight(item))).toBe(true)
+    expect(insights.map((item) => item.title)).toEqual(['Urgent tickets'])
+  })
+
+  it('falls back to empty when every proposal is junk or missing', () => {
+    expect(sanitizeLlmInsightProposals({ insights: [{ title: 'Nope' }] }, tickets)).toEqual([])
+    expect(resolveDashboardInsights(tickets, { insights: [] }).insights).toEqual([])
+    expect(resolveDashboardInsights(tickets, { insights: [] }).source).toBe('empty')
+    expect(resolveDashboardInsights(tickets).source).toBe('empty')
+  })
+
+  it('keeps Seahawks and squirrel heuristics when those CSVs arrive as BYOD', () => {
+    const seahawks = {
+      ...getSampleDatasetPreview(),
+      datasetId: 'dataset-byod-sea',
+      sourceType: 'upload' as const,
+    }
+    const squirrel = {
+      ...getSquirrelDatasetPreview(),
+      datasetId: 'dataset-byod-squirrel',
+      sourceType: 'upload' as const,
+    }
+    const sea = resolveDashboardInsights(seahawks, {
+      insights: [{ title: 'Classify by shift', question: 'AM or PM?', visual: 'bars', reason: 'Labels in this table.', classes: ['AM', 'PM'] }],
+    })
+    expect(hasNamedHeuristicCuts(sea.insights)).toBe(true)
+    expect(sea.source).toBe('heuristic')
+    expect(sea.insights.map((item) => item.id)).toEqual(['series-win', 'series-play-quality'])
+    const places = resolveDashboardInsights(squirrel, { insights: [] })
+    expect(hasNamedHeuristicCuts(places.insights)).toBe(true)
+    expect(places.insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'series-activity']))
   })
 })
 

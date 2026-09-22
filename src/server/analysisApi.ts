@@ -82,6 +82,29 @@ export const createAnalysisDraftHandler = (service: AnalysisService): AnalysisAp
   }
 }
 
+export const createAnalysisProposeHandler = (service: AnalysisService): AnalysisApiHandler => async (request, response) => {
+  applyHeaders(response)
+  if (request.method !== 'POST') {
+    response.setHeader('Allow', 'POST')
+    response.status(405).json({ error: 'METHOD_NOT_ALLOWED' })
+    return
+  }
+  const body = parseBody(request.body)
+  if (!body) {
+    response.status(400).json({ error: typeof request.body === 'string' ? 'INVALID_JSON' : 'INVALID_BODY' })
+    return
+  }
+  try {
+    const result = await service.propose({
+      fixtureId: typeof body.fixtureId === 'string' ? body.fixtureId : undefined,
+      datasetId: typeof body.datasetId === 'string' ? body.datasetId : undefined,
+    })
+    response.status(200).json(result)
+  } catch (error) {
+    errorResponse(response, error)
+  }
+}
+
 export const createAnalysisRunHandler = (service: AnalysisService, options: { schedule?: (task: Promise<unknown>) => void } = {}): AnalysisApiHandler => async (request, response) => {
   applyHeaders(response)
   if (request.method !== 'POST') {

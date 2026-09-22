@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AnalysisRunView } from './components/AnalysisRunView'
 import type { DashboardTileModel } from './components/DashboardTile'
 import { DatasetDashboard } from './components/DatasetDashboard'
@@ -12,7 +12,7 @@ import { Card, CardContent, CardFooter, CardHeader } from './components/ui/card'
 import { Label } from './components/ui/label'
 import { Textarea } from './components/ui/textarea'
 import { getFixtureDatasetPreview } from './dataset/sampleDataset'
-import { proposeInsights, queryFromInsight } from './dataset/insight'
+import { hasNamedHeuristicCuts, proposeInsights, queryFromInsight, sanitizeLlmInsightProposals, mergeDashboardInsights, type InsightProposal } from './dataset/insight'
 import { datasetHref, landHref, parseAppLocation, type AppRoute } from './app/route'
 import { DatasetError, DATASET_ERROR_COPY, plainDatasetError } from './dataset/csvTypes'
 import { validateCsvText } from './dataset/validateDataset'
@@ -36,8 +36,15 @@ import './styles.css'
 
 export const INTAKE_TIMEOUT_MS = 45_000
 
+export interface AnalysisProposeResult {
+  datasetId: string
+  insights: InsightProposal[]
+  source?: 'heuristic' | 'llm' | 'empty'
+}
+
 export interface AnalysisApiClient {
   draft: (input: { fixtureId?: string; datasetId?: string; task: string }) => Promise<AnalysisDraftResult>
+  propose?: (input: { fixtureId?: string; datasetId?: string }) => Promise<AnalysisProposeResult>
   start: (input: {
     fixtureId?: string
     datasetId?: string
@@ -101,6 +108,7 @@ const json = async <T,>(url: string, init: RequestInit, options: { timeoutMs?: n
 
 export const defaultAnalysisApi: AnalysisApiClient = {
   draft: (input) => json<AnalysisDraftResult>('/api/analysis/draft', { method: 'POST', body: JSON.stringify(input) }),
+  propose: (input) => json<AnalysisProposeResult>('/api/analysis/propose', { method: 'POST', body: JSON.stringify(input) }),
   start: (input) => json<AnalysisSnapshot>('/api/analysis/run', { method: 'POST', body: JSON.stringify(input) }),
   read: (analysisId) => json<AnalysisSnapshot>(`/api/analysis/${encodeURIComponent(analysisId)}`, { method: 'GET' }),
   share: (analysisId) => json<AnalysisSnapshot>(`/api/share/${encodeURIComponent(analysisId)}`, { method: 'GET' }),
@@ -220,6 +228,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const [engineerMode, setEngineerMode] = useState(() => isEngineerMode())
   const [tiles, setTiles] = useState<DashboardTileModel[]>([])
   const [resumingId, setResumingId] = useState<string>()
+  const [proposing, setProposing] = useState(false)
 
   const navigate = (href: string) => {
     window.history.pushState({}, '', href)
@@ -308,6 +317,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     setJsonOpen(engineerMode)
     setTiles([])
     setResumingId(undefined)
+    setProposing(false)
   }
 
   const handleDraft = async () => {
@@ -448,50 +458,89 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
 
   useEffect(() => {
     if (!dataset || isShareView) return undefined
-    const proposed = proposeInsights(dataset)
     let cancelled = false
-    setTiles(proposed.map((insight) => ({ insight, starting: true })))
-    for (const insight of proposed) {
-      void (async () => {
-        try {
-          let nextQuery = queryFromInsight(insight)
-          if (!hasRunnableQuery(nextQuery)) {
-            const result = await api.draft({
+    const startTiles = (proposed: InsightProposal[]) => {
+      if (cancelled) return
+      setProposing(false)
+      setTiles(proposed.map((insight) => ({ insight, starting: true, startedAt: Date.now() })))
+      for (const insight of proposed) {
+        void (async () => {
+          try {
+            let nextQuery = queryFromInsight(insight)
+            if (!hasRunnableQuery(nextQuery)) {
+              const result = await api.draft({
+                datasetId: dataset.datasetId,
+                fixtureId: fixtureIdFor(dataset),
+                task: insight.question || insight.task,
+              })
+              nextQuery = formatDraftQueryForEditor({
+                query: result.query,
+                questionKind: result.metadata.questionKind,
+                classes: result.metadata.classes,
+              })
+            }
+            const parsed = parseJevQueryJson(nextQuery)
+            if (!parsed) throw new Error('Could not start Jev analysis')
+            const started = await api.start({
               datasetId: dataset.datasetId,
               fixtureId: fixtureIdFor(dataset),
-              task: insight.task,
+              query: nextQuery.trim(),
+              classes: classesFromJevQuery(parsed),
+              questionKind: parsed.type,
             })
-            nextQuery = formatDraftQueryForEditor({
-              query: result.query,
-              questionKind: result.metadata.questionKind,
-              classes: result.metadata.classes,
-            })
+            if (cancelled) return
+            setTiles((current) => current.map((tile) => (
+              tile.insight.id === insight.id
+                ? { ...tile, snapshot: started, starting: false, latencyHint: started.status === 'complete' ? 'saved' : 'live', error: undefined }
+                : tile
+            )))
+          } catch (startError) {
+            if (cancelled) return
+            setTiles((current) => current.map((tile) => (
+              tile.insight.id === insight.id
+                ? { ...tile, starting: false, error: shortError(startError, 'Could not start Jev analysis') }
+                : tile
+            )))
           }
-          const parsed = parseJevQueryJson(nextQuery)
-          if (!parsed) throw new Error('Could not start Jev analysis')
-          const started = await api.start({
-            datasetId: dataset.datasetId,
-            fixtureId: fixtureIdFor(dataset),
-            query: nextQuery.trim(),
-            classes: classesFromJevQuery(parsed),
-            questionKind: parsed.type,
-          })
-          if (cancelled) return
-          setTiles((current) => current.map((tile) => (
-            tile.insight.id === insight.id
-              ? { ...tile, snapshot: started, starting: false, latencyHint: started.status === 'complete' ? 'saved' : 'live', error: undefined }
-              : tile
-          )))
-        } catch (startError) {
-          if (cancelled) return
-          setTiles((current) => current.map((tile) => (
-            tile.insight.id === insight.id
-              ? { ...tile, starting: false, error: shortError(startError, 'Could not start Jev analysis') }
-              : tile
-          )))
-        }
-      })()
+        })()
+      }
     }
+
+    const heuristic = proposeInsights(dataset)
+    if (hasNamedHeuristicCuts(heuristic)) {
+      startTiles(heuristic)
+      return () => { cancelled = true }
+    }
+
+    setTiles([])
+    setProposing(true)
+    const finishEmpty = () => {
+      if (cancelled) return
+      setTiles([])
+      setProposing(false)
+    }
+
+    if (!api.propose) {
+      startTiles(heuristic)
+      if (heuristic.length === 0) finishEmpty()
+      return () => { cancelled = true }
+    }
+
+    void api.propose({
+      datasetId: dataset.datasetId,
+      fixtureId: fixtureIdFor(dataset),
+    }).then((result) => {
+      if (cancelled) return
+      const packed = mergeDashboardInsights(heuristic, sanitizeLlmInsightProposals(result.insights, dataset), dataset)
+      if (packed.length === 0) {
+        finishEmpty()
+        return
+      }
+      startTiles(packed)
+    }).catch(() => {
+      if (heuristic.length > 0) startTiles(heuristic)
+      else finishEmpty()
+    })
     return () => { cancelled = true }
   }, [api, dataset, isShareView])
 
@@ -583,7 +632,6 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     }
   }, [query])
 
-  const insights = useMemo(() => (dataset ? proposeInsights(dataset) : []), [dataset])
   const showIntake = !isShareView && !dataset
   const showShape = !isShareView && Boolean(dataset)
   const showAdvanced = showShape && engineerMode
@@ -638,7 +686,8 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
             <div className="stage-stack">
               <SchemaStrip dataset={dataset} />
               <DatasetDashboard
-                tiles={tiles.length > 0 ? tiles : insights.map((insight) => ({ insight, starting: true }))}
+                tiles={tiles}
+                proposing={proposing}
                 sourceRows={dataset.previewRows}
                 onResume={(insightId) => void handleResumeTile(insightId)}
                 resumingId={resumingId}

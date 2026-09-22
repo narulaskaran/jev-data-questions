@@ -56,6 +56,7 @@ Dataset intake:
 
 Analysis:
 
+- `POST /api/analysis/propose` — server-only OpenRouter proposes 2–4 named dashboard insights for BYOD; fixture-shaped tables stay on heuristics; junk is dropped
 - `POST /api/analysis/draft` — server-only OpenRouter drafts an editable query; identical dataset+task hits the durable draft cache
 - `POST /api/analysis/run` — starts a bounded Jev run (the only path that calls Jev)
 - `GET /api/analysis/<id>` — progress snapshot

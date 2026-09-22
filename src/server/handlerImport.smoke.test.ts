@@ -8,6 +8,7 @@ describe('serverless handler import safety', () => {
       import('../../api/datasets/from-url'),
       import('../../api/datasets/[datasetId]'),
       import('../../api/analysis/draft'),
+      import('../../api/analysis/propose'),
       import('../../api/analysis/run'),
       import('../../api/analysis/[analysisId]'),
       import('../../api/share/[analysisId]'),

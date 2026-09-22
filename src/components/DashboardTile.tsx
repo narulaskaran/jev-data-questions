@@ -10,6 +10,7 @@ import {
   runProgressPercent,
   runStallCopy,
 } from '../runView/format'
+import { ANALYSIS_STALL_AFTER_MS } from '../shared/analysis'
 import { inferQuestionKind } from '../shared/questionKind'
 import { insightEyebrow, perspectiveLabelFor, resolveChartVisual } from '../dataset/insight'
 import type { InsightProposal } from '../dataset/insight'
@@ -20,6 +21,7 @@ export type DashboardTileModel = {
   insight: InsightProposal
   snapshot?: AnalysisSnapshot
   starting?: boolean
+  startedAt?: number
   error?: string
   latencyHint?: 'saved' | 'live'
 }
@@ -28,6 +30,7 @@ export const DashboardTile = memo(function DashboardTile({
   insight,
   snapshot,
   starting,
+  startedAt,
   error,
   latencyHint,
   sourceRows,
@@ -66,7 +69,9 @@ export const DashboardTile = memo(function DashboardTile({
     : 0
   const stallCopy = snapshot
     ? runStallCopy(snapshot.status, snapshot.updatedAt, nowMs ?? Date.now())
-    : undefined
+    : starting && startedAt && (nowMs ?? Date.now()) - startedAt >= ANALYSIS_STALL_AFTER_MS
+      ? runStallCopy('running', new Date(startedAt).toISOString(), nowMs ?? Date.now())
+      : undefined
   const errorCopy = snapshot?.error
     ? runErrorCopy(snapshot.error, snapshot.progress.completedRows)
     : error
@@ -76,7 +81,8 @@ export const DashboardTile = memo(function DashboardTile({
   const empty = rows.length === 0 && !paintsPlaces
   const showSkeleton = empty && chartKind !== 'places'
   const showError = Boolean(errorCopy) && !paintsPlaces
-  const showProgress = Boolean(snapshot && snapshot.progress.completedRows > 0)
+  const showProgress = Boolean(starting || snapshot)
+  const waitingCopy = starting && !snapshot && !stallCopy ? 'Starting…' : undefined
   const perspectiveLabel = perspectiveLabelFor({
     datasetId: snapshot?.datasetId ?? insight.perspectiveLabel,
     fixtureId: snapshot?.fixtureId,
@@ -168,13 +174,19 @@ export const DashboardTile = memo(function DashboardTile({
         </div>
       </CardHeader>
       <CardContent>
-        {showProgress && snapshot ? (
+        {showProgress ? (
           <div className="progress-block dashboard-progress" aria-label={`${insight.title} progress`}>
             <div className="progress-line">
-              <span>{snapshot.status === 'complete' ? `${snapshot.progress.totalRows} of ${snapshot.progress.totalRows}` : `${snapshot.progress.completedRows} / ${snapshot.progress.totalRows}`}</span>
+              <span>
+                {snapshot
+                  ? snapshot.status === 'complete'
+                    ? `${snapshot.progress.totalRows} of ${snapshot.progress.totalRows}`
+                    : `${snapshot.progress.completedRows} / ${snapshot.progress.totalRows}`
+                  : waitingCopy ?? '0 / …'}
+              </span>
               <b>{percent}%</b>
             </div>
-            <ProgressBar value={percent} />
+            <ProgressBar value={percent} indeterminate={!snapshot || (snapshot.status !== 'complete' && snapshot.progress.completedRows === 0)} />
           </div>
         ) : null}
         {stallCopy ? <p className="run-stall" role="status">{stallCopy}</p> : null}
