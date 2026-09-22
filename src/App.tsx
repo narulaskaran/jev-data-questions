@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnalysisRunView } from './components/AnalysisRunView'
+import type { DashboardTileModel } from './components/DashboardTile'
+import { DatasetDashboard } from './components/DatasetDashboard'
 import { DatasetIntake } from './components/DatasetIntake'
 import { DatasetPreviewCard } from './components/DatasetPreview'
-import { InsightCards } from './components/InsightCards'
 import { SchemaStrip } from './components/SchemaStrip'
 import { StageFold } from './components/StageFold'
 import { Badge } from './components/ui/badge'
@@ -11,7 +12,8 @@ import { Card, CardContent, CardFooter, CardHeader } from './components/ui/card'
 import { Label } from './components/ui/label'
 import { Textarea } from './components/ui/textarea'
 import { getFixtureDatasetPreview, getSampleDatasetPreview } from './dataset/sampleDataset'
-import { proposeInsights, type InsightProposal } from './dataset/insight'
+import { proposeInsights, queryFromInsight } from './dataset/insight'
+import { datasetHref, landHref, parseAppLocation, type AppRoute } from './app/route'
 import { DatasetError, DATASET_ERROR_COPY, plainDatasetError } from './dataset/csvTypes'
 import { validateCsvText } from './dataset/validateDataset'
 import type {
@@ -49,6 +51,7 @@ export interface AnalysisApiClient {
   read: (analysisId: string) => Promise<AnalysisSnapshot>
   share: (analysisId: string) => Promise<AnalysisSnapshot>
   intakeStatus?: () => Promise<DatasetIntakeStatus>
+  readDataset?: (datasetId: string) => Promise<DatasetPreview>
   createFromCsv?: (input: { csvText: string; filename: string }) => Promise<DatasetPreview>
   createFromUrl?: (input: { url: string }) => Promise<DatasetPreview>
 }
@@ -102,6 +105,7 @@ export const defaultAnalysisApi: AnalysisApiClient = {
   read: (analysisId) => json<AnalysisSnapshot>(`/api/analysis/${encodeURIComponent(analysisId)}`, { method: 'GET' }),
   share: (analysisId) => json<AnalysisSnapshot>(`/api/share/${encodeURIComponent(analysisId)}`, { method: 'GET' }),
   intakeStatus: () => json<DatasetIntakeStatus>('/api/datasets/status', { method: 'GET' }),
+  readDataset: (datasetId) => json<DatasetPreview>(`/api/datasets/${encodeURIComponent(datasetId)}`, { method: 'GET' }),
   createFromCsv: (input) => json<DatasetPreview>('/api/datasets/from-csv', { method: 'POST', body: JSON.stringify(input) }, { timeoutMs: INTAKE_TIMEOUT_MS }),
   createFromUrl: (input) => json<DatasetPreview>('/api/datasets/from-url', { method: 'POST', body: JSON.stringify(input) }, { timeoutMs: INTAKE_TIMEOUT_MS }),
 }
@@ -128,14 +132,6 @@ const engineerHref = (on: boolean): string => {
   const query = params.toString()
   return `${path}${query ? `?${query}` : ''}${hash}`
 }
-
-const queryFromInsight = (insight: InsightProposal): string => (
-  formatDraftQueryForEditor({
-    query: insight.cannedQuery ?? insight.task,
-    questionKind: insight.questionKind,
-    classes: insight.classes,
-  })
-)
 
 export const hasRunnableQuery = (query: string): boolean => looksLikeJevQueryJson(query)
 
@@ -166,13 +162,6 @@ const shortError = (error: unknown, fallback: string) => {
       ?? plainAnalysisError(error.message, fallback)
   }
   return fallback
-}
-
-const sharePathId = (): string | undefined => {
-  if (typeof window === 'undefined') return undefined
-  const match = window.location.pathname.match(/^\/share\/([^/]+)\/?$/)
-  if (!match) return undefined
-  try { return decodeURIComponent(match[1]) } catch { return undefined }
 }
 
 const Thinking = ({ children }: { children: string }) => (
@@ -207,7 +196,8 @@ const ThemeToggle = () => {
 }
 
 const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
-  const shareAnalysisId = sharePathId()
+  const [route, setRoute] = useState<AppRoute>(() => parseAppLocation())
+  const shareAnalysisId = route.kind === 'share' ? route.analysisId : undefined
   const isShareView = shareAnalysisId !== undefined
   const [dataset, setDataset] = useState<DatasetPreview | undefined>()
   const [intakeStatus, setIntakeStatus] = useState<DatasetIntakeStatus>()
@@ -226,11 +216,15 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const [queryCopyMessage, setQueryCopyMessage] = useState('')
   const [foldAnimate, setFoldAnimate] = useState(false)
   const [runLatency, setRunLatency] = useState<'saved' | 'live' | undefined>()
-  const [selectedInsight, setSelectedInsight] = useState<InsightProposal | undefined>()
   const [jsonOpen, setJsonOpen] = useState(() => isEngineerMode())
-  const [insightRunning, setInsightRunning] = useState(false)
-  const [insightVisual, setInsightVisual] = useState<InsightProposal['visual'] | undefined>()
   const [engineerMode, setEngineerMode] = useState(() => isEngineerMode())
+  const [tiles, setTiles] = useState<DashboardTileModel[]>([])
+  const [resumingId, setResumingId] = useState<string>()
+
+  const navigate = (href: string) => {
+    window.history.pushState({}, '', href)
+    setRoute(parseAppLocation())
+  }
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setFoldAnimate(true))
@@ -239,6 +233,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
 
   useEffect(() => {
     const sync = () => {
+      setRoute(parseAppLocation())
       const next = isEngineerMode()
       setEngineerMode(next)
       setJsonOpen(next)
@@ -310,10 +305,9 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     setQueryCopyMessage('')
     setError(undefined)
     setRunLatency(undefined)
-    setSelectedInsight(undefined)
     setJsonOpen(engineerMode)
-    setInsightRunning(false)
-    setInsightVisual(undefined)
+    setTiles([])
+    setResumingId(undefined)
   }
 
   const handleDraft = async () => {
@@ -351,43 +345,6 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     } finally { setStarting(false) }
   }
 
-  const selectInsight = (insight: InsightProposal) => {
-    setSelectedInsight(insight)
-    setTask(insight.task)
-    const nextQuery = queryFromInsight(insight)
-    if (hasRunnableQuery(nextQuery)) setQuery(nextQuery)
-  }
-
-  const handleRunInsight = async (insight: InsightProposal) => {
-    if (!datasetId) { setError('Choose a dataset first.'); return }
-    selectInsight(insight)
-    setInsightVisual(insight.visual)
-    const nextQuery = queryFromInsight(insight)
-    setInsightRunning(true); setError(undefined); setIntakeError(undefined); setQueryCopyMessage(''); setShareMessage('')
-    try {
-      if (hasRunnableQuery(nextQuery)) {
-        await handleRun(nextQuery)
-        return
-      }
-      setDrafting(true)
-      const result = await api.draft({ datasetId, fixtureId: fixtureIdFor(dataset), task: insight.task })
-      setDraft(result)
-      const drafted = formatDraftQueryForEditor({
-        query: result.query,
-        questionKind: result.metadata.questionKind,
-        classes: result.metadata.classes,
-      })
-      setQuery(drafted)
-      setDrafting(false)
-      await handleRun(drafted)
-    } catch (draftError) {
-      setDrafting(false)
-      setError(shortError(draftError, 'Could not draft a Jev query'))
-    } finally {
-      setInsightRunning(false)
-    }
-  }
-
   const handleResume = async () => {
     if (!snapshot || snapshot.status !== 'error' || !datasetId) return
     setStarting(true); setError(undefined); setIntakeError(undefined); setShareMessage(''); setRunLatency('live')
@@ -417,20 +374,20 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     })
   }
 
-  const applyDataset = (preview: DatasetPreview, preferredTask?: string) => {
+  const applyDataset = (preview: DatasetPreview, preferredTask?: string, shouldNavigate = true) => {
     resetRunState()
     resetIntakeForm()
     setIntakeError(undefined)
     setDataset(preview)
-    const insights = proposeInsights(preview)
-    const insight = insights[0]
-    setSelectedInsight(insight)
+    const nextInsights = proposeInsights(preview)
+    const insight = nextInsights[0]
     const nextTask = preferredTask ?? insight?.task ?? DEFAULT_TASK
     setTask(nextTask)
     if (insight) {
       const nextQuery = queryFromInsight(insight)
       if (hasRunnableQuery(nextQuery)) setQuery(nextQuery)
     }
+    if (shouldNavigate) navigate(datasetHref(preview.datasetId, window.location.search))
   }
 
   const handleUpload = async (file: File) => {
@@ -462,16 +419,164 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     } finally { setIntakeBusy(false) }
   }
 
-  const handleSample = (datasetId: string) => {
-    const preview = getFixtureDatasetPreview(datasetId) ?? getSampleDatasetPreview()
+  const handleSample = (nextDatasetId: string) => {
+    const preview = getFixtureDatasetPreview(nextDatasetId) ?? getSampleDatasetPreview()
     applyDataset(preview)
   }
 
-  const copyShareUrl = useCallback(async () => {
-    if (!shareUrl) return
-    try { await navigator.clipboard?.writeText(shareUrl); setShareMessage('Copied')
+  useEffect(() => {
+    if (route.kind === 'land' && dataset) {
+      setDataset(undefined)
+      resetRunState()
+    }
+    if (route.kind !== 'dataset') return
+    if (dataset?.datasetId === route.datasetId) return
+    const fixture = getFixtureDatasetPreview(route.datasetId)
+    if (fixture) {
+      applyDataset(fixture, undefined, false)
+      return
+    }
+    let active = true
+    setIntakeBusy(true)
+    const load = api.readDataset
+      ? api.readDataset(route.datasetId)
+      : Promise.reject(new DatasetError('DATASET_NOT_FOUND', 'Could not load this dataset.', 404))
+    void load.then((preview) => {
+      if (active) applyDataset(preview, undefined, false)
+    }).catch((loadError) => {
+      if (active) setIntakeError(shortError(loadError, 'Could not use this CSV'))
+    }).finally(() => {
+      if (active) setIntakeBusy(false)
+    })
+    return () => { active = false }
+  }, [api, dataset?.datasetId, route])
+
+  useEffect(() => {
+    if (!dataset || isShareView) return undefined
+    const proposed = proposeInsights(dataset)
+    let cancelled = false
+    setTiles(proposed.map((insight) => ({ insight, starting: true })))
+    for (const insight of proposed) {
+      void (async () => {
+        try {
+          let nextQuery = queryFromInsight(insight)
+          if (!hasRunnableQuery(nextQuery)) {
+            const result = await api.draft({
+              datasetId: dataset.datasetId,
+              fixtureId: fixtureIdFor(dataset),
+              task: insight.task,
+            })
+            nextQuery = formatDraftQueryForEditor({
+              query: result.query,
+              questionKind: result.metadata.questionKind,
+              classes: result.metadata.classes,
+            })
+          }
+          const parsed = parseJevQueryJson(nextQuery)
+          if (!parsed) throw new Error('Could not start Jev analysis')
+          const started = await api.start({
+            datasetId: dataset.datasetId,
+            fixtureId: fixtureIdFor(dataset),
+            query: nextQuery.trim(),
+            classes: classesFromJevQuery(parsed),
+            questionKind: parsed.type,
+          })
+          if (cancelled) return
+          setTiles((current) => current.map((tile) => (
+            tile.insight.id === insight.id
+              ? { ...tile, snapshot: started, starting: false, latencyHint: started.status === 'complete' ? 'saved' : 'live', error: undefined }
+              : tile
+          )))
+        } catch (startError) {
+          if (cancelled) return
+          setTiles((current) => current.map((tile) => (
+            tile.insight.id === insight.id
+              ? { ...tile, starting: false, error: shortError(startError, 'Could not start Jev analysis') }
+              : tile
+          )))
+        }
+      })()
+    }
+    return () => { cancelled = true }
+  }, [api, dataset, isShareView])
+
+  const liveTileKey = tiles
+    .map((tile) => `${tile.insight.id}:${tile.snapshot?.analysisId ?? ''}:${tile.snapshot?.status ?? ''}`)
+    .join('|')
+
+  useEffect(() => {
+    const live = tiles.filter((tile) => (
+      tile.snapshot && tile.snapshot.status !== 'complete' && tile.snapshot.status !== 'error'
+    ))
+    if (live.length === 0) return undefined
+    let active = true
+    let timer: number | undefined
+    const poll = async () => {
+      const updates = await Promise.all(live.map(async (tile) => {
+        try {
+          const next = await api.read(tile.snapshot!.analysisId)
+          return { id: tile.insight.id, snapshot: next }
+        } catch (readError) {
+          return { id: tile.insight.id, error: shortError(readError, 'Could not read analysis progress') }
+        }
+      }))
+      if (!active) return
+      setTiles((current) => current.map((tile) => {
+        const update = updates.find((item) => item.id === tile.insight.id)
+        if (!update) return tile
+        return {
+          ...tile,
+          snapshot: update.snapshot ?? tile.snapshot,
+          error: 'error' in update ? update.error : tile.error,
+        }
+      }))
+      const stillLive = updates.some((update) => {
+        const status = update.snapshot?.status
+        return status === 'queued' || status === 'running'
+      })
+      if (stillLive) timer = window.setTimeout(() => { void poll() }, 350)
+    }
+    timer = window.setTimeout(() => { void poll() }, 250)
+    return () => { active = false; if (timer !== undefined) window.clearTimeout(timer) }
+  }, [api, liveTileKey])
+
+  const handleResumeTile = async (insightId: string) => {
+    const tile = tiles.find((item) => item.insight.id === insightId)
+    if (!tile?.snapshot || tile.snapshot.status !== 'error' || !dataset?.datasetId) return
+    setResumingId(insightId)
+    try {
+      const started = await api.start({
+        datasetId: dataset.datasetId,
+        fixtureId: fixtureIdFor(dataset),
+        query: tile.snapshot.query,
+        classes: [...tile.snapshot.classes],
+        questionKind: tile.snapshot.questionKind,
+        analysisId: tile.snapshot.analysisId,
+        resume: true,
+      })
+      setTiles((current) => current.map((item) => (
+        item.insight.id === insightId
+          ? { ...item, snapshot: started, error: undefined, latencyHint: started.status === 'complete' ? 'saved' : 'live' }
+          : item
+      )))
+    } catch (runError) {
+      setTiles((current) => current.map((item) => (
+        item.insight.id === insightId
+          ? { ...item, error: shortError(runError, 'Could not resume Jev analysis') }
+          : item
+      )))
+    } finally {
+      setResumingId(undefined)
+    }
+  }
+
+  const copyShareUrl = useCallback(async (analysisId?: string) => {
+    const id = analysisId ?? snapshot?.analysisId
+    if (!id) return
+    const url = `${window.location.origin}/share/${encodeURIComponent(id)}`
+    try { await navigator.clipboard?.writeText(url); setShareMessage('Copied')
     } catch { setShareMessage('Share URL ready') }
-  }, [shareUrl])
+  }, [snapshot?.analysisId])
 
   const copyQuery = useCallback(async () => {
     if (!query.trim()) return
@@ -484,10 +589,10 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   }, [query])
 
   const insights = useMemo(() => (dataset ? proposeInsights(dataset) : []), [dataset])
-  const showIntake = !isShareView
+  const showIntake = !isShareView && !dataset
   const showShape = !isShareView && Boolean(dataset)
   const showAdvanced = showShape && engineerMode
-  const showRun = Boolean(snapshot)
+  const showRun = Boolean(snapshot) && (isShareView || engineerMode)
   const toggleEngineerMode = () => {
     const next = !engineerMode
     window.history.pushState({}, '', engineerHref(next))
@@ -508,7 +613,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     })
     : undefined
   const choiceClasses = parsedQuery?.type === 'choice' ? Object.keys(parsedQuery.criteria) : []
-  const stage = isShareView ? 'share' : snapshot ? 'run' : dataset ? 'shape' : 'intake'
+  const stage = isShareView ? 'share' : snapshot && (engineerMode || isShareView) ? 'run' : dataset ? 'dataset' : 'intake'
 
   return (
     <main className="analysis-shell" data-stage={stage} data-mode={engineerMode ? 'engineer' : 'product'}>
@@ -538,14 +643,21 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
           {dataset ? (
             <div className="stage-stack">
               <SchemaStrip dataset={dataset} />
-              <DatasetPreviewCard dataset={dataset} onChange={() => { setDataset(undefined); resetRunState(); setIntakeError(undefined); resetIntakeForm() }} />
-              <InsightCards
-                insights={insights}
-                selectedId={selectedInsight?.id}
-                running={insightRunning}
-                onSelect={selectInsight}
-                onRun={(insight) => void handleRunInsight(insight)}
+              <DatasetDashboard
+                tiles={tiles.length > 0 ? tiles : insights.map((insight) => ({ insight, starting: true }))}
+                sourceRows={dataset.previewRows}
+                onResume={(insightId) => void handleResumeTile(insightId)}
+                resumingId={resumingId}
+                shareMessage={shareMessage}
+                onCopyShare={(analysisId) => void copyShareUrl(analysisId)}
               />
+              <DatasetPreviewCard dataset={dataset} onChange={() => {
+                setDataset(undefined)
+                resetRunState()
+                setIntakeError(undefined)
+                resetIntakeForm()
+                navigate(landHref(window.location.search))
+              }} />
             </div>
           ) : null}
         </StageFold>
@@ -622,7 +734,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
             </details>
           ) : null}
         </StageFold>
-        {!isShareView && error && (dataset || !showIntake) && (
+        {!isShareView && error && (engineerMode || !showIntake) && (
           <div className="error-banner" role="alert">
             <b>{error === INVALID_CLASSES_COPY ? "Couldn't draft" : "Couldn't run"}</b>
             <span>{error}</span>
@@ -641,13 +753,12 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
               snapshot={snapshot}
               shareUrl={shareUrl}
               shareMessage={shareMessage}
-              onCopyShare={copyShareUrl}
+              onCopyShare={() => void copyShareUrl()}
               onResume={isShareView ? undefined : () => void handleResume()}
               resuming={starting}
               datasetRowCount={dataset?.acceptedRowCount}
               inputHalf={draft?.metadata.inputHalf}
               latencyHint={isShareView ? undefined : runLatency}
-              chartKind={insightVisual}
               sourceRows={dataset?.previewRows}
             />
           ) : null}

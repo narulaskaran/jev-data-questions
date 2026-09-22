@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL. QA this locally — do not wait on a Production deploy. The landing page has two one-click samples — **2026 Super Bowl Demo** (P(win) line) and **Squirrel census** (places where they eat) — plus **Bring your own** (CSV upload or public HTTPS CSV URL). After a pick, a schema strip and 2–3 insight cards appear. Use **Run**. Draft / Edit Jev JSON stay behind `?mode=engineer`.
+Open the Vite URL. QA this locally — do not wait on a Production deploy. The landing page has two one-click samples — **2026 Super Bowl Demo** (P(win) line) and **Squirrel census** (places where they eat) — plus **Bring your own** (CSV upload or public HTTPS CSV URL). Entering a dataset opens `/dataset/:id` with a dashboard of 2–4 charts already running. Draft / Edit Jev JSON stay behind `?mode=engineer`.
 
 Visiting or sharing a page never starts a paid Jev run. The browser never calls Jev, OpenRouter, ESPN, UploadThing, or privileged Convex writes. Tests never make a paid provider request.
 

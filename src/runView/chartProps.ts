@@ -22,6 +22,10 @@ type ChartVisual = {
   playing?: boolean
   playbackEnabled?: boolean
   perspectiveLabel?: string
+  compact?: boolean
+  heading?: string
+  headingId?: string
+  sourceRows?: readonly unknown[]
 }
 
 export const areChartPropsEqual = (prev: ChartVisual, next: ChartVisual): boolean => (
@@ -34,6 +38,10 @@ export const areChartPropsEqual = (prev: ChartVisual, next: ChartVisual): boolea
   && prev.questionKind === next.questionKind
   && prev.chartKind === next.chartKind
   && prev.perspectiveLabel === next.perspectiveLabel
+  && prev.compact === next.compact
+  && prev.heading === next.heading
+  && prev.headingId === next.headingId
+  && (prev.sourceRows?.length ?? 0) === (next.sourceRows?.length ?? 0)
   && sameStringList(prev.classes, next.classes)
   && prev.rows[prev.playheadIndex]?.selectedClass === next.rows[next.playheadIndex]?.selectedClass
   && prev.rows[prev.playheadIndex]?.value === next.rows[next.playheadIndex]?.value

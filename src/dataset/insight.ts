@@ -2,15 +2,17 @@ import type { DatasetPreview } from '../shared/dataset'
 import { FOOTBALL_FIXTURE_ID, footballPerspectiveLabel } from '../fixtures/footballTimeline'
 import { SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensus'
 import { asPerspectiveLabel, perspectiveMetricTitle } from '../teamMetadata'
+import { formatDraftQueryForEditor } from '../shared/jevQuery'
 import {
   SAMPLE_PLAY_QUALITY_LEVELS,
   SAMPLE_PLAY_QUALITY_QUERY,
   SAMPLE_PLAY_QUALITY_TASK,
   SAMPLE_WIN_LIKELIHOOD_TASK,
   SAMPLE_WIN_NOUL_QUERY,
+  SQUIRREL_ACTIVITY_QUERY,
+  SQUIRREL_ACTIVITY_TASK,
   SQUIRREL_EATING_NOUL_QUERY,
   SQUIRREL_EATING_TASK,
-  classesFromLabelColumns,
   isGoodBadPlayClassList,
   isJunkLocationActivitySplit,
   looksLikePlaceEatingTask,
@@ -19,12 +21,12 @@ import {
   type ChartVisualKind,
   type JevQuestionKind,
 } from '../shared/questionKind'
-import { inspectDatasetShape, type ColumnShape, type DatasetShape } from './shape'
+import { inspectDatasetShape, type DatasetShape } from './shape'
 import type { AnalysisRowInput } from './csvTypes'
 
 export { isJunkLocationActivitySplit, looksLikePlaceEatingTask } from '../shared/questionKind'
 
-export const MAX_INSIGHTS = 3
+export const MAX_INSIGHTS = 4
 
 export interface InsightProposal {
   id: string
@@ -67,10 +69,33 @@ const columnValues = (rows: readonly AnalysisRowInput[], column: string): string
   }))
 )
 
-const placeValues = (shape: DatasetShape, rows: readonly AnalysisRowInput[]): string[] => {
-  const column = shape.placeColumns.find((name) => name.toLowerCase() === 'location') ?? shape.placeColumns[0]
-  if (!column) return []
-  return columnValues(rows, column)
+const SHIFT_TITLE_RE = /\bshift\b|am\s*\/\s*pm|\bam-?pm\b/i
+const CLASSIFY_BY_COLUMN_RE = /^classify by\s+/i
+const LABELS_IN_TABLE_RE = /labels in this table/i
+const AMPM_CLASS_RE = /^(am|pm)$/i
+
+const isAmpmClasses = (classes: readonly string[]): boolean => (
+  classes.length >= 2
+  && classes.length <= 4
+  && classes.every((name) => AMPM_CLASS_RE.test(name.trim()))
+)
+
+export const isBannedRawColumnClassInsight = (
+  insight: Pick<InsightProposal, 'title' | 'reason' | 'visual' | 'questionKind' | 'classes'>,
+  shape?: DatasetShape,
+  rows: readonly AnalysisRowInput[] = [],
+): boolean => {
+  if (CLASSIFY_BY_COLUMN_RE.test(insight.title) || SHIFT_TITLE_RE.test(insight.title)) return true
+  if (LABELS_IN_TABLE_RE.test(insight.reason)) return true
+  if (insight.questionKind !== 'choice' && insight.visual !== 'bars') return false
+  if (isAmpmClasses(insight.classes)) return true
+  if (insight.classes.length < 2 || !shape) return false
+  for (const column of shape.columns) {
+    if (column.role !== 'categorical' && column.role !== 'boolean' && column.role !== 'place') continue
+    const values = columnValues(rows, column.name)
+    if (values.length >= 2 && classesEqual(values, insight.classes)) return true
+  }
+  return false
 }
 
 const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
@@ -106,15 +131,15 @@ const rankedPlacesInsight = (): InsightProposal => ({
   cannedQuery: 'Does this row happen at a notable place?',
 })
 
-const classifyInsight = (id: string, title: string, classes: string[]): InsightProposal => ({
-  id,
-  title,
-  reason: 'Labels in this table.',
-  visual: 'bars',
-  task: `Classify each row as ${classes.join(' or ')} using the visible columns.`,
-  questionKind: 'choice',
-  classes,
-  cannedQuery: `Classify each row as ${classes.join(' or ')} using the visible columns.`,
+const sightingActivityInsight = (): InsightProposal => ({
+  id: 'series-activity',
+  title: 'How active',
+  reason: 'Score over each sighting.',
+  visual: 'series',
+  task: SQUIRREL_ACTIVITY_TASK,
+  questionKind: 'score',
+  classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+  cannedQuery: SQUIRREL_ACTIVITY_QUERY,
 })
 
 const notableInsight = (): InsightProposal => ({
@@ -137,6 +162,17 @@ const rateInsight = (): InsightProposal => ({
   questionKind: 'score',
   classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
   cannedQuery: 'Rate this row given the visible columns.',
+})
+
+const yesNoInsight = (): InsightProposal => ({
+  id: 'bars-call',
+  title: 'Yes or no',
+  reason: 'A call for each row.',
+  visual: 'bars',
+  task: 'Is this row a yes given the visible columns?',
+  questionKind: 'choice',
+  classes: ['Yes', 'No'],
+  cannedQuery: 'Is this row a yes given the visible columns?',
 })
 
 export const perspectiveLabelFor = (input: {
@@ -186,37 +222,29 @@ const pushInsight = (insights: InsightProposal[], insight: InsightProposal | und
   insights.push(insight)
 }
 
-const TEXTISH_COLUMN_RE = /^(message|text|comment|comments|description|notes?|body|content|raw|sentence|utterance)$/i
-const META_PLACE_ACTIVITY_RE = /^(location|locations|activity|activities|place|places)$/i
-const BOOLEANISH_CLASSES = new Set(['true', 'false', 'yes', 'no', 'y', 'n', '0', '1'])
-
-const prettyColumnName = (name: string): string => name.replace(/[_-]+/g, ' ').trim()
-
-const isBooleanishClasses = (classes: readonly string[]): boolean => (
-  classes.length === 2 && classes.every((name) => BOOLEANISH_CLASSES.has(name.trim().toLowerCase()))
-)
-
-const looksLikeFreeTextColumn = (column: ColumnShape, classes: readonly string[], rowCount: number): boolean => {
-  if (TEXTISH_COLUMN_RE.test(column.name) || TEXTISH_COLUMN_RE.test(column.normalizedName)) return true
-  if (classes.some((name) => name.length > 40 || name.trim().split(/\s+/).length > 6)) return true
-  return rowCount > 8 && column.uniqueRatio > 0.5
-}
-
-const classifyFromColumn = (
-  column: ColumnShape,
-  rows: readonly AnalysisRowInput[],
-  shape: DatasetShape,
-): InsightProposal | undefined => {
-  if (column.role !== 'categorical') return undefined
-  if (column.cardinality < 2 || column.cardinality > 8) return undefined
-  if (META_PLACE_ACTIVITY_RE.test(column.name) || META_PLACE_ACTIVITY_RE.test(column.normalizedName)) {
-    if (shape.geo || shape.hasEating || shape.placeColumns.length > 0) return undefined
+const fillDashboardInsights = (
+  insights: InsightProposal[],
+  options: { playState: boolean; shape: DatasetShape; rows: readonly AnalysisRowInput[] },
+): InsightProposal[] => {
+  const clean = insights.filter((item) => (
+    !isJunkLocationActivitySplit(item.classes)
+    && !isBannedRawColumnClassInsight(item, options.shape, options.rows)
+  ))
+  if (clean.length < 2) pushInsight(clean, notableInsight())
+  if (clean.length < 2) pushInsight(clean, rateInsight())
+  const visuals = new Set(clean.map((item) => item.visual))
+  if (!options.playState && clean.length < 4 && visuals.size < 2) {
+    if (!visuals.has('bars')) pushInsight(clean, yesNoInsight())
+    else if (!visuals.has('series')) pushInsight(clean, notableInsight())
+    else if (!visuals.has('places') && (options.shape.geo || options.shape.placeColumns.length > 0)) {
+      pushInsight(clean, options.shape.geo ? geoPlacesInsight() : rankedPlacesInsight())
+    }
   }
-  const classes = columnValues(rows, column.name)
-  if (classes.length < 2 || isJunkLocationActivitySplit(classes) || isBooleanishClasses(classes)) return undefined
-  if (looksLikeFreeTextColumn(column, classes, shape.rowCount)) return undefined
-  const key = column.normalizedName || column.name
-  return classifyInsight(`bars-${key}`, `Classify by ${prettyColumnName(column.name)}`, classes)
+  if (clean.length < 2) pushInsight(clean, yesNoInsight())
+  return clean.filter((item) => (
+    !isJunkLocationActivitySplit(item.classes)
+    && !isBannedRawColumnClassInsight(item, options.shape, options.rows)
+  )).slice(0, MAX_INSIGHTS)
 }
 
 export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'columns' | 'previewRows' | 'sourceType'>): InsightProposal[] => {
@@ -233,42 +261,27 @@ export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'col
     pushInsight(insights, playQualityInsight(perspectiveLabel))
   }
 
-  if (dataset.datasetId === SQUIRREL_FIXTURE_ID || (shape.hasEating && (shape.geo || shape.placeColumns.length > 0))) {
+  const eatingTable = dataset.datasetId === SQUIRREL_FIXTURE_ID || (shape.hasEating && (shape.geo || shape.placeColumns.length > 0))
+  if (eatingTable) {
     pushInsight(insights, eatingPlacesInsight(shape))
+    pushInsight(insights, sightingActivityInsight())
   }
-  if (shape.geo) {
+  if (shape.geo && !insights.some((item) => item.visual === 'places')) {
     pushInsight(insights, geoPlacesInsight())
   }
   if (!insights.some((item) => item.visual === 'places') && shape.placeColumns.length > 0) {
-    const classes = placeValues(shape, dataset.previewRows)
+    const column = shape.placeColumns.find((name) => name.toLowerCase() === 'location') ?? shape.placeColumns[0]
+    const classes = columnValues(dataset.previewRows, column ?? '')
     if (classes.length >= 2 && !isJunkLocationActivitySplit(classes)) {
       pushInsight(insights, rankedPlacesInsight())
     }
   }
 
-  const labels = classesFromLabelColumns(
-    dataset.columns.map((column) => column.name),
-    dataset.previewRows,
-  )
-  if (labels.length >= 2 && !isJunkLocationActivitySplit(labels) && !isBooleanishClasses(labels)) {
-    pushInsight(insights, classifyInsight('bars-labels', `Classify ${labels.slice(0, 2).join(' / ')}`, labels))
-  }
-
-  if (!playState) {
-    for (const column of shape.columns) {
-      if (insights.length >= MAX_INSIGHTS) break
-      const insight = classifyFromColumn(column, dataset.previewRows, shape)
-      if (!insight) continue
-      if (insights.some((item) => classesEqual(item.classes, insight.classes))) continue
-      pushInsight(insights, insight)
-    }
-  }
-
-  const clean = insights.filter((item) => !isJunkLocationActivitySplit(item.classes))
-  if (clean.length < 2) pushInsight(clean, notableInsight())
-  if (clean.length < 2) pushInsight(clean, rateInsight())
-
-  return clean.slice(0, MAX_INSIGHTS)
+  return fillDashboardInsights(insights, {
+    playState,
+    shape,
+    rows: dataset.previewRows,
+  })
 }
 
 export const resolveChartVisual = (input: {
@@ -307,4 +320,12 @@ export const chartIsRowStreamed = (visual: ChartVisualKind): boolean => visual !
 
 export const defaultInsightFor = (dataset: Pick<DatasetPreview, 'datasetId' | 'columns' | 'previewRows' | 'sourceType'>): InsightProposal | undefined => (
   proposeInsights(dataset)[0]
+)
+
+export const queryFromInsight = (insight: InsightProposal): string => (
+  formatDraftQueryForEditor({
+    query: insight.cannedQuery ?? insight.task,
+    questionKind: insight.questionKind,
+    classes: insight.classes,
+  })
 )

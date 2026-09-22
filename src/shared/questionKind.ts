@@ -8,6 +8,8 @@ export const SAMPLE_PLAY_QUALITY_QUERY = 'Rate the quality of this play given th
 export const SAMPLE_PLAY_QUALITY_LEVELS = ['Low', 'Medium', 'High'] as const
 export const SQUIRREL_EATING_TASK = 'Where they eat.'
 export const SQUIRREL_EATING_NOUL_QUERY = 'Is this squirrel eating given this sighting?'
+export const SQUIRREL_ACTIVITY_TASK = 'How active is this squirrel given this sighting?'
+export const SQUIRREL_ACTIVITY_QUERY = 'How active is this squirrel given this sighting?'
 export const INVALID_CLASSES_COPY = "Couldn't draft classes for that CSV — try a clearer question."
 
 export const JEV_QUESTION_KINDS = ['noul', 'score', 'choice'] as const
