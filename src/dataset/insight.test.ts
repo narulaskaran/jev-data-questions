@@ -17,9 +17,10 @@ import {
   sanitizeLlmInsightProposals,
   dashboardVisualQaOk,
   hasDiverseChartTypes,
+  insightEyebrow,
   isJunkDashboardInsight,
 } from './insight'
-import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_PLAY_QUALITY_TASK, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_ACTIVITY_QUERY, SQUIRREL_ACTIVITY_TASK } from '../shared/questionKind'
+import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_PLAY_QUALITY_TASK, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY } from '../shared/questionKind'
 
 describe('shape inspection', () => {
   it('reads geo, place, eating, and cardinality from the squirrel fixture', () => {
@@ -69,7 +70,7 @@ describe('shape → viz routing', () => {
     const insights = proposeInsights(dataset)
     expect(insights[0]).toEqual(expect.objectContaining({
       id: 'places-eating',
-      title: 'Where they eat',
+      title: 'Where are they eating?',
       visual: 'places',
       task: SQUIRREL_EATING_TASK,
       questionKind: 'noul',
@@ -79,15 +80,18 @@ describe('shape → viz routing', () => {
     expect(insights.length).toBeLessThanOrEqual(4)
     expect(hasDiverseChartTypes(insights)).toBe(true)
     expect(insights[0]?.reason).not.toMatch(/not class bars|location vs activity/i)
-    expect(insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'series-activity']))
-    expect(insights.find((item) => item.id === 'series-activity')).toEqual(expect.objectContaining({
-      title: 'On the move',
-      visual: 'series',
+    expect(insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'bars-eating-places']))
+    expect(insights.find((item) => item.id === 'bars-eating-places')).toEqual(expect.objectContaining({
+      title: 'Which places have the most eating?',
+      visual: 'bars',
       questionKind: 'noul',
-      task: SQUIRREL_ACTIVITY_TASK,
-      cannedQuery: SQUIRREL_ACTIVITY_QUERY,
+      task: SQUIRREL_EATING_TASK,
+      cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
     }))
-    expect(insights.find((item) => item.id === 'series-activity')?.classes).toEqual([])
+    expect(insights.find((item) => item.id === 'bars-eating-places')?.classes).toEqual([])
+    expect(insightEyebrow(insights[0]!)).toBe('Eating')
+    expect(insightEyebrow(insights.find((item) => item.id === 'bars-eating-places')!)).toBe('By place')
+    expect(insights.some((item) => item.id === 'series-activity')).toBe(false)
     expect(new Set(insights.map((item) => item.visual)).size).toBeGreaterThanOrEqual(2)
     expect(insights.some((item) => /classify by shift|labels in this table/i.test(`${item.title} ${item.reason}`))).toBe(false)
     expect(insights.some((item) => item.classes.some((name) => /^(am|pm)$/i.test(name)) && item.classes.length <= 2)).toBe(false)
@@ -227,8 +231,9 @@ describe('shape → viz routing', () => {
       visual: 'places',
       questionKind: 'noul',
     }))
-    expect(insights.some((item) => item.id === 'series-activity')).toBe(true)
-    expect(insights.some((item) => item.visual === 'series')).toBe(true)
+    expect(insights.some((item) => item.id === 'bars-eating-places')).toBe(true)
+    expect(insights.some((item) => item.visual === 'bars')).toBe(true)
+    expect(insights.some((item) => item.id === 'series-activity')).toBe(false)
     expect(insights.flatMap((item) => item.classes)).not.toEqual(expect.arrayContaining(['Location', 'Activity']))
     expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
     expect(insights.every((item) => !/location vs activity|not class bars/i.test(`${item.title} ${item.reason}`))).toBe(true)
@@ -261,9 +266,10 @@ describe('shape → viz routing', () => {
     const insights = proposeInsights(dataset)
     expect(insights[0]).toEqual(expect.objectContaining({
       id: 'places-eating',
-      title: 'Where they eat',
+      title: 'Where are they eating?',
       visual: 'places',
     }))
+    expect(insights.some((item) => item.id === 'bars-eating-places')).toBe(true)
     expect(insights.some((item) => /classify by shift/i.test(item.title))).toBe(false)
     expect(isBannedRawColumnClassInsight({
       title: 'Classify by shift',
@@ -376,7 +382,8 @@ describe('LLM insight proposals', () => {
     expect(sea.insights.map((item) => item.id)).toEqual(['series-win', 'series-play-quality'])
     const places = resolveDashboardInsights(squirrel, { insights: [] })
     expect(hasNamedHeuristicCuts(places.insights)).toBe(true)
-    expect(places.insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'series-activity']))
+    expect(places.insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'bars-eating-places']))
+    expect(places.insights.some((item) => item.id === 'series-activity')).toBe(false)
   })
 })
 

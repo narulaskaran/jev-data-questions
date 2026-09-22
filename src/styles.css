@@ -821,6 +821,80 @@ h3 {
   fill: var(--muted-foreground);
 }
 
+.place-labels {
+  position: absolute;
+  z-index: 2;
+  inset: 16px 14px 34px 14px;
+  pointer-events: none;
+}
+
+.place-pin {
+  position: absolute;
+  transform: translate(-50%, -120%);
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.place-legend {
+  position: absolute;
+  z-index: 2;
+  left: 10px;
+  right: 10px;
+  bottom: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  list-style: none;
+  color: var(--foreground);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.place-legend li {
+  display: inline-flex;
+  align-items: center;
+}
+
+.place-legend li[data-eating='true']::before,
+.place-legend li[data-eating='false']::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 999px;
+  background: var(--run);
+  flex-shrink: 0;
+}
+
+.place-legend li[data-eating='false']::before {
+  background: var(--muted-foreground);
+}
+
+.chart-caption {
+  margin: 0 0 8px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.chart-hero .distribution-chart[data-rank-kind='eating'] {
+  padding-top: 16px;
+}
+
 
 .intake-card.is-disabled { opacity: 0.62; }
 
@@ -894,6 +968,10 @@ h3 {
 }
 
 .chart-shell[data-waiting='false'] .chart-plot { cursor: ew-resize; }
+.chart-shell[data-chart-kind='places'] .chart-plot,
+.chart-shell[data-rank-places='true'] .chart-plot {
+  cursor: default;
+}
 
 .chart-axes {
   position: absolute;

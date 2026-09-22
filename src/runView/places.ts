@@ -12,6 +12,7 @@ export interface GeoPoint {
 export interface PlaceRank {
   name: string
   count: number
+  eating: number
   weight: number
 }
 
@@ -72,11 +73,25 @@ const rowWeight = (row: { value?: number; input: AnalysisRowInput }): number => 
   return 0.35
 }
 
+const PLACE_ALIASES: Record<string, string> = {
+  'ground plane': 'On the ground',
+  ground: 'On the ground',
+  'above ground': 'In the trees',
+  above_ground: 'In the trees',
+}
+
+export const humanPlaceLabel = (value: string): string => {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  return PLACE_ALIASES[trimmed.toLowerCase()] ?? trimmed
+}
+
 const placeLabel = (input: AnalysisRowInput): string => {
   const column = findPlaceColumn(input)
   if (!column) return ''
   const value = input[column]
-  return value === null || value === undefined ? '' : String(value)
+  if (value === null || value === undefined) return ''
+  return humanPlaceLabel(String(value))
 }
 
 export const projectPlaces = (
@@ -98,13 +113,14 @@ export const projectPlaces = (
       }
     }
     if (label) {
-      const current = ranks.get(label) ?? { name: label, count: 0, weight: 0 }
+      const current = ranks.get(label) ?? { name: label, count: 0, eating: 0, weight: 0 }
       current.count += 1
+      current.eating += weight >= 0.5 ? 1 : 0
       current.weight += weight
       ranks.set(label, current)
     }
   }
-  const ranked = [...ranks.values()].sort((left, right) => right.weight - left.weight || right.count - left.count || left.name.localeCompare(right.name))
+  const ranked = [...ranks.values()].sort((left, right) => right.eating - left.eating || right.weight - left.weight || right.count - left.count || left.name.localeCompare(right.name))
   return { points, ranks: ranked, hasMap }
 }
 
@@ -123,5 +139,27 @@ export const normalizePoints = (points: readonly GeoPoint[]): Array<GeoPoint & {
     ...point,
     px: pad + ((point.x - minX) / spanX) * (1 - pad * 2),
     py: pad + (1 - (point.y - minY) / spanY) * (1 - pad * 2),
+  }))
+}
+
+export const placeCentroids = (
+  points: readonly (GeoPoint & { px: number; py: number })[],
+): Array<{ name: string; px: number; py: number; eating: number; count: number }> => {
+  const groups = new Map<string, { px: number; py: number; eating: number; count: number }>()
+  for (const point of points) {
+    const name = point.label.trim() || 'Place'
+    const current = groups.get(name) ?? { px: 0, py: 0, eating: 0, count: 0 }
+    current.px += point.px
+    current.py += point.py
+    current.count += 1
+    current.eating += point.weight >= 0.5 ? 1 : 0
+    groups.set(name, current)
+  }
+  return [...groups.entries()].map(([name, value]) => ({
+    name,
+    px: value.px / Math.max(1, value.count),
+    py: value.py / Math.max(1, value.count),
+    eating: value.eating,
+    count: value.count,
   }))
 }

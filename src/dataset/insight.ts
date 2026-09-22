@@ -9,8 +9,6 @@ import {
   SAMPLE_PLAY_QUALITY_TASK,
   SAMPLE_WIN_LIKELIHOOD_TASK,
   SAMPLE_WIN_NOUL_QUERY,
-  SQUIRREL_ACTIVITY_QUERY,
-  SQUIRREL_ACTIVITY_TASK,
   SQUIRREL_EATING_NOUL_QUERY,
   SQUIRREL_EATING_TASK,
   inferQuestionKind,
@@ -121,9 +119,9 @@ export const isBannedRawColumnClassInsight = (
 
 const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
   id: 'places-eating',
-  title: 'Where they eat',
-  question: SQUIRREL_EATING_TASK,
-  reason: shape.geo ? 'Map of eating places.' : 'Ranked eating places.',
+  title: 'Where are they eating?',
+  question: 'Is this squirrel eating at this place?',
+  reason: shape.geo ? 'Map of eating places with counts.' : 'Ranked eating places.',
   visual: 'places',
   perspective: undefined,
   preparation: shape.geo ? 'Map eating rows from coordinates.' : 'Rank eating locations.',
@@ -159,27 +157,27 @@ const rankedPlacesInsight = (): InsightProposal => ({
   cannedQuery: 'Does this row happen at a notable place?',
 })
 
-const sightingActivityInsight = (): InsightProposal => ({
-  id: 'series-activity',
-  title: 'On the move',
-  question: SQUIRREL_ACTIVITY_TASK,
-  reason: 'Moving over each sighting.',
-  visual: 'series',
-  preparation: 'Score motion on each sighting.',
-  task: SQUIRREL_ACTIVITY_TASK,
+const rankedEatingBarsInsight = (): InsightProposal => ({
+  id: 'bars-eating-places',
+  title: 'Which places have the most eating?',
+  question: 'Is this squirrel eating at this place?',
+  reason: 'Eating count by place.',
+  visual: 'bars',
+  preparation: 'Count eating rows per place.',
+  task: SQUIRREL_EATING_TASK,
   questionKind: 'noul',
   classes: [],
-  cannedQuery: SQUIRREL_ACTIVITY_QUERY,
+  cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
 })
 
 export const insightEyebrow = (insight: Pick<InsightProposal, 'id' | 'visual'>): string => {
-  if (insight.id === 'places-eating') return 'Eating map'
-  if (insight.id === 'series-activity') return 'P(moving)'
-  if (insight.id === 'series-win') return 'P(win) line'
-  if (insight.id === 'series-play-quality') return 'Quality'
-  if (insight.visual === 'places') return 'Map'
-  if (insight.visual === 'series') return 'Series'
-  return 'Call'
+  if (insight.id === 'places-eating') return 'Eating'
+  if (insight.id === 'bars-eating-places') return 'By place'
+  if (insight.id === 'series-win') return 'Win chance'
+  if (insight.id === 'series-play-quality') return 'Play quality'
+  if (insight.visual === 'places') return 'Places'
+  if (insight.visual === 'series') return 'Over time'
+  return 'Counts'
 }
 
 export const isJunkDashboardInsight = (
@@ -282,7 +280,7 @@ const fillDashboardInsights = (
   const clean = insights.filter((item) => !isJunkDashboardInsight(item, options.shape, options.rows))
   if (options.shape.hasEating && (options.shape.geo || options.shape.placeColumns.length > 0)) {
     tryPushInsight(clean, eatingPlacesInsight(options.shape), options.shape, options.rows)
-    tryPushInsight(clean, sightingActivityInsight(), options.shape, options.rows)
+    tryPushInsight(clean, rankedEatingBarsInsight(), options.shape, options.rows)
   }
   return clean.filter((item) => !isJunkDashboardInsight(item, options.shape, options.rows)).slice(0, MAX_INSIGHTS)
 }
@@ -304,7 +302,7 @@ export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'col
   const eatingTable = dataset.datasetId === SQUIRREL_FIXTURE_ID || (shape.hasEating && (shape.geo || shape.placeColumns.length > 0))
   if (eatingTable) {
     pushInsight(insights, eatingPlacesInsight(shape))
-    pushInsight(insights, sightingActivityInsight())
+    pushInsight(insights, rankedEatingBarsInsight())
   }
   if (shape.geo && !insights.some((item) => item.visual === 'places')) {
     pushInsight(insights, geoPlacesInsight())
@@ -409,7 +407,7 @@ export const hasNamedHeuristicCuts = (
 ): boolean => {
   if (isLockedPlayStatePair(insights)) return true
   const ids = new Set(insights.map((item) => item.id))
-  return ids.has('places-eating') && ids.has('series-activity')
+  return ids.has('places-eating') && ids.has('bars-eating-places')
 }
 
 export const packInsightProposal = (

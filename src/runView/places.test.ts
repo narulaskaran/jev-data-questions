@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { projectPlaces, normalizePoints } from './places'
+import { projectPlaces, normalizePoints, humanPlaceLabel } from './places'
 
 describe('places projection', () => {
   it('maps lat/lng eating rows and ranks Ground Plane above Location/Activity', () => {
@@ -11,8 +11,9 @@ describe('places projection', () => {
     const projected = projectPlaces(rows)
     expect(projected.hasMap).toBe(true)
     expect(projected.points).toHaveLength(3)
-    expect(projected.ranks.map((item) => item.name)).toEqual(['Ground Plane', 'Above Ground'])
+    expect(projected.ranks.map((item) => item.name)).toEqual(['On the ground', 'In the trees'])
     expect(projected.ranks.map((item) => item.name)).not.toEqual(['Location', 'Activity'])
+    expect(projected.ranks[0]).toEqual(expect.objectContaining({ name: 'On the ground', count: 2, eating: 2 }))
     const normalized = normalizePoints(projected.points)
     expect(normalized.every((point) => point.px >= 0 && point.px <= 1 && point.py >= 0 && point.py <= 1)).toBe(true)
   })
@@ -24,6 +25,13 @@ describe('places projection', () => {
       { rowIndex: 2, input: { location: 'Above Ground', eating: false } },
     ])
     expect(projected.hasMap).toBe(false)
-    expect(projected.ranks[0]).toEqual(expect.objectContaining({ name: 'Ground Plane', count: 2 }))
+    expect(projected.ranks[0]).toEqual(expect.objectContaining({ name: 'On the ground', count: 2, eating: 2 }))
+    expect(projected.ranks[1]).toEqual(expect.objectContaining({ name: 'In the trees', count: 1, eating: 0 }))
+  })
+
+  it('renames census jargon to plain place names', () => {
+    expect(humanPlaceLabel('Ground Plane')).toBe('On the ground')
+    expect(humanPlaceLabel('Above Ground')).toBe('In the trees')
+    expect(humanPlaceLabel('Central Park')).toBe('Central Park')
   })
 })

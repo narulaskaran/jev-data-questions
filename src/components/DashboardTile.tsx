@@ -78,9 +78,11 @@ export const DashboardTile = memo(function DashboardTile({
       ? { title: "Couldn't run", detail: error }
       : undefined
   const paintsPlaces = chartKind === 'places' && (sourceRows?.length ?? 0) > 0
-  const empty = rows.length === 0 && !paintsPlaces
-  const showSkeleton = empty && chartKind !== 'places'
-  const showError = Boolean(errorCopy) && !paintsPlaces
+  const rankPlaces = insight.id === 'bars-eating-places'
+  const paintsRanks = rankPlaces && (sourceRows?.length ?? 0) > 0
+  const empty = rows.length === 0 && !paintsPlaces && !paintsRanks
+  const showSkeleton = empty && chartKind !== 'places' && !paintsRanks
+  const showError = Boolean(errorCopy) && !paintsPlaces && !paintsRanks
   const showProgress = Boolean(starting || snapshot)
   const waitingCopy = starting && !snapshot && !stallCopy ? 'Starting…' : undefined
   const perspectiveLabel = perspectiveLabelFor({
@@ -105,6 +107,7 @@ export const DashboardTile = memo(function DashboardTile({
       questionKind={questionKind}
       chartKind={chartKind}
       compact
+      rankPlaces={rankPlaces}
       heading={insight.title}
       headingId={headingId}
       sourceRows={sourceRows}
@@ -120,6 +123,7 @@ export const DashboardTile = memo(function DashboardTile({
     playheadIndex,
     perspectiveLabel,
     questionKind,
+    rankPlaces,
     rows,
     snapshot?.classes,
     sourceRows,

@@ -670,19 +670,16 @@ describe('Jev insight product flow', () => {
     })
     const api = makeApi({
       draft: vi.fn(async () => eatingDraft),
-      start: vi.fn(async (request) => (
-        /on the move/i.test(String(request.query))
-          ? { ...eatingRun, analysisId: 'analysis-squirrel-activity', query: request.query }
-          : eatingRun
-      )),
+      start: vi.fn(async () => eatingRun),
       read: vi.fn(async () => eatingRun),
     })
     openFixture(api, SQUIRREL_FIXTURE_ID)
     expect(window.location.pathname).toBe(`/dataset/${SQUIRREL_FIXTURE_ID}`)
     expect(screen.getByLabelText(/dataset shape/i)).toBeInTheDocument()
     expect(screen.queryByText(/location vs activity/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /where they eat/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /on the move/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Where are they eating?' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Which places have the most eating?' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /on the move/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /how active/i })).not.toBeInTheDocument()
     expect(Number(document.querySelector('.dashboard-grid')?.getAttribute('data-insight-count'))).toBeGreaterThanOrEqual(2)
     expectDiverseDashboard()
@@ -696,10 +693,16 @@ describe('Jev insight product flow', () => {
     const placesTile = document.querySelector('[data-insight-id="places-eating"]') as HTMLElement
     expect(placesTile).toHaveAttribute('data-lead')
     expect(placesTile).toHaveAttribute('data-visual', 'places')
-    expect(await within(placesTile).findByRole('img', { name: /places map of eating locations/i })).toBeInTheDocument()
+    expect(await within(placesTile).findByRole('img', { name: /map of where they are eating, with counts per place/i })).toBeInTheDocument()
+    expect(within(placesTile).getByRole('list', { name: /eating map legend/i })).toBeInTheDocument()
+    expect(placesTile.querySelector('[data-place-label="On the ground"]')).toBeTruthy()
     expect(screen.queryByText(/using saved run/i)).not.toBeInTheDocument()
     expect(placesTile.querySelector('[data-chart-kind="places"]')).toBeTruthy()
     expect(placesTile.querySelector('[data-place-points]')).toBeTruthy()
+    const barsTile = document.querySelector('[data-insight-id="bars-eating-places"]') as HTMLElement
+    expect(barsTile).toHaveAttribute('data-visual', 'bars')
+    expect(within(barsTile).getByRole('img', { name: /eating count by place/i })).toBeInTheDocument()
+    expect(within(barsTile).getByText('Eating count')).toBeInTheDocument()
     expect(document.querySelector('[data-class="Location"]')).toBeNull()
     expect(document.querySelector('[data-class="Activity"]')).toBeNull()
     expect(document.querySelector('[data-class="AM"]')).toBeNull()
@@ -711,7 +714,8 @@ describe('Jev insight product flow', () => {
       questionKind: 'noul',
       classes: [],
     }))
-    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: expect.stringMatching(/on the move/i) }))
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: expect.stringMatching(/eating given this sighting/i) }))
+    expect(api.start).not.toHaveBeenCalledWith(expect.objectContaining({ query: expect.stringMatching(/on the move/i) }))
   })
 
   it('follows the live edge until the user scrubs back, then seeks from the row rail', async () => {
