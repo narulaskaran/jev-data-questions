@@ -4,7 +4,14 @@ import { classColor } from '../runView/classColor'
 import { areChartPropsEqual, barWidth } from '../runView/chartProps'
 import { clampPlayhead, playDomainCount, playIndexFromRatio, type PlayheadMotion } from '../runView/playhead'
 import { areaPath, jevSeriesPoints, linePath, seriesExtent, seriesX } from '../runView/seriesPath'
-import { normalizePoints, placeCentroids, projectPlaces } from '../runView/places'
+import {
+  declutterPlaceLabels,
+  mapLabelText,
+  normalizePoints,
+  placeCentroids,
+  placeCountLabel,
+  projectPlaces,
+} from '../runView/places'
 import { chartVisualFor, inferQuestionKind, type ChartVisualKind, type JevQuestionKind } from '../shared/questionKind'
 import type { AnalysisResultRow, AnalysisRowInput } from '../shared/analysis'
 import { chartHeading, seriesPlayStatus } from '../runView/format'
@@ -37,6 +44,33 @@ const ClassBar = memo(function ClassBar({
           } as CSSProperties}
         />
       </div>
+    </div>
+  )
+})
+
+const RankBar = memo(function RankBar({
+  name,
+  count,
+  scale,
+  color,
+}: {
+  name: string
+  count: number
+  scale: number
+  color: string
+}) {
+  const label = placeCountLabel(name, count)
+  return (
+    <div className="rank-row" data-class={name} data-count={count} data-rank-end-label={label}>
+      <div className="rank-track" aria-hidden="true">
+        <span
+          style={{
+            '--bar-width': barWidth(count, scale),
+            '--bar-color': color,
+          } as CSSProperties}
+        />
+      </div>
+      <span className="rank-end-label">{label}</span>
     </div>
   )
 })
@@ -110,7 +144,10 @@ export const ResultsChart = memo(function ResultsChart({
     () => (places.hasMap ? normalizePoints(places.points) : []),
     [places.hasMap, places.points],
   )
-  const labels = useMemo(() => placeCentroids(mapPoints), [mapPoints])
+  const labels = useMemo(
+    () => declutterPlaceLabels(placeCentroids(mapPoints)),
+    [mapPoints],
+  )
   const eatingDots = mapPoints.filter((point) => point.weight >= 0.5).length
   const otherDots = mapPoints.length - eatingDots
   const rankScale = Math.max(...places.ranks.map((entry) => entry.eating || entry.count), 1)
@@ -212,6 +249,7 @@ export const ResultsChart = memo(function ResultsChart({
         <div
           ref={plotRef}
           className="chart-plot"
+          style={(rankPlaces || (visual === 'places' && !places.hasMap)) ? { '--rank-rows': String(places.ranks.length) } as CSSProperties : undefined}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -259,10 +297,16 @@ export const ResultsChart = memo(function ResultsChart({
             </div>
           ) : null}
           {rankPlaces && places.ranks.length > 0 ? (
-            <div className="distribution-chart" data-waiting="false" data-place-ranks={places.ranks.length} data-rank-kind="eating">
+            <div
+              className="distribution-chart"
+              data-waiting="false"
+              data-place-ranks={places.ranks.length}
+              data-rank-kind="eating"
+              style={{ '--rank-rows': places.ranks.length } as CSSProperties}
+            >
               <p className="chart-caption">Eating count</p>
               {places.ranks.map((item) => (
-                <ClassBar
+                <RankBar
                   key={item.name}
                   name={item.name}
                   count={item.eating}
@@ -288,7 +332,7 @@ export const ResultsChart = memo(function ResultsChart({
                   />
                 ))}
               </svg>
-              <div className="place-labels" aria-hidden="true">
+              <div className="place-labels" aria-hidden="true" data-visible-labels={labels.length}>
                 {labels.map((label) => (
                   <span
                     key={label.name}
@@ -296,8 +340,10 @@ export const ResultsChart = memo(function ResultsChart({
                     style={{ left: `${label.px * 100}%`, top: `${label.py * 100}%` }}
                     data-place-label={label.name}
                     data-eating-count={label.eating}
+                    data-label-px={label.px.toFixed(3)}
+                    data-label-py={label.py.toFixed(3)}
                   >
-                    {label.name} · {label.eating} eating
+                    {mapLabelText(label)}
                   </span>
                 ))}
               </div>
@@ -308,10 +354,16 @@ export const ResultsChart = memo(function ResultsChart({
             </>
           ) : null}
           {visual === 'places' && !places.hasMap && places.ranks.length > 0 ? (
-            <div className="distribution-chart" data-waiting="false" data-place-ranks={places.ranks.length} data-rank-kind="eating">
+            <div
+              className="distribution-chart"
+              data-waiting="false"
+              data-place-ranks={places.ranks.length}
+              data-rank-kind="eating"
+              style={{ '--rank-rows': places.ranks.length } as CSSProperties}
+            >
               <p className="chart-caption">Eating count</p>
               {places.ranks.map((item) => (
-                <ClassBar
+                <RankBar
                   key={item.name}
                   name={item.name}
                   count={item.eating}

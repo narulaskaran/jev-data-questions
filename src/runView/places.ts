@@ -142,24 +142,139 @@ export const normalizePoints = (points: readonly GeoPoint[]): Array<GeoPoint & {
   }))
 }
 
+export interface PlaceLabel {
+  name: string
+  px: number
+  py: number
+  eating: number
+  count: number
+}
+
+export const placeCountLabel = (name: string, count: number): string => `${name} · ${count}`
+
+const median = (values: readonly number[]): number => {
+  if (values.length === 0) return 0.5
+  const sorted = [...values].sort((left, right) => left - right)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2
+}
+
 export const placeCentroids = (
   points: readonly (GeoPoint & { px: number; py: number })[],
-): Array<{ name: string; px: number; py: number; eating: number; count: number }> => {
-  const groups = new Map<string, { px: number; py: number; eating: number; count: number }>()
+): PlaceLabel[] => {
+  const groups = new Map<string, { xs: number[]; ys: number[]; eatXs: number[]; eatYs: number[]; eating: number; count: number }>()
   for (const point of points) {
     const name = point.label.trim() || 'Place'
-    const current = groups.get(name) ?? { px: 0, py: 0, eating: 0, count: 0 }
-    current.px += point.px
-    current.py += point.py
+    const current = groups.get(name) ?? { xs: [], ys: [], eatXs: [], eatYs: [], eating: 0, count: 0 }
+    current.xs.push(point.px)
+    current.ys.push(point.py)
     current.count += 1
-    current.eating += point.weight >= 0.5 ? 1 : 0
+    if (point.weight >= 0.5) {
+      current.eating += 1
+      current.eatXs.push(point.px)
+      current.eatYs.push(point.py)
+    }
     groups.set(name, current)
   }
   return [...groups.entries()].map(([name, value]) => ({
     name,
-    px: value.px / Math.max(1, value.count),
-    py: value.py / Math.max(1, value.count),
+    px: median(value.eatXs.length > 0 ? value.eatXs : value.xs),
+    py: median(value.eatYs.length > 0 ? value.eatYs : value.ys),
     eating: value.eating,
     count: value.count,
+  }))
+}
+
+type LabelBox = { left: number; right: number; top: number; bottom: number }
+
+const MAP_LABEL_CHAR_W = 0.011
+const MAP_LABEL_PAD_W = 0.04
+const MAP_LABEL_H = 0.09
+const MAP_LABEL_MAX_W = 0.62
+const MAP_EDGE = 0.02
+
+const OFFSETS: ReadonlyArray<{ dx: number; dy: number }> = [
+  { dx: 0, dy: -0.07 },
+  { dx: 0.1, dy: -0.07 },
+  { dx: -0.1, dy: -0.07 },
+  { dx: 0.14, dy: 0.02 },
+  { dx: -0.14, dy: 0.02 },
+  { dx: 0, dy: 0.09 },
+  { dx: 0.12, dy: 0.09 },
+  { dx: -0.12, dy: 0.09 },
+  { dx: 0.2, dy: -0.02 },
+  { dx: -0.2, dy: -0.02 },
+  { dx: 0.18, dy: -0.14 },
+  { dx: -0.18, dy: -0.14 },
+]
+
+const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
+
+export const mapLabelText = (label: Pick<PlaceLabel, 'name' | 'eating'>): string => (
+  `${label.name} · ${label.eating} eating`
+)
+
+export const estimateMapLabelSize = (label: Pick<PlaceLabel, 'name' | 'eating'>): { width: number; height: number } => {
+  const width = Math.min(MAP_LABEL_MAX_W, MAP_LABEL_PAD_W + mapLabelText(label).length * MAP_LABEL_CHAR_W)
+  return { width, height: MAP_LABEL_H }
+}
+
+export const boxesOverlap = (left: LabelBox, right: LabelBox, pad = 0.012): boolean => (
+  left.left < right.right + pad
+  && left.right + pad > right.left
+  && left.top < right.bottom + pad
+  && left.bottom + pad > right.top
+)
+
+const boxAt = (px: number, py: number, width: number, height: number): LabelBox => ({
+  left: px - width / 2,
+  right: px + width / 2,
+  top: py - height / 2,
+  bottom: py + height / 2,
+})
+
+const fitsPlot = (box: LabelBox): boolean => (
+  box.left >= MAP_EDGE && box.right <= 1 - MAP_EDGE && box.top >= MAP_EDGE && box.bottom <= 0.86
+)
+
+/** Keep the highest-eating labels; offset or hide the rest so pins don't collide. */
+export const declutterPlaceLabels = (
+  labels: readonly PlaceLabel[],
+  options: { maxVisible?: number } = {},
+): PlaceLabel[] => {
+  if (labels.length === 0) return []
+  const maxVisible = Math.max(1, options.maxVisible ?? 6)
+  const ranked = [...labels].sort((left, right) => (
+    right.eating - left.eating
+    || right.count - left.count
+    || left.name.localeCompare(right.name)
+  ))
+  const placed: Array<PlaceLabel & { box: LabelBox }> = []
+  for (const label of ranked) {
+    if (placed.length >= maxVisible) break
+    const { width, height } = estimateMapLabelSize(label)
+    let next: (PlaceLabel & { box: LabelBox }) | undefined
+    for (const offset of OFFSETS) {
+      const px = clamp(label.px + offset.dx, MAP_EDGE + width / 2, 1 - MAP_EDGE - width / 2)
+      const py = clamp(label.py + offset.dy, MAP_EDGE + height / 2, 0.86 - height / 2)
+      const box = boxAt(px, py, width, height)
+      if (!fitsPlot(box)) continue
+      if (placed.some((item) => boxesOverlap(item.box, box))) continue
+      next = { ...label, px, py, box }
+      break
+    }
+    if (!next && placed.length === 0) {
+      const px = clamp(label.px, MAP_EDGE + width / 2, 1 - MAP_EDGE - width / 2)
+      const py = clamp(label.py - 0.07, MAP_EDGE + height / 2, 0.86 - height / 2)
+      next = { ...label, px, py, box: boxAt(px, py, width, height) }
+    }
+    if (next) placed.push(next)
+  }
+  return placed.map((item) => ({
+    name: item.name,
+    px: item.px,
+    py: item.py,
+    eating: item.eating,
+    count: item.count,
   }))
 }
