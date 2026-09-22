@@ -5,10 +5,7 @@ import { areChartPropsEqual, barWidth } from '../runView/chartProps'
 import { clampPlayhead, playDomainCount, playIndexFromRatio, type PlayheadMotion } from '../runView/playhead'
 import { areaPath, jevSeriesPoints, linePath, seriesExtent, seriesX } from '../runView/seriesPath'
 import {
-  declutterPlaceLabels,
-  mapLabelText,
   normalizePoints,
-  placeCentroids,
   placeCountLabel,
   projectPlaces,
 } from '../runView/places'
@@ -144,10 +141,6 @@ export const ResultsChart = memo(function ResultsChart({
     () => (places.hasMap ? normalizePoints(places.points) : []),
     [places.hasMap, places.points],
   )
-  const labels = useMemo(
-    () => declutterPlaceLabels(placeCentroids(mapPoints)),
-    [mapPoints],
-  )
   const eatingDots = mapPoints.filter((point) => point.weight >= 0.5).length
   const otherDots = mapPoints.length - eatingDots
   const rankScale = Math.max(...places.ranks.map((entry) => entry.eating || entry.count), 1)
@@ -176,7 +169,7 @@ export const ResultsChart = memo(function ResultsChart({
     : visual === 'series'
       ? `${heading} over ${headingOverride && !perspectiveLabel ? 'each row' : 'play index'}`
       : visual === 'places'
-        ? (places.hasMap ? 'Map of where they are eating, with counts per place' : 'Eating count by place')
+        ? (places.hasMap ? 'Map of where they are eating' : 'Eating count by place')
         : rankPlaces
           ? 'Eating count by place'
           : 'Class distribution visualization'
@@ -319,7 +312,7 @@ export const ResultsChart = memo(function ResultsChart({
           {visual === 'places' && places.hasMap && mapPoints.length > 0 ? (
             <>
               <p className="chart-caption">Each dot is a sighting</p>
-              <svg className="places-svg" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet" data-place-points={mapPoints.length}>
+              <svg className="places-svg" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet" data-place-points={mapPoints.length} data-place-labels="0">
                 {mapPoints.map((point) => (
                   <circle
                     key={point.rowIndex}
@@ -332,21 +325,6 @@ export const ResultsChart = memo(function ResultsChart({
                   />
                 ))}
               </svg>
-              <div className="place-labels" aria-hidden="true" data-visible-labels={labels.length}>
-                {labels.map((label) => (
-                  <span
-                    key={label.name}
-                    className="place-pin"
-                    style={{ left: `${label.px * 100}%`, top: `${label.py * 100}%` }}
-                    data-place-label={label.name}
-                    data-eating-count={label.eating}
-                    data-label-px={label.px.toFixed(3)}
-                    data-label-py={label.py.toFixed(3)}
-                  >
-                    {mapLabelText(label)}
-                  </span>
-                ))}
-              </div>
               <ul className="place-legend" aria-label="Eating map legend">
                 <li data-eating="true">Eating · {eatingDots}</li>
                 <li data-eating="false">Not eating · {otherDots}</li>
