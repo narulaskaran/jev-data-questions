@@ -153,10 +153,13 @@ const isPlayerChoiceStart = (request: { questionKind?: string; classes?: readonl
   request.questionKind === 'choice' && (request.classes ?? []).includes('K.Walker')
 )
 
+const expectNamedDashboard = () => {
+  expect(Number(document.querySelector('.dashboard-grid')?.getAttribute('data-insight-count'))).toBeGreaterThanOrEqual(2)
+}
+
 const expectDiverseDashboard = () => {
-  const grid = document.querySelector('.dashboard-grid')
-  expect(Number(grid?.getAttribute('data-insight-count'))).toBeGreaterThanOrEqual(2)
-  expect(Number(grid?.getAttribute('data-visual-kind-count'))).toBeGreaterThanOrEqual(2)
+  expectNamedDashboard()
+  expect(Number(document.querySelector('.dashboard-grid')?.getAttribute('data-visual-kind-count'))).toBeGreaterThanOrEqual(2)
 }
 
 describe('Jev insight product flow', () => {
@@ -235,12 +238,12 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'SEA play quality' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Play success' })).toBeInTheDocument()
-    expectDiverseDashboard()
+    expect(screen.queryByRole('heading', { name: 'Play success' })).not.toBeInTheDocument()
+    expectNamedDashboard()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
     expect(document.querySelector('[data-insight-id="series-win"]')).toHaveAttribute('data-visual', 'series')
     expect(document.querySelector('[data-insight-id="series-play-quality"]')).toHaveAttribute('data-visual', 'series')
-    expect(document.querySelector('[data-insight-id="bars-success"]')).toHaveAttribute('data-visual', 'bars')
+    expect(document.querySelector('[data-insight-id="bars-success"]')).toBeNull()
     expect(screen.getByText('71 rows')).toBeInTheDocument()
     expect(screen.getByText(/^26 columns$/)).toBeInTheDocument()
     expect(screen.queryByText(/showing first/i)).not.toBeInTheDocument()
@@ -516,11 +519,12 @@ describe('Jev insight product flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
     expect(document.querySelector('[data-insight-id="series-win"]')).toHaveAttribute('data-visual', 'series')
     expect(document.querySelector('[data-insight-id="series-play-quality"]')).toHaveAttribute('data-visual', 'series')
-    expect(document.querySelector('[data-insight-id="bars-success"]')).toHaveAttribute('data-visual', 'bars')
-    expectDiverseDashboard()
+    expect(document.querySelector('[data-insight-id="bars-success"]')).toBeNull()
+    expectNamedDashboard()
     expect(screen.getByRole('heading', { name: 'SEA play quality' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /^Play quality$/ })).not.toBeInTheDocument()
-    expect(screen.getByText('Series')).toBeInTheDocument()
+    expect(screen.getByText('P(win) line')).toBeInTheDocument()
+    expect(screen.getByText('Quality')).toBeInTheDocument()
     expect(screen.getByLabelText(/dataset shape/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /^Win probability$/ })).not.toBeInTheDocument()
@@ -541,7 +545,6 @@ describe('Jev insight product flow', () => {
     expect(api.draft).not.toHaveBeenCalled()
     expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: noulQueryJson, questionKind: 'noul', classes: [] }))
     expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ questionKind: 'score' }))
-    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ questionKind: 'choice' }))
   })
 
   it('charts Seahawks play quality as a series over all 71 plays, not Good/Bad H1 bars', async () => {
@@ -590,8 +593,8 @@ describe('Jev insight product flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
     const playQualityCard = document.querySelector('[data-insight-id="series-play-quality"]') as HTMLElement
     expect(playQualityCard).toHaveAttribute('data-visual', 'series')
-    expect(document.querySelector('[data-insight-id="bars-success"]')).toHaveAttribute('data-visual', 'bars')
-    expectDiverseDashboard()
+    expect(document.querySelector('[data-insight-id="bars-success"]')).toBeNull()
+    expectNamedDashboard()
     expect(within(playQualityCard).queryByText(/class bars/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
     expect(await within(playQualityCard).findByRole('img', { name: /sea play quality over play index/i })).toBeInTheDocument()
@@ -604,7 +607,6 @@ describe('Jev insight product flow', () => {
     expect(api.draft).not.toHaveBeenCalled()
     expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: scoreQueryJson, questionKind: 'score' }))
     expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ questionKind: 'noul' }))
-    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ questionKind: 'choice' }))
   })
 
   it('opens the squirrel census sample and runs a places insight, never Location vs Activity bars', async () => {
@@ -647,8 +649,8 @@ describe('Jev insight product flow', () => {
     const api = makeApi({
       draft: vi.fn(async () => eatingDraft),
       start: vi.fn(async (request) => (
-        request.questionKind === 'score'
-          ? { ...eatingRun, analysisId: 'analysis-squirrel-activity', questionKind: 'score' as const, query: request.query }
+        /on the move/i.test(String(request.query))
+          ? { ...eatingRun, analysisId: 'analysis-squirrel-activity', query: request.query }
           : eatingRun
       )),
       read: vi.fn(async () => eatingRun),
@@ -659,7 +661,8 @@ describe('Jev insight product flow', () => {
     expect(screen.getByLabelText(/dataset shape/i)).toBeInTheDocument()
     expect(screen.queryByText(/location vs activity/i)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /where they eat/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /how active/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /on the move/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /how active/i })).not.toBeInTheDocument()
     expect(Number(document.querySelector('.dashboard-grid')?.getAttribute('data-insight-count'))).toBeGreaterThanOrEqual(2)
     expectDiverseDashboard()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
@@ -687,7 +690,7 @@ describe('Jev insight product flow', () => {
       questionKind: 'noul',
       classes: [],
     }))
-    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ questionKind: 'score' }))
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: expect.stringMatching(/on the move/i) }))
   })
 
   it('follows the live edge until the user scrubs back, then seeks from the row rail', async () => {
@@ -779,16 +782,13 @@ describe('Jev insight product flow', () => {
     const file = new File(['message,tier\nhello,gold\n'], 'tickets.csv', { type: 'text/csv' })
     fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
     expect(await screen.findByRole('heading', { name: 'tickets.csv' })).toBeInTheDocument()
-    expect(Number(document.querySelector('.dashboard-grid')?.getAttribute('data-insight-count'))).toBeGreaterThanOrEqual(2)
-    expectDiverseDashboard()
+    expect(screen.queryByRole('heading', { name: /yes or no|notable rows|play success/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /draft task/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
-    await waitFor(() => expect(api.start).toHaveBeenCalledWith(expect.objectContaining({
-      datasetId: uploaded.datasetId,
-      fixtureId: undefined,
-    })))
-    expect(document.querySelector('[data-chart-kind]')).toBeTruthy()
+    expect(screen.queryByText(/classify by /i)).not.toBeInTheDocument()
+    expect(document.querySelector('.dashboard-grid')).toBeNull()
+    expect(api.start).not.toHaveBeenCalled()
     expect(screen.queryByRole('region', { name: /current row inspector/i })).not.toBeInTheDocument()
   })
 
@@ -832,9 +832,8 @@ describe('Jev insight product flow', () => {
     const file = new File(['id,text,label_hint\n1,apple,fruit\n'], 'classify.csv', { type: 'text/csv' })
     fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
     expect(await screen.findByRole('heading', { name: 'classify.csv' })).toBeInTheDocument()
-    expect(Number(document.querySelector('.dashboard-grid')?.getAttribute('data-insight-count'))).toBeGreaterThanOrEqual(2)
-    expectDiverseDashboard()
     expect(screen.queryByText(/classify by /i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /yes or no|notable rows/i })).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
     openEngineer()
     fireEvent.change(screen.getByLabelText(/^Analysis task$/i), {
@@ -1195,12 +1194,12 @@ describe('Jev insight product flow', () => {
     render(<App api={api} />)
     expect(await screen.findByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'SEA play quality' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Play success' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Play success' })).not.toBeInTheDocument()
     expect(document.querySelector('[data-stage="dataset"]')).toBeTruthy()
-    expectDiverseDashboard()
+    expectNamedDashboard()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /choose a dataset/i })).not.toBeInTheDocument()
-    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(3))
-    expect(vi.mocked(api.start).mock.calls.map((call) => call[0]?.questionKind).sort()).toEqual(['choice', 'noul', 'score'])
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.start).mock.calls.map((call) => call[0]?.questionKind).sort()).toEqual(['noul', 'score'])
   })
 })

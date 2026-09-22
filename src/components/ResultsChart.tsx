@@ -120,7 +120,7 @@ export const ResultsChart = memo(function ResultsChart({
   const aria = waiting
     ? 'Waiting for the first row'
     : visual === 'series'
-      ? `${chartHeading(kind, visual, perspectiveLabel)} over play index`
+      ? `${heading} over ${headingOverride && !perspectiveLabel ? 'each row' : 'play index'}`
       : visual === 'places'
         ? (places.hasMap ? 'Places map of eating locations' : 'Ranked places')
         : 'Class distribution visualization'
@@ -208,7 +208,7 @@ export const ResultsChart = memo(function ResultsChart({
               <span>0%</span>
             </div>
           ) : null}
-          {waiting ? <p className="chart-empty">Waiting for the first row…</p> : null}
+          {waiting && !compact ? <p className="chart-empty">Waiting for the first row…</p> : null}
           {visual === 'series' && series.length > 0 ? (
             <svg
               className="series-svg"

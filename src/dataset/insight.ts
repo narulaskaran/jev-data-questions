@@ -111,7 +111,7 @@ const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
 
 const geoPlacesInsight = (): InsightProposal => ({
   id: 'places-geo',
-  title: 'Places',
+  title: 'Where they are',
   reason: 'Map of these rows.',
   visual: 'places',
   task: 'Where are these rows?',
@@ -122,7 +122,7 @@ const geoPlacesInsight = (): InsightProposal => ({
 
 const rankedPlacesInsight = (): InsightProposal => ({
   id: 'places-ranked',
-  title: 'Places',
+  title: 'Where they happen',
   reason: 'Ranked locations.',
   visual: 'places',
   task: 'Where do these rows happen?',
@@ -133,62 +133,54 @@ const rankedPlacesInsight = (): InsightProposal => ({
 
 const sightingActivityInsight = (): InsightProposal => ({
   id: 'series-activity',
-  title: 'How active',
-  reason: 'Score over each sighting.',
+  title: 'On the move',
+  reason: 'Moving over each sighting.',
   visual: 'series',
   task: SQUIRREL_ACTIVITY_TASK,
-  questionKind: 'score',
-  classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
+  questionKind: 'noul',
+  classes: [],
   cannedQuery: SQUIRREL_ACTIVITY_QUERY,
 })
 
-const notableInsight = (): InsightProposal => ({
-  id: 'noul-notable',
-  title: 'Notable rows',
-  reason: 'Yes or no for each row.',
-  visual: 'series',
-  task: 'Is this row notable given the visible columns?',
-  questionKind: 'noul',
-  classes: [],
-  cannedQuery: 'Is this row notable given the visible columns?',
-})
+export const insightEyebrow = (insight: Pick<InsightProposal, 'id' | 'visual'>): string => {
+  if (insight.id === 'places-eating') return 'Eating map'
+  if (insight.id === 'series-activity') return 'P(moving)'
+  if (insight.id === 'series-win') return 'P(win) line'
+  if (insight.id === 'series-play-quality') return 'Quality'
+  if (insight.visual === 'places') return 'Map'
+  if (insight.visual === 'series') return 'Series'
+  return 'Call'
+}
 
-const rateInsight = (): InsightProposal => ({
-  id: 'score-rate',
-  title: 'Rate each row',
-  reason: 'A score for each row.',
-  visual: 'series',
-  task: 'Rate this row given the visible columns.',
-  questionKind: 'score',
-  classes: [...SAMPLE_PLAY_QUALITY_LEVELS],
-  cannedQuery: 'Rate this row given the visible columns.',
-})
-
-const yesNoInsight = (): InsightProposal => ({
-  id: 'bars-call',
-  title: 'Yes or no',
-  reason: 'A call for each row.',
-  visual: 'bars',
-  task: 'Is this row a yes given the visible columns?',
-  questionKind: 'choice',
-  classes: ['Yes', 'No'],
-  cannedQuery: 'Is this row a yes given the visible columns?',
-})
-
-const playSuccessInsight = (): InsightProposal => ({
-  id: 'bars-success',
-  title: 'Play success',
-  reason: 'A call for each play.',
-  visual: 'bars',
-  task: 'Did this play succeed given this play state?',
-  questionKind: 'choice',
-  classes: ['Converted', 'Did not'],
-  cannedQuery: 'Did this play succeed given this play state?',
-})
+export const isJunkDashboardInsight = (
+  insight: Pick<InsightProposal, 'title' | 'reason' | 'visual' | 'questionKind' | 'classes'>,
+  shape?: DatasetShape,
+  rows: readonly AnalysisRowInput[] = [],
+): boolean => {
+  if (isBannedRawColumnClassInsight(insight, shape, rows) || isJunkLocationActivitySplit(insight.classes)) return true
+  if (/^(notable rows|rate each row|yes or no|play success|places)$/i.test(insight.title.trim())) return true
+  if (/class bars|labels in this table|classify by shift/i.test(`${insight.title} ${insight.reason}`)) return true
+  return false
+}
 
 export const hasDiverseChartTypes = (insights: readonly Pick<InsightProposal, 'visual'>[]): boolean => (
   new Set(insights.map((item) => item.visual)).size >= 2
 )
+
+const isLockedPlayStatePair = (insights: readonly Pick<InsightProposal, 'id' | 'visual'>[]): boolean => (
+  insights.length === 2
+  && insights.some((item) => item.id === 'series-win')
+  && insights.some((item) => item.id === 'series-play-quality')
+)
+
+export const dashboardVisualQaOk = (insights: readonly InsightProposal[], shape?: DatasetShape, rows: readonly AnalysisRowInput[] = []): boolean => {
+  if (insights.length < 2 || insights.length > MAX_INSIGHTS) return false
+  if (insights.some((item) => isJunkDashboardInsight(item, shape, rows))) return false
+  const kinds = new Set(insights.map((item) => item.visual))
+  if (insights.length >= 3 && kinds.size < 2) return false
+  if (kinds.size >= 2) return true
+  return isLockedPlayStatePair(insights)
+}
 
 export const perspectiveLabelFor = (input: {
   datasetId?: string
@@ -243,53 +235,20 @@ const tryPushInsight = (
   shape: DatasetShape,
   rows: readonly AnalysisRowInput[],
 ): void => {
-  if (isJunkLocationActivitySplit(insight.classes) || isBannedRawColumnClassInsight(insight, shape, rows)) return
+  if (isJunkDashboardInsight(insight, shape, rows)) return
   pushInsight(insights, insight)
-}
-
-const diversifyVisuals = (
-  insights: InsightProposal[],
-  options: { playState: boolean; shape: DatasetShape; rows: readonly AnalysisRowInput[] },
-): void => {
-  if (insights.length >= MAX_INSIGHTS || hasDiverseChartTypes(insights)) return
-  const visuals = new Set(insights.map((item) => item.visual))
-  if (!visuals.has('bars')) {
-    tryPushInsight(insights, options.playState ? playSuccessInsight() : yesNoInsight(), options.shape, options.rows)
-    if (hasDiverseChartTypes(insights) || insights.length >= MAX_INSIGHTS) return
-    tryPushInsight(insights, yesNoInsight(), options.shape, options.rows)
-    return
-  }
-  if (!visuals.has('series')) {
-    tryPushInsight(insights, notableInsight(), options.shape, options.rows)
-    return
-  }
-  if (!visuals.has('places') && (options.shape.geo || options.shape.placeColumns.length > 0)) {
-    tryPushInsight(
-      insights,
-      options.shape.geo ? geoPlacesInsight() : rankedPlacesInsight(),
-      options.shape,
-      options.rows,
-    )
-  }
 }
 
 const fillDashboardInsights = (
   insights: InsightProposal[],
-  options: { playState: boolean; shape: DatasetShape; rows: readonly AnalysisRowInput[] },
+  options: { shape: DatasetShape; rows: readonly AnalysisRowInput[] },
 ): InsightProposal[] => {
-  const clean = insights.filter((item) => (
-    !isJunkLocationActivitySplit(item.classes)
-    && !isBannedRawColumnClassInsight(item, options.shape, options.rows)
-  ))
-  if (clean.length < 2) tryPushInsight(clean, notableInsight(), options.shape, options.rows)
-  if (clean.length < 2) tryPushInsight(clean, rateInsight(), options.shape, options.rows)
-  diversifyVisuals(clean, options)
-  if (!hasDiverseChartTypes(clean)) diversifyVisuals(clean, options)
-  if (clean.length < 2) tryPushInsight(clean, yesNoInsight(), options.shape, options.rows)
-  return clean.filter((item) => (
-    !isJunkLocationActivitySplit(item.classes)
-    && !isBannedRawColumnClassInsight(item, options.shape, options.rows)
-  )).slice(0, MAX_INSIGHTS)
+  const clean = insights.filter((item) => !isJunkDashboardInsight(item, options.shape, options.rows))
+  if (options.shape.hasEating && (options.shape.geo || options.shape.placeColumns.length > 0)) {
+    tryPushInsight(clean, eatingPlacesInsight(options.shape), options.shape, options.rows)
+    tryPushInsight(clean, sightingActivityInsight(), options.shape, options.rows)
+  }
+  return clean.filter((item) => !isJunkDashboardInsight(item, options.shape, options.rows)).slice(0, MAX_INSIGHTS)
 }
 
 export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'columns' | 'previewRows' | 'sourceType'>): InsightProposal[] => {
@@ -323,7 +282,6 @@ export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'col
   }
 
   return fillDashboardInsights(insights, {
-    playState,
     shape,
     rows: dataset.previewRows,
   })

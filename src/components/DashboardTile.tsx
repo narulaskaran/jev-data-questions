@@ -11,7 +11,7 @@ import {
   runStallCopy,
 } from '../runView/format'
 import { inferQuestionKind } from '../shared/questionKind'
-import { perspectiveLabelFor, resolveChartVisual } from '../dataset/insight'
+import { insightEyebrow, perspectiveLabelFor, resolveChartVisual } from '../dataset/insight'
 import type { InsightProposal } from '../dataset/insight'
 import type { AnalysisRowInput, AnalysisSnapshot } from '../shared/analysis'
 import { downloadTextFile, resultsCsv, resultsCsvFilename } from '../runView/resultsCsv'
@@ -61,8 +61,6 @@ export const DashboardTile = memo(function DashboardTile({
   const rows = snapshot?.resultRows ?? []
   const totalRows = snapshot?.progress.totalRows || sourceRows?.length || 0
   const playheadIndex = rows.length > 0 ? rows.length - 1 : 0
-  const waiting = !snapshot && Boolean(starting)
-  const showSkeleton = waiting && chartKind !== 'places'
   const percent = snapshot
     ? runProgressPercent(snapshot.progress.completedRows, snapshot.progress.totalRows, snapshot.status)
     : 0
@@ -74,6 +72,11 @@ export const DashboardTile = memo(function DashboardTile({
     : error
       ? { title: "Couldn't run", detail: error }
       : undefined
+  const paintsPlaces = chartKind === 'places' && (sourceRows?.length ?? 0) > 0
+  const empty = rows.length === 0 && !paintsPlaces
+  const showSkeleton = empty && chartKind !== 'places'
+  const showError = Boolean(errorCopy) && !paintsPlaces
+  const showProgress = Boolean(snapshot && snapshot.progress.completedRows > 0)
   const perspectiveLabel = perspectiveLabelFor({
     datasetId: snapshot?.datasetId ?? insight.perspectiveLabel,
     fixtureId: snapshot?.fixtureId,
@@ -129,7 +132,7 @@ export const DashboardTile = memo(function DashboardTile({
     >
       <CardHeader className="section-heading flex-row items-start justify-between space-y-0">
         <div>
-          <p className="eyebrow">{insight.visual === 'places' ? 'Places' : insight.visual === 'series' ? (insight.id === 'series-win' ? 'P(win) line' : 'Series') : 'Class bars'}</p>
+          <p className="eyebrow">{insightEyebrow(insight)}</p>
           <h2 id={headingId}>{insight.title}</h2>
         </div>
         <div className="dashboard-tile-actions">
@@ -165,7 +168,7 @@ export const DashboardTile = memo(function DashboardTile({
         </div>
       </CardHeader>
       <CardContent>
-        {snapshot ? (
+        {showProgress && snapshot ? (
           <div className="progress-block dashboard-progress" aria-label={`${insight.title} progress`}>
             <div className="progress-line">
               <span>{snapshot.status === 'complete' ? `${snapshot.progress.totalRows} of ${snapshot.progress.totalRows}` : `${snapshot.progress.completedRows} / ${snapshot.progress.totalRows}`}</span>
@@ -175,7 +178,7 @@ export const DashboardTile = memo(function DashboardTile({
           </div>
         ) : null}
         {stallCopy ? <p className="run-stall" role="status">{stallCopy}</p> : null}
-        {errorCopy ? (
+        {showError && errorCopy ? (
           <div className="error-banner compact" role="alert">
             <div className="error-banner-copy">
               <b>{errorCopy.title}</b>

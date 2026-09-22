@@ -11,7 +11,7 @@ const previewValue = (value: unknown): string => {
 }
 
 const sourceLabel = (sourceType: DatasetPreview['sourceType']) => {
-  if (sourceType === 'fixture') return 'Try sample'
+  if (sourceType === 'fixture') return 'Sample'
   if (sourceType === 'upload') return 'Uploaded CSV'
   return 'Public CSV'
 }

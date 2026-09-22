@@ -650,40 +650,6 @@ h3 {
   overflow-wrap: anywhere;
 }
 
-.insight-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.insight-reason {
-  margin: 0;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.insight-preview {
-  flex: 0 0 auto;
-  width: 64px;
-  height: 24px;
-  color: var(--run);
-  opacity: 0.85;
-}
-
-.insight-preview rect,
-.insight-preview circle {
-  fill: currentColor;
-}
-
-.insight-card.is-selected {
-  box-shadow: inset 0 0 0 1px var(--run);
-}
-
-.insight-card {
-  cursor: pointer;
-}
-
 .dashboard-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -744,7 +710,11 @@ h3 {
   .dashboard-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
-  .dashboard-tile.is-lead[data-visual="places"] {
+  .dashboard-grid[data-insight-count="2"] .dashboard-tile .chart-plot {
+    height: 240px;
+    min-height: 240px;
+  }
+  .dashboard-grid:not([data-insight-count="2"]) .dashboard-tile.is-lead[data-visual="places"] {
     grid-column: 1 / -1;
   }
 }
@@ -1225,7 +1195,7 @@ h3 {
     word-break: break-word;
   }
   h1 { font-size: 1.5rem; }
-  .run-view, .run-view-main, .run-rail, .chart-hero, .chart-shell, .chart-plot, .series-svg, .places-svg, .chart-transport, .table-scroll:not(.preview-table), .query-card, .query-json, .task-card, .stage-fold, .workspace, .dataset-preview, .schema-strip, .insight-card, .dashboard-grid, .dashboard-tile, .advanced-json {
+  .run-view, .run-view-main, .run-rail, .chart-hero, .chart-shell, .chart-plot, .series-svg, .places-svg, .chart-transport, .table-scroll:not(.preview-table), .query-card, .query-json, .task-card, .stage-fold, .workspace, .dataset-preview, .schema-strip, .dashboard-grid, .dashboard-tile, .advanced-json {
     min-width: 0;
     max-width: 100%;
   }
