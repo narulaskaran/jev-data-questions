@@ -13,7 +13,6 @@ import {
 import { asAnalysisRow, type DatasetPreview } from '../shared/dataset'
 import { inferSampleColumns } from './sampleColumns'
 import { SAMPLE_DATASET_NAME } from '../shared/sampleDatasetName'
-import { SAMPLE_WIN_LIKELIHOOD_TASK, SQUIRREL_EATING_TASK } from '../shared/questionKind'
 
 const rows = getWinLikelihoodModelInput().map((row) => asAnalysisRow(row))
 
@@ -47,28 +46,3 @@ export const getFixtureDatasetPreview = (datasetId: string): DatasetPreview | un
   if (datasetId === SAMPLE_DATASET_ID || datasetId === FOOTBALL_FIXTURE_ID) return getFootballDatasetPreview()
   return undefined
 }
-
-export interface SampleFixtureCard {
-  datasetId: string
-  name: string
-  eyebrow: string
-  blurb: string
-  task: string
-}
-
-export const SAMPLE_FIXTURE_CARDS: readonly SampleFixtureCard[] = [
-  {
-    datasetId: SAMPLE_DATASET_ID,
-    name: SAMPLE_DATASET_NAME,
-    eyebrow: 'Sample',
-    blurb: 'Sequential plays. Win likelihood as a P(win) line.',
-    task: SAMPLE_WIN_LIKELIHOOD_TASK,
-  },
-  {
-    datasetId: SQUIRREL_FIXTURE_ID,
-    name: SQUIRREL_DATASET_NAME,
-    eyebrow: 'Sample',
-    blurb: 'Places where they eat.',
-    task: SQUIRREL_EATING_TASK,
-  },
-]

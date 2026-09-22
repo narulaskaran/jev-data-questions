@@ -1,0 +1,97 @@
+unique_squirrel_id,x,y,hectare,shift,date,age,primary_fur_color,location,specific_location,eating,foraging,running,climbing
+07F-PM-000-01,-73.98151145044379,40.764786329758074,07F,PM,101062018,Adult,Cinnamon,Above Ground,branch,false,true,false,true
+11B-AM-001-02,-73.9781678434708,40.76514733396047,11B,AM,101072018,Adult,Black,Ground Plane,lawn,false,false,true,false
+13A-AM-002-03,-73.97557692163184,40.76439044499742,13A,AM,101082018,Juvenile,Black,Ground Plane,near bench,false,false,false,false
+14D-PM-003-04,-73.97308093351738,40.76505511020632,14D,PM,101092018,Juvenile,Gray,Ground Plane,lawn,false,true,false,false
+16C-AM-004-05,-73.96958629718131,40.76451111983201,16C,AM,101102018,Juvenile,Black,Ground Plane,lawn,false,false,false,false
+22A-AM-005-06,-73.96734632919939,40.765273401552534,22A,AM,101112018,Adult,Gray,Above Ground,trunk,false,true,false,true
+32E-PM-006-07,-73.96402126881019,40.764648960507195,32E,PM,101122018,Adult,Cinnamon,Ground Plane,under tree,false,false,false,false
+33B-AM-007-08,-73.96054116355211,40.764675356114005,33B,AM,101132018,Juvenile,Gray,Ground Plane,lawn,false,false,false,false
+07F-AM-008-09,-73.95762051858317,40.764440057128155,07F,AM,101142018,Juvenile,Gray,Ground Plane,lawn,true,false,false,false
+11B-PM-009-01,-73.95552275482865,40.7649994414581,11B,PM,101152018,Adult,Black,Ground Plane,lawn,true,true,false,false
+13A-AM-010-02,-73.95268052750835,40.76458169365693,13A,AM,101162018,Juvenile,Cinnamon,Ground Plane,near bench,false,false,false,false
+14D-AM-011-03,-73.94882962044133,40.76494654771634,14D,AM,101172018,Juvenile,Cinnamon,Above Ground,branch,false,true,true,false
+16C-PM-012-04,-73.98149922710238,40.769510674689215,16C,PM,101182018,Juvenile,Cinnamon,Ground Plane,near bench,true,false,false,false
+22A-AM-013-05,-73.97799068194375,40.770183528441486,22A,AM,101192018,Juvenile,Cinnamon,Ground Plane,under tree,false,true,true,false
+32E-AM-014-06,-73.97560409042879,40.76952358107992,32E,AM,101202018,Adult,Black,Ground Plane,under tree,false,false,false,false
+33B-PM-015-07,-73.97280834564322,40.77023070934859,33B,PM,101212018,Juvenile,Gray,Ground Plane,lawn,false,false,false,false
+07F-AM-016-08,-73.96956283387678,40.76998844689575,07F,AM,101222018,Adult,Black,Ground Plane,near bench,false,true,true,false
+11B-AM-017-09,-73.9674286362587,40.77028757502024,11B,AM,101232018,Juvenile,Black,Ground Plane,by path,true,false,true,false
+13A-PM-018-01,-73.96375881341727,40.77016137771264,13A,PM,101242018,Adult,Cinnamon,Above Ground,trunk,false,false,true,false
+14D-AM-019-02,-73.96143013264623,40.76998991583732,14D,AM,101252018,Adult,Cinnamon,Ground Plane,under tree,false,false,false,false
+16C-AM-020-03,-73.95856980654003,40.769899172592226,16C,AM,101062018,Adult,Cinnamon,Ground Plane,by path,false,true,false,false
+22A-PM-021-04,-73.95534284492807,40.77029246990012,22A,PM,101072018,Juvenile,Cinnamon,Ground Plane,under tree,false,false,false,false
+32E-AM-022-05,-73.95245137114888,40.77011911130466,32E,AM,101082018,Adult,Cinnamon,Ground Plane,by path,false,false,false,false
+33B-AM-023-06,-73.94911819744901,40.769927117509084,33B,AM,101092018,Juvenile,Gray,Above Ground,branch,false,true,false,true
+07F-PM-024-07,-73.98161405788808,40.77457717376118,07F,PM,101102018,Juvenile,Black,Ground Plane,lawn,false,false,false,false
+11B-AM-025-08,-73.97871621457467,40.77466101304194,11B,AM,101112018,Juvenile,Black,Ground Plane,under tree,false,true,false,false
+13A-AM-026-09,-73.97599941307779,40.774698747055695,13A,AM,101122018,Juvenile,Black,Ground Plane,near bench,true,false,true,false
+14D-PM-027-01,-73.97251014668986,40.77461528497035,14D,PM,101132018,Juvenile,Cinnamon,Ground Plane,near bench,false,false,false,false
+16C-AM-028-02,-73.9697805302602,40.7752722365892,16C,AM,101142018,Juvenile,Gray,Ground Plane,by path,true,true,false,false
+22A-AM-029-03,-73.96653407396222,40.77527519546109,22A,AM,101152018,Juvenile,Black,Ground Plane,by path,false,false,false,false
+32E-PM-030-04,-73.96440832420899,40.775178839549746,32E,PM,101162018,Juvenile,Cinnamon,Ground Plane,near bench,true,false,true,false
+33B-AM-031-05,-73.96143689958214,40.77465644462346,33B,AM,101172018,Adult,Cinnamon,Ground Plane,near bench,false,false,true,false
+07F-AM-032-06,-73.95754820851667,40.77456052833013,07F,AM,101182018,Juvenile,Cinnamon,Above Ground,tree limb,true,true,false,true
+11B-PM-033-07,-73.95550733297702,40.774591321342015,11B,PM,101192018,Adult,Black,Ground Plane,by path,false,false,false,false
+13A-AM-034-08,-73.95265125445611,40.77488745046742,13A,AM,101202018,Adult,Gray,Ground Plane,by path,false,false,false,false
+14D-AM-035-09,-73.94908081414327,40.77519866974125,14D,AM,101212018,Adult,Cinnamon,Ground Plane,near bench,true,false,false,false
+16C-PM-036-01,-73.98126135625391,40.77997166382118,16C,PM,101222018,Adult,Black,Ground Plane,lawn,true,true,true,false
+22A-AM-037-02,-73.97854945491765,40.779518273332776,22A,AM,101232018,Juvenile,Black,Ground Plane,near bench,false,false,false,false
+32E-AM-038-03,-73.97527569850793,40.779714017959236,32E,AM,101242018,Juvenile,Gray,Ground Plane,near bench,true,true,true,false
+33B-PM-039-04,-73.97284693379669,40.77988439729523,33B,PM,101252018,Adult,Gray,Ground Plane,under tree,true,false,false,false
+07F-AM-040-05,-73.97026411687281,40.7797919109719,07F,AM,101062018,Adult,Cinnamon,Ground Plane,near bench,false,true,false,false
+11B-AM-041-06,-73.96732881110445,40.77974074895672,11B,AM,101072018,Juvenile,Gray,Ground Plane,lawn,false,false,true,false
+13A-PM-042-07,-73.96404832512479,40.78008950337434,13A,PM,101082018,Juvenile,Gray,Ground Plane,under tree,false,false,true,false
+14D-AM-043-08,-73.96076073246833,40.780502383922844,14D,AM,101092018,Juvenile,Gray,Ground Plane,lawn,false,false,true,false
+16C-AM-044-09,-73.95815467120542,40.77959738920179,16C,AM,101102018,Adult,Cinnamon,Ground Plane,near bench,true,true,true,false
+22A-PM-045-01,-73.95467691530456,40.77994109931627,22A,PM,101112018,Adult,Gray,Ground Plane,near bench,true,true,false,false
+32E-AM-046-02,-73.95221408999441,40.77995168722553,32E,AM,101122018,Juvenile,Black,Ground Plane,by path,false,false,false,false
+33B-AM-047-03,-73.94931205999693,40.77997016396645,33B,AM,101132018,Juvenile,Gray,Ground Plane,lawn,true,false,false,false
+07F-PM-048-04,-73.9819521606774,40.784800899492566,07F,PM,101142018,Adult,Gray,Ground Plane,by path,true,false,false,false
+11B-AM-049-05,-73.97908323561586,40.78539767481525,11B,AM,101152018,Juvenile,Black,Ground Plane,near bench,true,false,false,false
+13A-AM-050-06,-73.97580696818518,40.78515274592581,13A,AM,101162018,Juvenile,Cinnamon,Above Ground,branch,true,false,false,true
+14D-PM-051-07,-73.97295934872373,40.785311322097655,14D,PM,101172018,Juvenile,Black,Ground Plane,lawn,false,false,true,false
+16C-AM-052-08,-73.96926993492373,40.785235366219176,16C,AM,101182018,Juvenile,Black,Above Ground,tree limb,true,true,false,true
+22A-AM-053-09,-73.96699351485097,40.78474804022721,22A,AM,101192018,Juvenile,Cinnamon,Above Ground,branch,false,false,false,false
+32E-PM-054-01,-73.9638318777651,40.78481805032304,32E,PM,101202018,Juvenile,Black,Above Ground,branch,false,false,false,true
+33B-AM-055-02,-73.9612984578145,40.78481496862135,33B,AM,101212018,Adult,Gray,Above Ground,trunk,true,true,false,false
+07F-AM-056-03,-73.95792448211081,40.78517667426307,07F,AM,101222018,Juvenile,Gray,Above Ground,trunk,false,false,false,true
+11B-PM-057-04,-73.95557811078412,40.78507805114611,11B,PM,101232018,Juvenile,Black,Ground Plane,under tree,false,false,false,false
+13A-AM-058-05,-73.95247949150223,40.78523210461739,13A,AM,101242018,Juvenile,Gray,Ground Plane,by path,true,true,true,false
+14D-AM-059-06,-73.94999948504939,40.78494484770576,14D,AM,101252018,Juvenile,Black,Ground Plane,lawn,true,false,false,false
+16C-PM-060-07,-73.9814731320803,40.790275546011564,16C,PM,101062018,Adult,Cinnamon,Ground Plane,by path,false,false,false,false
+22A-AM-061-08,-73.97879177715991,40.78994731125846,22A,AM,101072018,Adult,Black,Above Ground,tree limb,false,true,false,true
+32E-AM-062-09,-73.97549434332184,40.79004256458306,32E,AM,101082018,Juvenile,Gray,Above Ground,trunk,true,false,false,false
+33B-PM-063-01,-73.9732544469739,40.79031451025424,33B,PM,101092018,Adult,Black,Ground Plane,by path,true,true,true,false
+07F-AM-064-02,-73.96958151503257,40.790213531131904,07F,AM,101102018,Adult,Cinnamon,Ground Plane,under tree,false,false,false,false
+11B-AM-065-03,-73.96693769838144,40.79006031528167,11B,AM,101112018,Adult,Black,Above Ground,branch,false,false,false,false
+13A-PM-066-04,-73.96427229447733,40.789916546802786,13A,PM,101122018,Juvenile,Black,Ground Plane,by path,true,false,false,false
+14D-AM-067-05,-73.96102412647598,40.790348304504114,14D,AM,101132018,Juvenile,Cinnamon,Ground Plane,lawn,true,true,true,false
+16C-AM-068-06,-73.9586729689535,40.79032538762996,16C,AM,101142018,Adult,Black,Ground Plane,by path,true,false,false,false
+22A-PM-069-07,-73.95574825170368,40.79000582947378,22A,PM,101152018,Juvenile,Cinnamon,Ground Plane,lawn,true,true,true,false
+32E-AM-070-08,-73.9521764515941,40.78983777928753,32E,AM,101162018,Juvenile,Gray,Ground Plane,near bench,false,false,true,false
+33B-AM-071-09,-73.94950535532553,40.790162560235295,33B,AM,101172018,Juvenile,Cinnamon,Above Ground,branch,false,false,false,true
+07F-PM-072-01,-73.98118393050515,40.79488845736942,07F,PM,101182018,Adult,Gray,Above Ground,branch,true,false,false,true
+11B-AM-073-02,-73.9787962611501,40.79504448192905,11B,AM,101192018,Adult,Gray,Ground Plane,lawn,false,false,false,false
+13A-AM-074-03,-73.97564706878566,40.795502121713604,13A,AM,101202018,Adult,Cinnamon,Above Ground,trunk,false,false,false,true
+14D-PM-075-04,-73.97314538264617,40.7952496694458,14D,PM,101212018,Juvenile,Cinnamon,Ground Plane,near bench,false,false,false,false
+16C-AM-076-05,-73.97004939302715,40.79516234267911,16C,AM,101222018,Juvenile,Black,Above Ground,tree limb,true,false,false,true
+22A-AM-077-06,-73.96699534822241,40.79519265182771,22A,AM,101232018,Juvenile,Black,Ground Plane,by path,false,true,true,false
+32E-PM-078-07,-73.96372487385752,40.79565319162457,32E,PM,101242018,Juvenile,Black,Ground Plane,near bench,false,false,false,false
+33B-AM-079-08,-73.96129352745612,40.794748869637615,33B,AM,101252018,Juvenile,Black,Ground Plane,lawn,true,false,false,false
+07F-AM-080-09,-73.95847849620863,40.79516826142709,07F,AM,101062018,Juvenile,Cinnamon,Ground Plane,near bench,false,false,false,false
+11B-PM-081-01,-73.9550017322275,40.79480618970621,11B,PM,101072018,Adult,Cinnamon,Above Ground,tree limb,true,true,false,false
+13A-AM-082-02,-73.95210574801601,40.79556972266606,13A,AM,101082018,Juvenile,Cinnamon,Ground Plane,under tree,false,false,false,false
+14D-AM-083-03,-73.94910639849621,40.79538706197369,14D,AM,101092018,Adult,Gray,Ground Plane,by path,false,true,false,false
+16C-PM-084-04,-73.9813110307699,40.80075278338832,16C,PM,101102018,Juvenile,Cinnamon,Ground Plane,near bench,false,true,false,false
+22A-AM-085-05,-73.97890957179636,40.80048176284293,22A,AM,101112018,Juvenile,Gray,Ground Plane,near bench,true,true,false,false
+32E-AM-086-06,-73.97587988301942,40.800378822847456,32E,AM,101122018,Juvenile,Gray,Ground Plane,by path,true,false,false,false
+33B-PM-087-07,-73.97325904053345,40.800312058031516,33B,PM,101132018,Adult,Black,Ground Plane,by path,false,false,false,false
+07F-AM-088-08,-73.97007596858317,40.79991813582829,07F,AM,101142018,Adult,Cinnamon,Ground Plane,near bench,false,false,false,false
+11B-AM-089-09,-73.96718051005531,40.80072590745306,11B,AM,101152018,Juvenile,Gray,Above Ground,branch,false,true,false,false
+13A-PM-090-01,-73.96447453050766,40.79991261945847,13A,PM,101162018,Adult,Cinnamon,Ground Plane,under tree,false,false,false,false
+14D-AM-091-02,-73.96103102099394,40.800566394292936,14D,AM,101172018,Adult,Cinnamon,Ground Plane,near bench,false,false,false,false
+16C-AM-092-03,-73.95813677099908,40.80006699239877,16C,AM,101182018,Adult,Gray,Above Ground,trunk,false,true,false,true
+22A-PM-093-04,-73.95523684942071,40.79981533618057,22A,PM,101192018,Juvenile,Cinnamon,Above Ground,tree limb,false,true,false,false
+32E-AM-094-05,-73.95194905023054,40.80025191478799,32E,AM,101202018,Adult,Black,Above Ground,trunk,false,false,false,true
+33B-AM-095-06,-73.94915239382888,40.79995746424906,33B,AM,101212018,Juvenile,Gray,Above Ground,branch,false,true,false,true

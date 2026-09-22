@@ -11,7 +11,7 @@ import { Button } from './components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from './components/ui/card'
 import { Label } from './components/ui/label'
 import { Textarea } from './components/ui/textarea'
-import { getFixtureDatasetPreview, getSampleDatasetPreview } from './dataset/sampleDataset'
+import { getFixtureDatasetPreview } from './dataset/sampleDataset'
 import { proposeInsights, queryFromInsight } from './dataset/insight'
 import { datasetHref, landHref, parseAppLocation, type AppRoute } from './app/route'
 import { DatasetError, DATASET_ERROR_COPY, plainDatasetError } from './dataset/csvTypes'
@@ -419,11 +419,6 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     } finally { setIntakeBusy(false) }
   }
 
-  const handleSample = (nextDatasetId: string) => {
-    const preview = getFixtureDatasetPreview(nextDatasetId) ?? getSampleDatasetPreview()
-    applyDataset(preview)
-  }
-
   useEffect(() => {
     if (route.kind === 'land' && dataset) {
       setDataset(undefined)
@@ -636,7 +631,6 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
             disabled={intakeBusy}
             onUploadFile={(file) => void handleUpload(file)}
             onSubmitUrl={(url) => void handleUrl(url)}
-            onTrySample={handleSample}
           />
         </StageFold>
         <StageFold open={showShape} animate={foldAnimate}>

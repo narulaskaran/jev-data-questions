@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App, canConfirmJevRun, defaultAnalysisApi, hasRunnableQuery, PRODUCT_TITLE, queryRunFooter, type AnalysisApiClient } from './App'
 import { getFixtureDatasetPreview } from './dataset/sampleDataset'
+import { footballSampleCsv } from './dataset/sampleCsv'
 import { FOOTBALL_FIXTURE_ID, getHalftimeModelInput } from './fixtures/footballTimeline'
 import { asAnalysisRow } from './shared/dataset'
 import type { AnalysisDraftResult, AnalysisSnapshot } from './shared/analysis'
@@ -123,9 +124,13 @@ const makeApi = (overrides: Partial<AnalysisApiClient> = {}): AnalysisApiClient 
   ...overrides,
 })
 
-const enterSample = async (api: AnalysisApiClient, name = /^2026 super bowl demo$/i) => {
-  render(<App api={api} />)
-  fireEvent.click(screen.getByRole('button', { name }))
+const openFixture = (api: AnalysisApiClient, datasetId = FOOTBALL_FIXTURE_ID, search = '') => {
+  window.history.pushState({}, '', `/dataset/${datasetId}${search}`)
+  return render(<App api={api} />)
+}
+
+const enterSample = async (api: AnalysisApiClient, datasetId = FOOTBALL_FIXTURE_ID) => {
+  openFixture(api, datasetId)
   await waitFor(() => expect(api.start).toHaveBeenCalled())
 }
 
@@ -138,8 +143,7 @@ const openEngineer = () => {
 }
 
 const startEngineerRun = async (api: AnalysisApiClient) => {
-  render(<App api={api} />)
-  fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+  openFixture(api)
   openEngineer()
   fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
   await screen.findByLabelText(/^Jev query JSON$/i)
@@ -170,7 +174,7 @@ describe('Jev insight product flow', () => {
     document.documentElement.style.colorScheme = ''
     window.history.pushState({}, '', '/')
   })
-  it('renders a quiet idle landing with sample and BYOD only', async () => {
+  it('renders a quiet idle landing with BYOD only', async () => {
     const api = makeApi()
     render(<App api={api} />)
     expect(screen.getByRole('link', { name: /jev home/i })).toBeInTheDocument()
@@ -178,17 +182,17 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByRole('heading', { name: /run jev on a csv/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/bring a dataset\. ask a question\. see jev classify every row/i)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /choose a dataset/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /2026 super bowl demo/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /squirrel census/i })).toBeInTheDocument()
-    expect(screen.getByText('Places where they eat.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /2026 super bowl demo/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /squirrel census/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('Places where they eat.')).not.toBeInTheDocument()
     expect(screen.queryByText(/location vs activity/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/football is the sample, not the product/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/same live chart as the sample/i)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /upload \.csv or public https csv url/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/upload csv/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /use public csv url/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^2026 super bowl demo$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^squirrel census$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^squirrel census$/i })).not.toBeInTheDocument()
     expect(document.querySelector('[data-stage="intake"]')).toBeTruthy()
     expect(screen.queryByRole('textbox', { name: /analysis task/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: /jev query json/i })).not.toBeInTheDocument()
@@ -204,6 +208,25 @@ describe('Jev insight product flow', () => {
     expect(api.draft).not.toHaveBeenCalled()
     expect(api.start).not.toHaveBeenCalled()
     await waitFor(() => expect(api.intakeStatus).toHaveBeenCalled())
+  })
+
+  it('accepts the public Super Bowl CSV through BYOD upload', async () => {
+    const csvText = footballSampleCsv()
+    const api = makeApi({
+      createFromCsv: vi.fn(async () => ({
+        ...uploaded,
+        displayName: 'seahawks-super-bowl-2026.csv',
+      })),
+    })
+    render(<App api={api} />)
+    const file = new File([csvText], 'seahawks-super-bowl-2026.csv', { type: 'text/csv' })
+    fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
+    await waitFor(() => expect(api.createFromCsv).toHaveBeenCalledWith({
+      csvText,
+      filename: 'seahawks-super-bowl-2026.csv',
+    }))
+    expect(await screen.findByRole('heading', { name: 'seahawks-super-bowl-2026.csv' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeInTheDocument()
   })
 
   it('unlocks Run Jev from existing Edit query text without another Draft or forced edit', () => {
@@ -225,8 +248,7 @@ describe('Jev insight product flow', () => {
 
   it('does not fetch on sample task editing, and enables Run Jev after draft without a query edit', async () => {
     const api = makeApi()
-    render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    openFixture(api)
     expect(document.querySelector('[data-stage="dataset"]')).toBeTruthy()
     expect(window.location.pathname).toBe(`/dataset/${FOOTBALL_FIXTURE_ID}`)
     expect(screen.queryByRole('heading', { name: /choose a dataset/i })).not.toBeInTheDocument()
@@ -289,8 +311,7 @@ describe('Jev insight product flow', () => {
 
   it('keeps Draft/JSON off the product URL and only on Engineer', async () => {
     const api = makeApi()
-    render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    openFixture(api)
     expect(document.querySelector('[data-mode="product"]')).toBeTruthy()
     expect(window.location.search).not.toMatch(/mode=engineer/)
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
@@ -321,8 +342,11 @@ describe('Jev insight product flow', () => {
     const api = makeApi()
     render(<App api={api} />)
     expect(document.querySelector('[data-mode="engineer"]')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
-    expect(screen.getByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /upload \.csv or public https csv url/i })).toBeInTheDocument()
+    window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}?mode=engineer`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(await screen.findByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
     expect(screen.getByLabelText(/^Jev query JSON$/i)).toBeInTheDocument()
     expect(document.querySelector('details.advanced-json')).toHaveAttribute('open')
     fireEvent.click(screen.getByRole('link', { name: /^product$/i }))
@@ -336,8 +360,7 @@ describe('Jev insight product flow', () => {
     const api = makeApi({
       start: vi.fn(() => pending),
     })
-    render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    openFixture(api)
     openEngineer()
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
     await screen.findByLabelText(/^Jev query JSON$/i)
@@ -355,8 +378,7 @@ describe('Jev insight product flow', () => {
 
   it('drafts the Jev query JSON into the editor, not a prose paraphrase of the task', async () => {
     const api = makeApi()
-    render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    openFixture(api)
     openEngineer()
     expect(screen.getByLabelText(/^Analysis task$/i)).toHaveValue(SAMPLE_WIN_LIKELIHOOD_TASK)
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
@@ -378,8 +400,7 @@ describe('Jev insight product flow', () => {
 
   it('runs after the user edits the Jev query JSON', async () => {
     const api = makeApi()
-    render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    openFixture(api)
     openEngineer()
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
     await screen.findByLabelText(/^Jev query JSON$/i)
@@ -400,8 +421,7 @@ describe('Jev insight product flow', () => {
 
   it('keeps Run Jev disabled when Edit query text is cleared, and still accepts a manual edit', async () => {
     const api = makeApi()
-    render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    openFixture(api)
     openEngineer()
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
     await screen.findByLabelText(/^Jev query JSON$/i)
@@ -515,8 +535,7 @@ describe('Jev insight product flow', () => {
       )),
       read: vi.fn(async () => noulRun),
     })
-    render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    openFixture(api)
     expect(document.querySelector('[data-insight-id="series-win"]')).toHaveAttribute('data-visual', 'series')
     expect(document.querySelector('[data-insight-id="series-play-quality"]')).toHaveAttribute('data-visual', 'series')
     expect(document.querySelector('[data-insight-id="bars-success"]')).toBeNull()
@@ -589,8 +608,7 @@ describe('Jev insight product flow', () => {
       )),
       read: vi.fn(async () => scoreRun),
     })
-    render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    openFixture(api)
     const playQualityCard = document.querySelector('[data-insight-id="series-play-quality"]') as HTMLElement
     expect(playQualityCard).toHaveAttribute('data-visual', 'series')
     expect(document.querySelector('[data-insight-id="bars-success"]')).toBeNull()
@@ -655,8 +673,7 @@ describe('Jev insight product flow', () => {
       )),
       read: vi.fn(async () => eatingRun),
     })
-    render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^squirrel census$/i }))
+    openFixture(api, SQUIRREL_FIXTURE_ID)
     expect(window.location.pathname).toBe(`/dataset/${SQUIRREL_FIXTURE_ID}`)
     expect(screen.getByLabelText(/dataset shape/i)).toBeInTheDocument()
     expect(screen.queryByText(/location vs activity/i)).not.toBeInTheDocument()
@@ -856,8 +873,7 @@ describe('Jev insight product flow', () => {
     const api = makeApi({
       draft: vi.fn(async () => { throw new Error('INVALID_CLASSES') }),
     })
-    render(<App api={api} />)
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
+    openFixture(api)
     openEngineer()
     fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
     const alert = await screen.findByRole('alert')
@@ -867,7 +883,7 @@ describe('Jev insight product flow', () => {
     expect(vi.mocked(api.start).mock.calls.every((call) => !(call[0]?.classes ?? []).includes('K.Walker'))).toBe(true)
   })
 
-  it('keeps idle intake quiet when durable storage is down, and still lets sample start', async () => {
+  it('keeps idle intake quiet when durable storage is down, and still opens a fixture route', async () => {
     const api = makeApi({
       intakeStatus: vi.fn(async (): Promise<DatasetIntakeStatus> => ({ convex: false, uploadThing: false, sampleAvailable: true })),
       createFromCsv: vi.fn(async () => { throw new Error('UPLOADTHING_NOT_CONFIGURED') }),
@@ -878,9 +894,11 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/durable storage/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/uploadthing/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/sample still works/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: /^2026 super bowl demo$/i }))
-    expect(screen.getByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^squirrel census$/i })).not.toBeInTheDocument()
+    window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(await screen.findByRole('heading', { name: 'SEA win probability' })).toBeInTheDocument()
     expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
     await waitFor(() => expect(api.start).toHaveBeenCalled())
   })

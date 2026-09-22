@@ -18,7 +18,8 @@
     "typecheck:convex": "tsc -p convex/tsconfig.json --noEmit",
     "audit": "npm audit --audit-level=high",
     "test:watch": "vitest",
-    "fixture:validate": "node scripts/generate-football-fixture.mjs --validate"
+    "fixture:validate": "node scripts/generate-football-fixture.mjs --validate",
+    "samples:export": "node scripts/export-sample-csvs.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
