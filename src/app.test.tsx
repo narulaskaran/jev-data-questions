@@ -905,6 +905,9 @@ describe('Jev insight product flow', () => {
     })
     render(<App api={api} />)
     await waitFor(() => expect(screen.getByLabelText(/upload csv/i)).toBeDisabled())
+    expect(screen.getByRole('button', { name: /use public csv url/i })).toBeEnabled()
+    expect(screen.getByLabelText(/public https csv url/i)).toBeEnabled()
+    expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
     expect(screen.queryByText(/not configured on this deployment/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/durable storage/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/uploadthing/i)).not.toBeInTheDocument()
@@ -916,6 +919,23 @@ describe('Jev insight product flow', () => {
     expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
     expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
     await waitFor(() => expect(api.start).toHaveBeenCalled())
+  })
+
+  it('keeps public CSV URL live when only file upload storage is down', async () => {
+    const api = makeApi({
+      intakeStatus: vi.fn(async (): Promise<DatasetIntakeStatus> => ({ convex: true, uploadThing: false, sampleAvailable: true })),
+    })
+    render(<App api={api} />)
+    await waitFor(() => expect(screen.getByLabelText(/upload csv/i)).toBeDisabled())
+    expect(screen.getByRole('button', { name: /use public csv url/i })).toBeEnabled()
+    expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
+    fireEvent.change(screen.getByLabelText(/public https csv url/i), {
+      target: { value: 'https://jev-gamecast.vercel.app/samples/nyc-squirrel-census.csv' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))
+    expect(await screen.findByRole('heading', { name: 'remote.csv' })).toBeInTheDocument()
+    expect(api.createFromUrl).toHaveBeenCalledWith({ url: 'https://jev-gamecast.vercel.app/samples/nyc-squirrel-census.csv' })
+    expect(api.createFromCsv).not.toHaveBeenCalled()
   })
 
   it('shows a short BYOD error without durable-storage jargon', async () => {
