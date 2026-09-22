@@ -1,4 +1,4 @@
-import type { AnalysisRowInput, DatasetColumn, DatasetColumnType } from './csvTypes'
+import type { AnalysisRowInput, DatasetColumn, DatasetColumnType } from './csvTypes.js'
 
 export type ColumnRole = 'id' | 'numeric' | 'categorical' | 'boolean' | 'time' | 'geo' | 'place' | 'empty'
 

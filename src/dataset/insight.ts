@@ -1,8 +1,8 @@
-import type { DatasetPreview } from '../shared/dataset'
-import { FOOTBALL_FIXTURE_ID, footballPerspectiveLabel } from '../fixtures/footballTimeline'
-import { SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensus'
-import { asPerspectiveLabel, perspectiveMetricTitle } from '../teamMetadata'
-import { formatDraftQueryForEditor } from '../shared/jevQuery'
+import type { DatasetPreview } from '../shared/dataset.js'
+import { FOOTBALL_FIXTURE_ID, footballPerspectiveLabel } from '../fixtures/footballTimeline.js'
+import { SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensus.js'
+import { asPerspectiveLabel, perspectiveMetricTitle } from '../teamMetadata.js'
+import { formatDraftQueryForEditor } from '../shared/jevQuery.js'
 import {
   SAMPLE_PLAY_QUALITY_LEVELS,
   SAMPLE_PLAY_QUALITY_QUERY,
@@ -22,11 +22,11 @@ import {
   parseQuestionKind,
   type ChartVisualKind,
   type JevQuestionKind,
-} from '../shared/questionKind'
-import { inspectDatasetShape, type DatasetShape } from './shape'
-import type { AnalysisRowInput } from './csvTypes'
+} from '../shared/questionKind.js'
+import { inspectDatasetShape, type DatasetShape } from './shape.js'
+import type { AnalysisRowInput } from './csvTypes.js'
 
-export { isJunkLocationActivitySplit, looksLikePlaceEatingTask } from '../shared/questionKind'
+export { isJunkLocationActivitySplit, looksLikePlaceEatingTask } from '../shared/questionKind.js'
 
 export const MAX_INSIGHTS = 4
 export const MIN_NAMED_INSIGHTS = 2

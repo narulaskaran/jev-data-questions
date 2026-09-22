@@ -52,7 +52,7 @@ export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPrev
     return () => observer?.disconnect()
   }, [rows.length, columns.length])
 
-  const window = useMemo(
+  const view = useMemo(
     () => previewWindow({
       rowCount: rows.length,
       columnCount: columns.length,
@@ -61,7 +61,7 @@ export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPrev
     }),
     [columns.length, rows.length, scrollTop, viewportHeight],
   )
-  const visible = window.virtualized ? rows.slice(window.start, window.end) : rows
+  const visible = view.virtualized ? rows.slice(view.start, view.end) : rows
 
   return (
     <Card className="dataset-preview is-secondary" aria-labelledby="dataset-heading">
@@ -80,7 +80,7 @@ export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPrev
           <summary className="preview-fold-summary">Preview table</summary>
           <div
             ref={scrollRef}
-            className={`table-scroll preview-table${window.virtualized ? ' is-virtualized' : ''}`}
+            className={`table-scroll preview-table${view.virtualized ? ' is-virtualized' : ''}`}
             onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
           >
           <table aria-label="Dataset preview" aria-rowcount={1 + rows.length}>
@@ -92,17 +92,17 @@ export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPrev
               </tr>
             </thead>
             <tbody>
-              {window.virtualized && window.padStart > 0 ? (
+              {view.virtualized && view.padStart > 0 ? (
                 <tr aria-hidden="true">
                   <td
                     className="preview-spacer"
                     colSpan={Math.max(1, columns.length)}
-                    style={{ height: window.padStart }}
+                    style={{ height: view.padStart }}
                   />
                 </tr>
               ) : null}
               {visible.map((row, offset) => {
-                const rowIndex = window.virtualized ? window.start + offset : offset
+                const rowIndex = view.virtualized ? view.start + offset : offset
                 return (
                   <tr key={rowIndex} aria-rowindex={rowIndex + 2}>
                     {columns.map((column, index) => (
@@ -111,12 +111,12 @@ export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPrev
                   </tr>
                 )
               })}
-              {window.virtualized && window.padEnd > 0 ? (
+              {view.virtualized && view.padEnd > 0 ? (
                 <tr aria-hidden="true">
                   <td
                     className="preview-spacer"
                     colSpan={Math.max(1, columns.length)}
-                    style={{ height: window.padEnd }}
+                    style={{ height: view.padEnd }}
                   />
                 </tr>
               ) : null}
