@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { SAMPLE_FIXTURE_CARDS } from '../dataset/sampleDataset'
 import { plainDatasetError } from '../dataset/csvTypes'
 import type { DatasetIntakeStatus } from '../shared/dataset'
 import { Button } from './ui/button'
@@ -15,7 +14,6 @@ export const DatasetIntake = ({
   intakeError,
   onUploadFile,
   onSubmitUrl,
-  onTrySample,
   disabled,
   resetToken = 0,
 }: {
@@ -23,7 +21,6 @@ export const DatasetIntake = ({
   intakeError?: string
   onUploadFile: (file: File) => void
   onSubmitUrl: (url: string) => void
-  onTrySample: (datasetId: string) => void
   disabled?: boolean
   resetToken?: number
 }) => {
@@ -39,22 +36,6 @@ export const DatasetIntake = ({
   return (
     <section className="intake-panel" aria-labelledby="intake-heading" aria-busy={disabled || undefined}>
       <h2 id="intake-heading">Choose a dataset</h2>
-      <div className="intake-samples">
-        {SAMPLE_FIXTURE_CARDS.map((sample) => (
-          <Card key={sample.datasetId} className="intake-card">
-            <CardHeader>
-              <p className="eyebrow">{sample.eyebrow}</p>
-              <CardTitle>{sample.name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="intake-blurb">{sample.blurb}</p>
-              <Button type="button" onClick={() => onTrySample(sample.datasetId)} disabled={disabled}>
-                {sample.name}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
       <div className="intake-cards">
         <Card className={`intake-card ${disabled || byodBlocked ? 'is-disabled' : ''}`}>
           <CardHeader>

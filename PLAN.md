@@ -47,7 +47,7 @@ The product should feel like a clear analysis workbench, not an AI-agent control
 
 ```text
 landing page (Dynamic insights from your data.)
-  → choose 2026 Super Bowl Demo, Squirrel census, or BYOD
+  → BYOD (upload CSV / public HTTPS CSV URL)
   → /dataset/:id dashboard (2–4 tiles start in parallel; skeletons OK)
   → quiet schema strip + dataset preview under the tiles
   → diverse chart types on one page when the cuts are real (map + series); never three identical viz
@@ -94,7 +94,7 @@ These questions materially change the data model, abuse controls, and UI. Record
 3. **Jev classifier contract — DECIDED:** Each row produces a selected class, per-class probabilities, and confidence when Jev provides it; no free-form explanation by default. The implementation must generalize the existing typed `Choice` adapter from hard-coded football outcomes to dynamic user-defined classes, subject to the confirmed Jev API contract.
 4. **CSV URLs — DECIDED:** Accept public HTTPS URLs that directly return CSV. No cookies, authorization headers, authenticated/private links, or arbitrary URL fetches.
 5. **Result visualization — DECIDED:** Chart type follows dataset shape, then the proposed insight. Noul/Score on a sequential play-state table render a live scrubbable series over play/row index (sample win likelihood is Noul P(win) 0–1, not CSV `wpa`; play quality / grading is Score over the same play index, not Choice Good/Bad on H1). Place/eating tables (squirrel census) render **places**: a lat/lng map when coordinates exist, otherwise ranked bars of location values — never Location vs Activity Choice bars. Choice classifiers render class-distribution bars when that is actually the insight. The `Row X of Y` rail is only for row-streamed series/bars. Progress percent chrome stays. Empty series/bars: chart axes + “Waiting for the first row…”; places can plot dataset coordinates immediately.
-6. **Sample datasets — DECIDED:** Two one-click samples. Seahawks fixture stays as the Super Bowl demo (win likelihood → P(win) line). **Squirrel census** is the second sample (slim checked-in fixture exercising place/eating/lat-lng). Default squirrel insight is where they eat. BYOD upload + public HTTPS CSV URL also ships. Idle: Super Bowl · Squirrel census + Bring your own. Do not drop the football fixture while adding the second sample.
+6. **Sample datasets — DECIDED:** Fixtures stay as raw CSV assets and `/dataset/:id` routes, not landing CTAs. Seahawks fixture is the Super Bowl demo CSV (`public/samples/seahawks-super-bowl-2026.csv`; win likelihood → P(win) line). **Squirrel census** is the second fixture (`public/samples/nyc-squirrel-census.csv`; slim checked-in table exercising place/eating/lat-lng). Default squirrel insight is where they eat. Landing idle is BYOD only (upload + public HTTPS CSV URL). Do not drop the football fixture while keeping the second sample.
 
 ### Working defaults pending provider-contract confirmation
 

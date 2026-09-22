@@ -2,7 +2,7 @@
 
 Bring a dataset. Inspect its shape. See the right chart. Jev fills the values.
 
-This is Jev data analysis: open a one-click sample, upload a CSV, or paste a public CSV URL. The UI inspects schema/shape and proposes insights; Jev still fills values. It is not a live sports product.
+This is Jev data analysis: upload a CSV or paste a public CSV URL. The UI inspects schema/shape and proposes insights; Jev still fills values. It is not a live sports product.
 
 Start with `CURSOR.md` and `PLAN.md`. The API contract is `docs/analysis-api.md`.
 
@@ -13,7 +13,14 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL. QA this locally — do not wait on a Production deploy. The landing page has two one-click samples — **2026 Super Bowl Demo** (P(win) line) and **Squirrel census** (places where they eat) — plus **Bring your own** (CSV upload or public HTTPS CSV URL). Entering a dataset opens `/dataset/:id` with a dashboard of 2–4 charts already running, mixing chart types on one page. Draft / Edit Jev JSON stay behind `?mode=engineer`.
+Open the Vite URL. QA this locally — do not wait on a Production deploy. The landing page is **Bring your own** only (CSV upload or public HTTPS CSV URL) under **Dynamic insights from your data.** There are no sample demo buttons. Entering a dataset opens `/dataset/:id` with a dashboard of 2–4 charts already running, mixing chart types on one page. Draft / Edit Jev JSON stay behind `?mode=engineer`.
+
+Checked-in fixture CSVs for a from-scratch BYOD pass:
+
+- `public/samples/seahawks-super-bowl-2026.csv` → `/samples/seahawks-super-bowl-2026.csv`
+- `public/samples/nyc-squirrel-census.csv` → `/samples/nyc-squirrel-census.csv`
+
+Regenerate them with `npm run samples:export` if the fixtures change.
 
 Visiting or sharing a page never starts a paid Jev run. The browser never calls Jev, OpenRouter, ESPN, UploadThing, or privileged Convex writes. Tests never make a paid provider request.
 
@@ -34,8 +41,8 @@ npm run audit
 
 ## Sample fixtures
 
-- `src/fixtures/footballTimeline.ts` — 71 Seattle run/pass/sack plays. Default insight is win likelihood per play (full-game rows with in-progress scores). Play quality / grading is a Score series over the same 71 plays. Validate with `npm run fixture:validate`.
-- `src/fixtures/squirrelCensus.ts` — slim 2018 Central Park Squirrel Census-shaped table (lat/lng, location, eating). Default insight is **where they eat** as a places map, not Location vs Activity Choice bars.
+- `src/fixtures/footballTimeline.ts` — 71 Seattle run/pass/sack plays. Default insight is win likelihood per play (full-game rows with in-progress scores). Play quality / grading is a Score series over the same 71 plays. Validate with `npm run fixture:validate`. Raw CSV: `public/samples/seahawks-super-bowl-2026.csv`.
+- `src/fixtures/squirrelCensus.ts` — slim 2018 Central Park Squirrel Census-shaped table (lat/lng, location, eating). Default insight is **where they eat** as a places map, not Location vs Activity Choice bars. Raw CSV: `public/samples/nyc-squirrel-census.csv`.
 
 ## API
 
