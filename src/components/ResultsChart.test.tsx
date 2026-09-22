@@ -248,7 +248,7 @@ describe('ResultsChart motion', () => {
     )
     const pins = [...document.querySelectorAll('.place-pin')] as HTMLElement[]
     expect(pins.length).toBeGreaterThanOrEqual(1)
-    expect(pins.length).toBeLessThanOrEqual(Math.min(6, placeCount))
+    expect(pins.length).toBeLessThanOrEqual(Math.min(4, placeCount))
     const keys = new Set(pins.map((pin) => `${pin.getAttribute('data-label-px')}:${pin.getAttribute('data-label-py')}`))
     expect(keys.size).toBe(pins.length)
   })

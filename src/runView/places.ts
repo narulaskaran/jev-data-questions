@@ -187,25 +187,27 @@ export const placeCentroids = (
 
 type LabelBox = { left: number; right: number; top: number; bottom: number }
 
-const MAP_LABEL_CHAR_W = 0.011
-const MAP_LABEL_PAD_W = 0.04
-const MAP_LABEL_H = 0.09
-const MAP_LABEL_MAX_W = 0.62
-const MAP_EDGE = 0.02
+const MAP_LABEL_CHAR_W = 0.016
+const MAP_LABEL_PAD_W = 0.06
+const MAP_LABEL_H = 0.12
+const MAP_LABEL_MAX_W = 0.7
+const MAP_EDGE = 0.03
 
 const OFFSETS: ReadonlyArray<{ dx: number; dy: number }> = [
-  { dx: 0, dy: -0.07 },
-  { dx: 0.1, dy: -0.07 },
-  { dx: -0.1, dy: -0.07 },
-  { dx: 0.14, dy: 0.02 },
-  { dx: -0.14, dy: 0.02 },
-  { dx: 0, dy: 0.09 },
-  { dx: 0.12, dy: 0.09 },
-  { dx: -0.12, dy: 0.09 },
-  { dx: 0.2, dy: -0.02 },
-  { dx: -0.2, dy: -0.02 },
-  { dx: 0.18, dy: -0.14 },
-  { dx: -0.18, dy: -0.14 },
+  { dx: 0, dy: -0.1 },
+  { dx: 0.18, dy: -0.1 },
+  { dx: -0.18, dy: -0.1 },
+  { dx: 0.26, dy: 0.02 },
+  { dx: -0.26, dy: 0.02 },
+  { dx: 0, dy: 0.14 },
+  { dx: 0.22, dy: 0.14 },
+  { dx: -0.22, dy: 0.14 },
+  { dx: 0.32, dy: -0.04 },
+  { dx: -0.32, dy: -0.04 },
+  { dx: 0.28, dy: -0.18 },
+  { dx: -0.28, dy: -0.18 },
+  { dx: 0.08, dy: -0.2 },
+  { dx: -0.08, dy: -0.2 },
 ]
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
@@ -219,7 +221,7 @@ export const estimateMapLabelSize = (label: Pick<PlaceLabel, 'name' | 'eating'>)
   return { width, height: MAP_LABEL_H }
 }
 
-export const boxesOverlap = (left: LabelBox, right: LabelBox, pad = 0.012): boolean => (
+export const boxesOverlap = (left: LabelBox, right: LabelBox, pad = 0.03): boolean => (
   left.left < right.right + pad
   && left.right + pad > right.left
   && left.top < right.bottom + pad
@@ -234,7 +236,7 @@ const boxAt = (px: number, py: number, width: number, height: number): LabelBox 
 })
 
 const fitsPlot = (box: LabelBox): boolean => (
-  box.left >= MAP_EDGE && box.right <= 1 - MAP_EDGE && box.top >= MAP_EDGE && box.bottom <= 0.86
+  box.left >= MAP_EDGE && box.right <= 1 - MAP_EDGE && box.top >= MAP_EDGE && box.bottom <= 0.82
 )
 
 /** Keep the highest-eating labels; offset or hide the rest so pins don't collide. */
@@ -243,7 +245,7 @@ export const declutterPlaceLabels = (
   options: { maxVisible?: number } = {},
 ): PlaceLabel[] => {
   if (labels.length === 0) return []
-  const maxVisible = Math.max(1, options.maxVisible ?? 6)
+  const maxVisible = Math.max(1, options.maxVisible ?? 4)
   const ranked = [...labels].sort((left, right) => (
     right.eating - left.eating
     || right.count - left.count
@@ -256,7 +258,7 @@ export const declutterPlaceLabels = (
     let next: (PlaceLabel & { box: LabelBox }) | undefined
     for (const offset of OFFSETS) {
       const px = clamp(label.px + offset.dx, MAP_EDGE + width / 2, 1 - MAP_EDGE - width / 2)
-      const py = clamp(label.py + offset.dy, MAP_EDGE + height / 2, 0.86 - height / 2)
+      const py = clamp(label.py + offset.dy, MAP_EDGE + height / 2, 0.82 - height / 2)
       const box = boxAt(px, py, width, height)
       if (!fitsPlot(box)) continue
       if (placed.some((item) => boxesOverlap(item.box, box))) continue
@@ -265,7 +267,7 @@ export const declutterPlaceLabels = (
     }
     if (!next && placed.length === 0) {
       const px = clamp(label.px, MAP_EDGE + width / 2, 1 - MAP_EDGE - width / 2)
-      const py = clamp(label.py - 0.07, MAP_EDGE + height / 2, 0.86 - height / 2)
+      const py = clamp(label.py - 0.1, MAP_EDGE + height / 2, 0.82 - height / 2)
       next = { ...label, px, py, box: boxAt(px, py, width, height) }
     }
     if (next) placed.push(next)
