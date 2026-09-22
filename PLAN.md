@@ -51,7 +51,7 @@ landing page (Dynamic insights from your data.)
   → /dataset/:id dashboard (2–4 tiles start in parallel; skeletons OK)
   → quiet schema strip + dataset preview under the tiles
   → diverse chart types on one page when the cuts are real (map + series); never three identical viz
-  → Seahawks: SEA win probability + SEA play quality side by side
+  → Seahawks: Will SEA win? + How good were SEA's plays? side by side
   → Squirrel lead: Where are they eating? labeled map + Which places have the most eating? ranked bars (never AM/PM class bars or P(moving) series)
   → optional Engineer (`?mode=engineer`): Edit Jev JSON / Draft task / Run Jev
 ```

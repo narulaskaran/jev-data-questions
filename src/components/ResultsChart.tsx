@@ -274,6 +274,7 @@ export const ResultsChart = memo(function ResultsChart({
           ) : null}
           {visual === 'places' && places.hasMap && mapPoints.length > 0 ? (
             <>
+              <p className="chart-caption">Each dot is a sighting</p>
               <svg className="places-svg" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet" data-place-points={mapPoints.length}>
                 {mapPoints.map((point) => (
                   <circle
@@ -296,7 +297,7 @@ export const ResultsChart = memo(function ResultsChart({
                     data-place-label={label.name}
                     data-eating-count={label.eating}
                   >
-                    {label.name} · {label.eating}
+                    {label.name} · {label.eating} eating
                   </span>
                 ))}
               </div>

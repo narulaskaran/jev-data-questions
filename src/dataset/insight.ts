@@ -1,7 +1,7 @@
 import type { DatasetPreview } from '../shared/dataset.js'
 import { FOOTBALL_FIXTURE_ID, footballPerspectiveLabel } from '../fixtures/footballTimeline.js'
 import { SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensus.js'
-import { asPerspectiveLabel, perspectiveMetricTitle } from '../teamMetadata.js'
+import { asPerspectiveLabel } from '../teamMetadata.js'
 import { formatDraftQueryForEditor } from '../shared/jevQuery.js'
 import {
   SAMPLE_PLAY_QUALITY_LEVELS,
@@ -133,7 +133,7 @@ const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
 
 const geoPlacesInsight = (): InsightProposal => ({
   id: 'places-geo',
-  title: 'Where they are',
+  title: 'Where are they?',
   question: 'Where are these rows?',
   reason: 'Map of these rows.',
   visual: 'places',
@@ -146,7 +146,7 @@ const geoPlacesInsight = (): InsightProposal => ({
 
 const rankedPlacesInsight = (): InsightProposal => ({
   id: 'places-ranked',
-  title: 'Where they happen',
+  title: 'Where does this happen?',
   question: 'Where do these rows happen?',
   reason: 'Ranked locations.',
   visual: 'places',
@@ -172,7 +172,7 @@ const rankedEatingBarsInsight = (): InsightProposal => ({
 
 export const insightEyebrow = (insight: Pick<InsightProposal, 'id' | 'visual'>): string => {
   if (insight.id === 'places-eating') return 'Eating'
-  if (insight.id === 'bars-eating-places') return 'By place'
+  if (insight.id === 'bars-eating-places') return 'Most eating'
   if (insight.id === 'series-win') return 'Win chance'
   if (insight.id === 'series-play-quality') return 'Play quality'
   if (insight.visual === 'places') return 'Places'
@@ -227,11 +227,19 @@ export const perspectiveLabelFor = (input: {
   return codes.size === 1 ? [...codes][0] : undefined
 }
 
+export const winChanceTitle = (perspectiveLabel?: string): string => (
+  perspectiveLabel ? `Will ${perspectiveLabel} win?` : "What's the chance of winning?"
+)
+
+export const playQualityTitle = (perspectiveLabel?: string): string => (
+  perspectiveLabel ? `How good were ${perspectiveLabel}'s plays?` : 'How good was this play?'
+)
+
 const winLikelihoodInsight = (perspectiveLabel?: string): InsightProposal => ({
   id: 'series-win',
-  title: perspectiveMetricTitle('win probability', perspectiveLabel),
+  title: winChanceTitle(perspectiveLabel),
   question: SAMPLE_WIN_LIKELIHOOD_TASK,
-  reason: 'Sequential play state — P(win) line.',
+  reason: 'Chance of winning after each play.',
   visual: 'series',
   perspective: perspectiveLabel,
   preparation: 'Use sequential play state.',
@@ -244,9 +252,9 @@ const winLikelihoodInsight = (perspectiveLabel?: string): InsightProposal => ({
 
 const playQualityInsight = (perspectiveLabel?: string): InsightProposal => ({
   id: 'series-play-quality',
-  title: perspectiveMetricTitle('play quality', perspectiveLabel),
+  title: playQualityTitle(perspectiveLabel),
   question: SAMPLE_PLAY_QUALITY_TASK,
-  reason: 'Sequential play state — quality over play index.',
+  reason: 'Play quality after each play.',
   visual: 'series',
   perspective: perspectiveLabel,
   preparation: 'Rate each play over the same index.',

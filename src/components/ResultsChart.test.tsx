@@ -152,6 +152,8 @@ describe('ResultsChart motion', () => {
     expect(document.querySelector('[data-place-points="2"]')).toBeTruthy()
     expect(document.querySelector('[data-place-label="On the ground"]')).toHaveAttribute('data-eating-count', '1')
     expect(document.querySelector('[data-place-label="In the trees"]')).toHaveAttribute('data-eating-count', '0')
+    expect(screen.getByText('On the ground · 1 eating')).toBeInTheDocument()
+    expect(screen.getByText('Each dot is a sighting')).toBeInTheDocument()
     expect(screen.getByRole('list', { name: /eating map legend/i })).toBeInTheDocument()
     expect(screen.getByText('Eating · 1')).toBeInTheDocument()
     expect(screen.getByText('Not eating · 1')).toBeInTheDocument()

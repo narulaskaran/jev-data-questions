@@ -44,7 +44,7 @@ Request JSON:
 {"datasetId":"dataset-upload-1"}
 ```
 
-`fixtureId` remains accepted. The route inspects schema/shape first. Named fixture-shaped cuts (Seahawks SEA win probability + play quality; squirrel eating map + ranked-eating bars) return those heuristics without calling OpenRouter — including when those CSVs were uploaded via BYOD. Other BYOD tables call the server-only OpenRouter adapter for **2–4** structured insights:
+`fixtureId` remains accepted. The route inspects schema/shape first. Named fixture-shaped cuts (Seahawks “Will SEA win?” + “How good were SEA's plays?”; squirrel eating map + ranked-eating bars) return those heuristics without calling OpenRouter — including when those CSVs were uploaded via BYOD. Other BYOD tables call the server-only OpenRouter adapter for **2–4** structured insights:
 
 ```json
 {

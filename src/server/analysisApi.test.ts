@@ -305,8 +305,8 @@ describe('analysis API contract', () => {
     expect(state.body).toEqual(expect.objectContaining({
       source: 'heuristic',
       insights: expect.arrayContaining([
-        expect.objectContaining({ id: 'series-win', title: 'SEA win probability' }),
-        expect.objectContaining({ id: 'series-play-quality', title: 'SEA play quality' }),
+        expect.objectContaining({ id: 'series-win', title: 'Will SEA win?' }),
+        expect.objectContaining({ id: 'series-play-quality', title: "How good were SEA's plays?" }),
       ]),
     }))
     expect(proposeCalls).toHaveLength(0)

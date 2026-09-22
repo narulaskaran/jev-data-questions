@@ -90,7 +90,7 @@ describe('shape → viz routing', () => {
     }))
     expect(insights.find((item) => item.id === 'bars-eating-places')?.classes).toEqual([])
     expect(insightEyebrow(insights[0]!)).toBe('Eating')
-    expect(insightEyebrow(insights.find((item) => item.id === 'bars-eating-places')!)).toBe('By place')
+    expect(insightEyebrow(insights.find((item) => item.id === 'bars-eating-places')!)).toBe('Most eating')
     expect(insights.some((item) => item.id === 'series-activity')).toBe(false)
     expect(new Set(insights.map((item) => item.visual)).size).toBeGreaterThanOrEqual(2)
     expect(insights.some((item) => /classify by shift|labels in this table/i.test(`${item.title} ${item.reason}`))).toBe(false)
@@ -119,7 +119,7 @@ describe('shape → viz routing', () => {
     const insight = defaultInsightFor(dataset)
     expect(insight).toEqual(expect.objectContaining({
       id: 'series-win',
-      title: 'SEA win probability',
+      title: 'Will SEA win?',
       visual: 'series',
       task: SAMPLE_WIN_LIKELIHOOD_TASK,
       cannedQuery: SAMPLE_WIN_NOUL_QUERY,
@@ -144,7 +144,7 @@ describe('shape → viz routing', () => {
     expect(insights.some((item) => item.visual === 'places')).toBe(false)
     expect(insights.some((item) => /classify sea/i.test(item.title))).toBe(false)
     expect(insights.find((item) => item.id === 'series-play-quality')).toEqual(expect.objectContaining({
-      title: 'SEA play quality',
+      title: "How good were SEA's plays?",
       visual: 'series',
       task: SAMPLE_PLAY_QUALITY_TASK,
       questionKind: 'score',
