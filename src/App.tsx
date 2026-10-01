@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DemoPicker, HeroPreview } from './components/LandingDemos'
-import { demoReplayDisclosure, getDemoDashboard, getDemoSnapshot } from './demo'
+import { demoReplayDisclosure, isDemoAnalysisId, loadDemoDashboard, loadDemoSnapshot, type DemoDashboard } from './demo'
 import { copyText } from './browser/clipboard'
 import { AnalysisRunView } from './components/AnalysisRunView'
 import type { DashboardTileModel } from './components/DashboardTile'
@@ -17,7 +17,8 @@ import { ArrowUpRight } from './components/ui/arrow'
 import { Card, CardContent, CardFooter, CardHeader } from './components/ui/card'
 import { Label } from './components/ui/label'
 import { Textarea } from './components/ui/textarea'
-import { getFixtureDatasetPreview } from './dataset/sampleDataset'
+import { loadFixtureDatasetPreview } from './dataset/sampleDataset'
+import { formatCount } from './insights/format'
 import { hasNamedHeuristicCuts, proposeInsights, queryFromInsight, sanitizeLlmInsightProposals, mergeDashboardInsights, type InsightProposal } from './dataset/insight'
 import { LOCAL_PATH, datasetHref, landHref, parseAppLocation, type AppRoute } from './app/route'
 import { CSV_MAX_BYTES, DatasetError, DATASET_ERROR_COPY, plainDatasetError, type ValidatedDataset } from './dataset/csvTypes'
@@ -241,7 +242,9 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const shareAnalysisId = route.kind === 'share' ? route.analysisId : undefined
   const isShareView = shareAnalysisId !== undefined
   const demoId = route.kind === 'demo' ? route.demoId : undefined
-  const demo = useMemo(() => (demoId ? getDemoDashboard(demoId) : undefined), [demoId])
+  const [loadedDemo, setLoadedDemo] = useState<{ id: string, dashboard?: DemoDashboard }>()
+  const demo = demoId !== undefined && loadedDemo?.id === demoId ? loadedDemo.dashboard : undefined
+  const demoLoading = demoId !== undefined && loadedDemo?.id !== demoId
   const isLocal = route.kind === 'local'
   const [dataset, setDataset] = useState<DatasetPreview | undefined>()
   const [intakeStatus, setIntakeStatus] = useState<DatasetIntakeStatus>()
@@ -315,14 +318,22 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   }, [api, isShareView, route.kind])
 
   useEffect(() => {
+    if (demoId === undefined) return undefined
+    let active = true
+    void loadDemoDashboard(demoId).then((dashboard) => {
+      if (active) setLoadedDemo({ id: demoId, dashboard })
+    })
+    return () => { active = false }
+  }, [demoId])
+
+  useEffect(() => {
     if (!shareAnalysisId) return undefined
     let active = true
     setShareLoading(true)
     setError(undefined)
     setSnapshot(undefined)
     setDraft(undefined)
-    const localSnapshot = getDemoSnapshot(shareAnalysisId)
-    const load = localSnapshot ? Promise.resolve(localSnapshot) : api.share(shareAnalysisId)
+    const load = loadDemoSnapshot(shareAnalysisId).then((demoSnapshot) => demoSnapshot ?? api.share(shareAnalysisId))
     void load.then((nextSnapshot) => {
       if (active) setSnapshot(nextSnapshot)
     }).catch((readError) => {
@@ -535,16 +546,12 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     setDataset(undefined)
     resetRunState()
     setIntakeError(undefined)
-    const fixture = getFixtureDatasetPreview(route.datasetId)
-    if (fixture) {
-      applyDataset(fixture, undefined, false)
-      return
-    }
     let active = true
     setIntakeBusy(true)
-    const load = api.readDataset
-      ? api.readDataset(route.datasetId)
-      : Promise.reject(new DatasetError('DATASET_NOT_FOUND', 'Could not load this dataset.', 404))
+    const { datasetId: routeDatasetId } = route
+    const load = loadFixtureDatasetPreview(routeDatasetId).then((fixture) => fixture ?? (api.readDataset
+      ? api.readDataset(routeDatasetId)
+      : Promise.reject(new DatasetError('DATASET_NOT_FOUND', 'Could not load this dataset.', 404))))
     void load.then((preview) => {
       if (active) applyDataset(preview, undefined, false)
     }).catch((loadError) => {
@@ -746,7 +753,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       ? buildStoryDashboard(activeDataset.columns.map((column) => column.name), activeDataset.previewRows, { noun: demo?.noun, question: storyQuestion })
       : undefined
   ), [activeDataset, demo?.noun, storyQuestion])
-  const showIntake = !isShareView && !activeDataset
+  const showIntake = !isShareView && !activeDataset && !demoLoading
   const showShape = !isShareView && Boolean(activeDataset)
   // Jev runs read rows from stored datasets, so they need the live service.
   const canAskJev = !demo && !isLocal
@@ -774,7 +781,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const choiceClasses = parsedQuery?.type === 'choice' ? Object.keys(parsedQuery.criteria) : []
   const stage = isShareView ? 'share' : snapshot && engineerMode ? 'run' : activeDataset ? 'dataset' : 'intake'
   const landing = route.kind === 'land'
-  const demoShare = shareAnalysisId ? getDemoSnapshot(shareAnalysisId) : undefined
+  const demoShare = shareAnalysisId !== undefined && isDemoAnalysisId(shareAnalysisId)
 
   return (
     <main className="analysis-shell" data-stage={stage} data-mode={engineerMode ? 'engineer' : 'product'}>
@@ -807,7 +814,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
         <StageFold open={showShape} animate={foldAnimate}>
           {activeDataset ? (
             <div className="stage-stack">
-              <div className="dataset-overview"><div><p className="eyebrow">{demo ? 'Built-in example' : isLocal ? 'Your file' : 'Dataset'}</p><p className="dataset-title">{activeDataset.displayName}</p></div><div className="dataset-overview-actions"><span>{activeDataset.acceptedRowCount.toLocaleString()} rows <span aria-hidden="true">·</span> {activeDataset.columns.length} columns</span>{demo && route.kind === 'demo' && route.demoId === 'football' ? <Button variant="secondary" onClick={() => navigate('/share/demo-football')}>Replay timeline <ArrowUpRight /></Button> : null}</div></div>
+              <div className="dataset-overview"><div><p className="eyebrow">{demo ? 'Built-in example' : isLocal ? 'Your file' : 'Dataset'}</p><p className="dataset-title">{activeDataset.displayName}</p></div><div className="dataset-overview-actions"><span>{formatCount(activeDataset.acceptedRowCount)} rows <span aria-hidden="true">·</span> {activeDataset.columns.length} columns</span>{demo && route.kind === 'demo' && route.demoId === 'football' ? <Button variant="secondary" onClick={() => navigate('/share/demo-football')}>Replay timeline <ArrowUpRight /></Button> : null}</div></div>
               {demo ? <p className="demo-disclosure">{demo.disclosure}</p> : null}
               {isLocal ? <p className="demo-disclosure">{LOCAL_DATA_NOTE} There is no link to share, and closing or reloading the tab clears it.</p> : null}
               {notice ? <p className="demo-disclosure" role="status">{notice}</p> : null}
@@ -827,7 +834,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
                     <h2 id="jev-heading">Go further with Jev</h2>
                     <p>The dashboard above is computed from your columns. Jev reads each row with a model, for questions the columns cannot answer on their own.</p>
                   </div>
-                  {!runRequested ? <div className="analysis-confirm"><div><h3>Have Jev read every row?</h3><p>Runs up to 4 model insights across {activeDataset.acceptedRowCount.toLocaleString()} rows. Each insight may use up to {(activeDataset.acceptedRowCount * 2).toLocaleString()} model calls, including retries. Results are public.</p></div><Button variant="run" onClick={() => setRunRequested(true)}>Analyze dataset <ArrowUpRight /></Button></div> : (
+                  {!runRequested ? <div className="analysis-confirm"><div><h3>Have Jev read every row?</h3><p>Runs up to 4 model insights across {formatCount(activeDataset.acceptedRowCount)} rows. Each insight may use up to {formatCount(activeDataset.acceptedRowCount * 2)} model calls, including retries. Results are public.</p></div><Button variant="run" onClick={() => setRunRequested(true)}>Analyze dataset <ArrowUpRight /></Button></div> : (
                     <DatasetDashboard
                       tiles={tiles}
                       proposing={proposing}

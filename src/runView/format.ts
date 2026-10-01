@@ -132,7 +132,7 @@ export const runSubsetCopy = ({
 }
 
 export const percent = (value: number | undefined): string => (
-  value === undefined ? '—' : `${Math.round(value * 100)}%`
+  value === undefined ? '—' : formatPercentTick(value)
 )
 
 export const cell = (value: unknown): string => (

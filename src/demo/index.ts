@@ -1,8 +1,7 @@
 import { observedEatingInsight, proposeInsights, queryFromInsight, type InsightProposal } from '../dataset/insight.js'
 import { inferSampleColumns } from '../dataset/sampleColumns.js'
-import { getFootballDatasetPreview } from '../dataset/sampleDataset.js'
+import { getFootballDatasetPreview, loadSquirrelDatasetPreview } from '../dataset/sampleDataset.js'
 import { footballFixture, footballFixtureSourceLinks } from '../fixtures/footballTimeline.js'
-import { getSquirrelDatasetPreview } from '../fixtures/squirrelCensus.js'
 import type { RowNoun } from '../insights/views.js'
 import type { AnalysisResultRow, AnalysisSnapshot } from '../shared/analysis.js'
 import { asAnalysisRow, type DatasetPreview } from '../shared/dataset.js'
@@ -141,9 +140,9 @@ const completedSnapshot = (input: {
   resultRows: input.rows,
 })
 
-export const getDemoDashboard = (id: string): DemoDashboard | undefined => {
+export const loadDemoDashboard = async (id: string): Promise<DemoDashboard | undefined> => {
   if (id === 'squirrels') {
-    return { dataset: getSquirrelDatasetPreview(), noun: { singular: 'sighting', plural: 'sightings' }, disclosure: SQUIRREL_DISCLOSURE }
+    return { dataset: await loadSquirrelDatasetPreview(), noun: { singular: 'sighting', plural: 'sightings' }, disclosure: SQUIRREL_DISCLOSURE }
   }
   if (id === 'football') {
     return { dataset: footballDemoPreview(), noun: { singular: 'play', plural: 'plays' }, disclosure: FOOTBALL_DISCLOSURE }
@@ -157,9 +156,9 @@ export const demoReplayDisclosure = (analysisId: string): string | undefined => 
 )
 
 /** Resolve the stable, shareable demo analysis IDs without storage or network access. */
-export const getDemoSnapshot = (analysisId: string): AnalysisSnapshot | undefined => {
+export const loadDemoSnapshot = async (analysisId: string): Promise<AnalysisSnapshot | undefined> => {
   if (analysisId === 'demo-squirrels') {
-    const dataset = getSquirrelDatasetPreview()
+    const dataset = await loadSquirrelDatasetPreview()
     return completedSnapshot({
       analysisId,
       dataset,

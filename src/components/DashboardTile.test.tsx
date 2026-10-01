@@ -2,14 +2,14 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { DashboardTile, type DashboardTileModel } from './DashboardTile'
 import { DatasetDashboard } from './DatasetDashboard'
-import { getDemoSnapshot } from '../demo'
+import { loadDemoSnapshot } from '../demo'
 import { observedEatingInsight, proposeInsights } from '../dataset/insight'
 import { getFootballDatasetPreview } from '../dataset/sampleDataset'
 import { getSquirrelDatasetPreview } from '../fixtures/squirrelCensus'
 
 // Saved runs of both kinds: an observed places map and a per-row series.
 const squirrelRows = getSquirrelDatasetPreview().previewRows.slice(0, 120)
-const squirrelSnapshot = getDemoSnapshot('demo-squirrels')!
+const squirrelSnapshot = (await loadDemoSnapshot('demo-squirrels'))!
 const squirrelTile: DashboardTileModel = {
   insight: observedEatingInsight({ geo: { lat: 'latitude', lng: 'longitude' } }),
   snapshot: {
@@ -21,7 +21,7 @@ const squirrelTile: DashboardTileModel = {
 const football = getFootballDatasetPreview()
 const footballTile: DashboardTileModel = {
   insight: proposeInsights(football)[0]!,
-  snapshot: getDemoSnapshot('demo-football')!,
+  snapshot: (await loadDemoSnapshot('demo-football'))!,
 }
 
 describe('dashboard tiles', () => {

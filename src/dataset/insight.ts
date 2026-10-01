@@ -1,6 +1,6 @@
 import type { DatasetPreview } from '../shared/dataset.js'
 import { FOOTBALL_FIXTURE_ID, footballPerspectiveLabel } from '../fixtures/footballTimeline.js'
-import { SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensus.js'
+import { SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensusMeta.js'
 import { asPerspectiveLabel } from '../teamMetadata.js'
 import { formatDraftQueryForEditor } from '../shared/jevQuery.js'
 import {
