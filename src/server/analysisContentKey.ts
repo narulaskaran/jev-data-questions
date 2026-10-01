@@ -9,7 +9,8 @@ import {
 import { inferQuestionKind, normalizeAnalysisTask } from '../shared/questionKind.js'
 
 const CONTENT_KEY_VERSION = 1
-const DRAFT_CONTENT_KEY_VERSION = 1
+// v2: drafts that only restate existing columns are refused, so older cached ones must not be reused.
+const DRAFT_CONTENT_KEY_VERSION = 2
 
 const compactJevQuery = (query: JevQueryJson): string => {
   if (query.type === 'noul') {

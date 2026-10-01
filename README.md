@@ -1,8 +1,8 @@
 # Jev Data Analysis
 
-Turn a small CSV into a dashboard of useful insights. Inspect the data, choose to analyze it, watch results arrive, and export or share the finished charts.
+Turn a small CSV into a presentation-ready dashboard. The app profiles every column, picks the charts that fit the data, and gives each one a headline that states what it shows. Optionally, Jev can then read every row for insights the columns cannot answer on their own.
 
-The built-in demos work entirely in the browser. The squirrel dashboard shows observed eating counts from a census-shaped fixture; the football dashboard uses explicitly illustrative rules, not Jev predictions. Neither requires credentials or makes provider requests.
+The built-in demos work entirely in the browser. The squirrel dashboard charts all 3,023 sightings from the public 2018 Central Park Squirrel Census; the football dashboard uses explicitly illustrative rules, not Jev predictions. Neither requires credentials or makes provider requests.
 
 ## Run locally
 
@@ -13,11 +13,11 @@ npm ci
 npm run dev
 ```
 
-Open the Vite URL, then choose **Explore example**. Direct links are `/demo/squirrels` and `/demo/football`. Saved demo replay is also available at `/share/demo-football`. Every completed tile has CSV export and sharing; blocked clipboard access reveals a selectable link.
+Open the Vite URL and pick one of the examples. Direct links are `/demo/squirrels` and `/demo/football`. Saved demo replay is also available at `/share/demo-football`. Every chart can switch to a data table and export its own CSV; blocked clipboard access reveals a selectable link. The **Ask about your columns** box reorders the dashboard to lead with the charts that answer a question, without any request.
 
-CSV upload and public HTTPS URL intake require the live backend described below. Opening a dataset shows its schema and proposed chart placeholders. **Analyze dataset** explicitly starts insight generation and analysis. Visiting datasets, demos, or shared results never starts paid work. Advanced query editing is behind the footer **Engineer** link (`?mode=engineer`).
+Dropping a CSV always produces a dashboard. Without the live backend the file is charted in the browser at `/local`, never uploaded, and cleared on reload. With the live backend, uploads and public HTTPS URL intake are stored and shareable. A stored dataset shows its observed dashboard first; **Analyze dataset** explicitly starts Jev analysis. Questions the columns already answer (for example "where are squirrels eating?") are refused before any paid call. Visiting datasets, demos, or shared results never starts paid work. Advanced query editing is behind the footer **Engineer** link (`?mode=engineer`).
 
-Uploads and results are public. Use non-sensitive data only. Intake accepts at most **5 MB, 5,000 rows, and 100 columns**. CSV URL fetches reject credentials and private/reserved destinations, validate each redirect, pin the connection to validated DNS answers, and enforce streamed size and timeout limits.
+Stored uploads and results are public. Use non-sensitive data only. Intake accepts at most **5 MB, 5,000 rows, and 100 columns**. CSV URL fetches reject credentials and private/reserved destinations, validate each redirect, pin the connection to validated DNS answers, and enforce streamed size and timeout limits.
 
 ## Validate
 
@@ -67,6 +67,6 @@ Production `npm run build:vercel` deploys Convex functions before building the f
 
 ## Fixtures and boundaries
 
-The checked-in fixture CSVs are `/samples/seahawks-super-bowl-2026.csv` and `/samples/nyc-squirrel-census.csv`; regenerate with `npm run samples:export`. Football has 71 plays. The squirrel fixture has 96 rows. Demo model/disclosure labels distinguish observed values, illustrative calculations, and live Jev output. Score CSV exports use `score`; Noul exports use `probability`; class exports include selected class and class probabilities. Formula-like cells are escaped.
+The checked-in fixture CSVs are `/samples/seahawks-super-bowl-2026.csv` and `/samples/nyc-squirrel-census.csv`; regenerate with `npm run samples:export`. Football has 71 plays. The squirrel fixture has all 3,023 census sightings (regenerate with `node scripts/generate-squirrel-fixture.mjs`). Demo model/disclosure labels distinguish observed values, illustrative calculations, and live Jev output. Score CSV exports use `score`; Noul exports use `probability`; class exports include selected class and class probabilities. Formula-like cells are escaped.
 
 Server modules own Jev, OpenRouter, UploadThing, and privileged Convex writes. A build guard prevents server credentials and provider endpoints from entering browser chunks. Historical ESPN/gamecast code remains under `historical/` and is outside the shipped routes.

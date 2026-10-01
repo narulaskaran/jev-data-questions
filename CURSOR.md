@@ -4,8 +4,9 @@ The active product is CSV analysis, with credential-free examples for sharing an
 
 - Landing pairs a clear product preview, CSV intake, and two immediately usable demo dashboards. Preserve the demo on-ramp when backend services are unavailable.
 - `/demo/squirrels` shows observed counts; `/demo/football` shows explicitly illustrative rule-based values. Never present these as Jev output or proof of model accuracy. They must make no API/provider requests.
-- Uploads/results are public. Show visibility and limits before intake. Accepted tables remain fully reachable through a bounded, scrollable preview.
-- Dataset pages show shape and chart proposals first. Only an explicit **Analyze dataset** action begins generation/analysis. Route changes must cancel stale UI effects and prevent delayed starts.
+- Every table gets an observed dashboard built locally: `src/insights/` profiles columns and ranks candidate charts, each with a computed headline, and `src/components/story/` renders them. Headlines must state only what the data shows. The column-question box reorders charts with no request.
+- Without the live service, dropped CSVs are charted in-browser at `/local` and never sent anywhere. Stored uploads/results are public. Show visibility and limits before intake. Accepted tables remain fully reachable through a bounded, scrollable preview.
+- Dataset pages show the observed dashboard first. Only an explicit **Analyze dataset** action begins Jev generation/analysis. Drafts whose answer is already a column (`src/dataset/columnQuestion.ts`) are refused with `COLUMN_QUESTION` before any paid call. Route changes must cancel stale UI effects and prevent delayed starts.
 - Dashboard tiles mix appropriate chart types. Places/counts use observed source fields and unknown values stay unknown. Do not infer eating from classifier probability. Football charts must not use CSV WPA as Jev output.
 - Completed tiles export and share independently. Clipboard denial offers a selectable URL. Share/read/replay never starts paid calls. Missing live shares stay honest errors.
 - Keep default copy plain. Query/JSON editing stays behind `?mode=engineer`. Error states preserve results, retry only when allowed, and recover from transient polling errors.

@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useRef, type CSSProperties, type PointerEvent, type SyntheticEvent } from 'react'
 import { classDistribution, distributionAt } from '../dataset/classDistribution'
 import { classColor } from '../runView/classColor'
+import { valueBands } from '../runView/bands'
 import { areChartPropsEqual, barWidth } from '../runView/chartProps'
 import { clampPlayhead, playDomainCount, type PlayheadMotion } from '../runView/playhead'
 import { areaPath, jevSeriesPoints, linePath, seriesExtent, seriesX } from '../runView/seriesPath'
@@ -102,6 +103,7 @@ export const ResultsChart = memo(function ResultsChart({
   perspectiveLabel,
   compact = false,
   rankPlaces = false,
+  banded = false,
   heading: headingOverride,
   headingId = 'distribution-heading',
   onSeek,
@@ -120,6 +122,8 @@ export const ResultsChart = memo(function ResultsChart({
   perspectiveLabel?: string
   compact?: boolean
   rankPlaces?: boolean
+  /** Summarize yes/no and score values as counts per band instead of a line over row order. */
+  banded?: boolean
   heading?: string
   headingId?: string
   onSeek: (index: number, phase?: 'scrub' | 'release') => void
@@ -140,6 +144,11 @@ export const ResultsChart = memo(function ResultsChart({
   const series = useMemo(
     () => (visual === 'series' ? jevSeriesPoints(rows, prefixCount, domainCount) : []),
     [domainCount, prefixCount, rows, visual],
+  )
+  const showBands = banded && visual === 'series' && (kind === 'noul' || kind === 'score')
+  const bands = useMemo(
+    () => (showBands ? valueBands(rows.slice(0, prefixCount), kind, classes) : []),
+    [classes, kind, prefixCount, rows, showBands],
   )
   const classified = visual === 'bars' ? values.reduce((sum, item) => sum + item.count, 0) : series.length
   const scale = Math.max(totalRows, classified, 1)
@@ -184,7 +193,9 @@ export const ResultsChart = memo(function ResultsChart({
           : `Through row ${prefixCount}`
   const aria = waiting
     ? 'Waiting for the first row'
-    : visual === 'series'
+    : showBands
+      ? `${heading}: number of rows in each band`
+      : visual === 'series'
       ? `${heading} over ${headingOverride && !perspectiveLabel ? 'each row' : 'play index'}`
       : visual === 'places'
         ? (places.hasMap ? 'Map of where they are eating' : 'Eating count by place')
@@ -270,13 +281,13 @@ export const ResultsChart = memo(function ResultsChart({
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         >
-          {visual !== 'places' && !rankPlaces ? (
+          {visual !== 'places' && !rankPlaces && !showBands ? (
             <div className="chart-axes" aria-hidden="true">
               <span className="chart-y-axis" />
               <span className="chart-x-axis" />
             </div>
           ) : null}
-          {visual === 'series' ? (
+          {visual === 'series' && !showBands ? (
             <div className="chart-y-ticks" aria-hidden="true">
               <span>100%</span>
               <span>50%</span>
@@ -284,7 +295,14 @@ export const ResultsChart = memo(function ResultsChart({
             </div>
           ) : null}
           {waiting && !compact ? <p className="chart-empty">Waiting for the first row…</p> : null}
-          {visual === 'series' && series.length > 0 ? (
+          {showBands && series.length > 0 ? (
+            <div className="distribution-chart" data-waiting="false" data-bands={bands.length}>
+              {bands.map(({ name, count }) => (
+                <ClassBar key={name} name={name} count={count} scale={Math.max(series.length, 1)} color={classColor(name, bands.map((band) => band.name))} />
+              ))}
+            </div>
+          ) : null}
+          {visual === 'series' && !showBands && series.length > 0 ? (
             <svg
               className="series-svg"
               viewBox="0 0 1 1"

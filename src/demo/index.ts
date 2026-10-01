@@ -1,9 +1,11 @@
-import { proposeInsights, queryFromInsight } from '../dataset/insight.js'
+import { observedEatingInsight, proposeInsights, queryFromInsight, type InsightProposal } from '../dataset/insight.js'
+import { inferSampleColumns } from '../dataset/sampleColumns.js'
 import { getFootballDatasetPreview } from '../dataset/sampleDataset.js'
+import { footballFixture, footballFixtureSourceLinks } from '../fixtures/footballTimeline.js'
 import { getSquirrelDatasetPreview } from '../fixtures/squirrelCensus.js'
-import type { DashboardTileModel } from '../components/DashboardTile.js'
+import type { RowNoun } from '../insights/views.js'
 import type { AnalysisResultRow, AnalysisSnapshot } from '../shared/analysis.js'
-import type { DatasetPreview } from '../shared/dataset.js'
+import { asAnalysisRow, type DatasetPreview } from '../shared/dataset.js'
 import { parseJevQueryJson } from '../shared/jevQuery.js'
 
 export type DemoDatasetId = 'squirrels' | 'football'
@@ -21,40 +23,82 @@ export const demoDatasets: readonly DemoDatasetListItem[] = Object.freeze([
   {
     id: 'squirrels',
     name: 'Central Park squirrels',
-    description: 'A small census sample mapped by observed eating activity.',
+    description: 'Every sighting from the 2018 census: where, when, and what the squirrels were doing.',
     analysisId: 'demo-squirrels',
   },
   {
     id: 'football',
     name: 'Super Bowl play stream',
-    description: 'A real play-by-play fixture with an illustrative score-based read.',
+    description: 'Seattle’s 71 offensive plays: the lead, the yardage, and who gained it.',
     analysisId: 'demo-football',
   },
 ])
 
 export interface DemoDashboard {
   dataset: DatasetPreview
-  tiles: DashboardTileModel[]
+  /** What one row of the table is, for chart wording. */
+  noun: RowNoun
   disclosure: string
 }
 
-const SQUIRREL_DISCLOSURE = 'Observed data demo: a 96-row census-shaped example. Every mark reflects the eating field in the fixture. These are observed counts, not AI predictions.'
-const FOOTBALL_DISCLOSURE = 'Illustrative demo: forecasts use simple rules based on scores, time remaining, and yardage. These are not Jev predictions or evidence of model accuracy.'
+const SQUIRREL_DISCLOSURE = 'Observed data demo: every chart is counted directly from the 3,023 sightings in the public 2018 Central Park Squirrel Census. Nothing here is an AI prediction.'
+const FOOTBALL_DISCLOSURE = 'Observed data demo: every chart is computed directly from Seattle’s 71 offensive plays in the public play-by-play record. Nothing here is a Jev prediction. The linked timeline replay is a separate, rule-based illustration.'
+const REPLAY_DISCLOSURE: Record<DemoDatasetId, string> = {
+  squirrels: 'Observed data demo: every mark reflects the eating field in the census. These are observed counts, not AI predictions.',
+  football: 'Illustrative demo: forecasts use simple rules based on scores and time remaining. These are not Jev predictions or evidence of model accuracy.',
+}
 const DEMO_CREATED_AT = '2026-10-01T00:00:00.000Z'
+
+/**
+ * The football dashboard reads the same fixture rows as the model sample, with
+ * plain column names and without model-derived fields (EPA, WPA) or ID columns.
+ */
+const FOOTBALL_DEMO_COLUMNS = [
+  'play', 'quarter', 'down', 'yards_to_go', 'play_type', 'passer', 'receiver', 'rusher',
+  'yards_gained', 'air_yards', 'yards_after_catch', 'complete_pass', 'sack',
+  'seahawks_score', 'patriots_score', 'seahawks_lead',
+] as const
+
+const footballDemoPreview = (): DatasetPreview => {
+  const base = getFootballDatasetPreview()
+  const rows = [...footballFixture.rows]
+    .sort((left, right) => left.play_id - right.play_id)
+    .map((row, index) => asAnalysisRow({
+      play: index + 1,
+      quarter: row.qtr,
+      down: row.down,
+      yards_to_go: row.ydstogo,
+      play_type: row.play_type === 'pass' ? 'Pass' : row.play_type === 'run' ? 'Run' : row.play_type,
+      passer: row.passer_player_name,
+      receiver: row.receiver_player_name,
+      rusher: row.rusher_player_name,
+      yards_gained: row.yards_gained,
+      air_yards: row.air_yards,
+      yards_after_catch: row.yards_after_catch,
+      complete_pass: row.play_type === 'pass' ? row.complete_pass === 1 : null,
+      sack: row.sack === 1,
+      seahawks_score: row.posteam_score,
+      patriots_score: row.defteam_score,
+      seahawks_lead: row.score_differential,
+    }))
+  return {
+    ...base,
+    datasetId: 'demo-football-plays',
+    displayName: 'Super Bowl LX: Seattle on offense',
+    contentHash: 'fixture-football-demo',
+    columns: inferSampleColumns(rows, [...FOOTBALL_DEMO_COLUMNS]),
+    acceptedRowCount: rows.length,
+    previewRows: rows,
+    attribution: {
+      disclosure: 'Seattle’s 71 offensive plays from nflverse play-by-play data (CC BY 4.0). Column names are simplified for reading.',
+      sourceUrl: footballFixtureSourceLinks.csvFallback,
+      licenseUrl: footballFixtureSourceLinks.license,
+    },
+  }
+}
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value))
-
-const squirrelResultRows = (dataset: DatasetPreview): AnalysisResultRow[] => (
-  dataset.previewRows.map((input, rowIndex) => ({
-    rowIndex,
-    input,
-    model: 'observed-data',
-    questionKind: 'noul',
-    value: input.eating === true ? 1 : 0,
-  }))
-)
-
 const logistic = (value: number): number => 1 / (1 + Math.exp(-value))
 
 /** Rule-based display value; deliberately excludes the source WPA field. */
@@ -71,39 +115,17 @@ const footballWinLikelihood = (input: AnalysisResultRow['input']): number => {
   return clamp(logistic(scoreDiff / scale), 0.01, 0.99)
 }
 
-const footballPlayQuality = (input: AnalysisResultRow['input']): number => {
-  const gained = finite(input.yards_gained) ? input.yards_gained : 0
-  const needed = finite(input.ydstogo) ? Math.max(1, input.ydstogo) : 10
-  // Center an ordinary short gain near 0.5; reaching the line to gain lifts
-  // the score, while negative plays lower it. Keep the score chart bounded.
-  const progress = clamp(gained / needed, -1, 1.5)
-  const conversionBonus = gained >= needed ? 0.18 : 0
-  return clamp(0.5 + progress * 0.22 + conversionBonus, 0.02, 0.98)
-}
-
-const footballResultRows = (dataset: DatasetPreview, insightId: string): AnalysisResultRow[] => (
-  dataset.previewRows.map((input, rowIndex) => ({
-    rowIndex,
-    input,
-    model: 'illustrative-demo',
-    questionKind: insightId === 'series-play-quality' ? 'score' : 'noul',
-    value: insightId === 'series-play-quality' ? footballPlayQuality(input) : footballWinLikelihood(input),
-  }))
-)
-
 const completedSnapshot = (input: {
   analysisId: string
   dataset: DatasetPreview
-  query: string
-  questionKind: AnalysisSnapshot['questionKind']
-  classes: readonly string[]
+  insight: InsightProposal
   rows: AnalysisResultRow[]
 }): AnalysisSnapshot => ({
   analysisId: input.analysisId,
   fixtureId: input.dataset.datasetId,
   datasetId: input.dataset.datasetId,
   sourceType: input.dataset.sourceType,
-  query: input.query,
+  query: queryFromInsight(input.insight),
   status: 'complete',
   createdAt: DEMO_CREATED_AT,
   updatedAt: DEMO_CREATED_AT,
@@ -113,49 +135,62 @@ const completedSnapshot = (input: {
     completedCalls: 0,
     totalCalls: 0,
   },
-  questionKind: input.questionKind,
-  classes: [...input.classes],
+  questionKind: input.insight.questionKind,
+  classes: [...input.insight.classes],
   columns: input.dataset.columns.map((column) => column.name),
   resultRows: input.rows,
 })
 
-const buildDashboard = (id: DemoDatasetId): DemoDashboard => {
-  const dataset = id === 'squirrels' ? getSquirrelDatasetPreview() : getFootballDatasetPreview()
-  const isSquirrel = id === 'squirrels'
-  const disclosure = isSquirrel ? SQUIRREL_DISCLOSURE : FOOTBALL_DISCLOSURE
-  const insights = proposeInsights(dataset)
-  const tiles: DashboardTileModel[] = insights.map((insight, index) => {
-    const rows = isSquirrel
-      ? squirrelResultRows(dataset)
-      : footballResultRows(dataset, insight.id)
-    const questionKind = insight.questionKind
-    const snapshot = completedSnapshot({
-      analysisId: index === 0
-        ? (isSquirrel ? 'demo-squirrels' : 'demo-football')
-        : `${isSquirrel ? 'demo-squirrels' : 'demo-football'}-${insight.id}`,
-      dataset,
-      query: queryFromInsight(insight),
-      questionKind,
-      classes: insight.classes,
-      rows,
-    })
-    return { insight, snapshot, latencyHint: 'saved' }
-  })
-  return { dataset, tiles, disclosure }
+export const getDemoDashboard = (id: string): DemoDashboard | undefined => {
+  if (id === 'squirrels') {
+    return { dataset: getSquirrelDatasetPreview(), noun: { singular: 'sighting', plural: 'sightings' }, disclosure: SQUIRREL_DISCLOSURE }
+  }
+  if (id === 'football') {
+    return { dataset: footballDemoPreview(), noun: { singular: 'play', plural: 'plays' }, disclosure: FOOTBALL_DISCLOSURE }
+  }
+  return undefined
 }
 
-export const getDemoDashboard = (id: string): DemoDashboard | undefined => {
-  if (id !== 'squirrels' && id !== 'football') return undefined
-  return buildDashboard(id)
-}
+/** Disclosure for the saved single-chart replay at `/share/demo-*`. */
+export const demoReplayDisclosure = (analysisId: string): string | undefined => (
+  analysisId === 'demo-squirrels' ? REPLAY_DISCLOSURE.squirrels : analysisId === 'demo-football' ? REPLAY_DISCLOSURE.football : undefined
+)
 
 /** Resolve the stable, shareable demo analysis IDs without storage or network access. */
 export const getDemoSnapshot = (analysisId: string): AnalysisSnapshot | undefined => {
-  if (analysisId !== 'demo-squirrels' && analysisId !== 'demo-football') return undefined
-  const id: DemoDatasetId = analysisId === 'demo-squirrels' ? 'squirrels' : 'football'
-  const lead = buildDashboard(id).tiles[0]?.snapshot
-  if (!lead) throw new Error(`Demo dashboard has no lead result: ${id}`)
-  return lead
+  if (analysisId === 'demo-squirrels') {
+    const dataset = getSquirrelDatasetPreview()
+    return completedSnapshot({
+      analysisId,
+      dataset,
+      insight: observedEatingInsight({ geo: { lat: 'latitude', lng: 'longitude' } }),
+      rows: dataset.previewRows.map((input, rowIndex) => ({
+        rowIndex,
+        input,
+        model: 'observed-data',
+        questionKind: 'noul',
+        value: input.eating === true ? 1 : 0,
+      })),
+    })
+  }
+  if (analysisId === 'demo-football') {
+    const dataset = getFootballDatasetPreview()
+    const insight = proposeInsights(dataset)[0]
+    if (!insight) throw new Error('Football demo has no lead insight')
+    return completedSnapshot({
+      analysisId,
+      dataset,
+      insight,
+      rows: dataset.previewRows.map((input, rowIndex) => ({
+        rowIndex,
+        input,
+        model: 'illustrative-demo',
+        questionKind: 'noul',
+        value: footballWinLikelihood(input),
+      })),
+    })
+  }
+  return undefined
 }
 
 /** Small contract guard useful to route callers that accept arbitrary strings. */

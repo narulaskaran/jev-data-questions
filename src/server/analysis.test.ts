@@ -151,7 +151,7 @@ describe('analysis domain contract', () => {
     expect(draftCalls).toHaveLength(0)
   })
 
-  it('short-circuits squirrel where-they-eat into eating Noul, not Location vs Activity', async () => {
+  it('refuses a where-they-eat draft before any provider call: the columns already answer it', async () => {
     const draftCalls: unknown[] = []
     const service = serviceWith(makeClassifier([]), makeDraftProvider(draftCalls, {
       query: JSON.stringify({
@@ -161,13 +161,54 @@ describe('analysis domain contract', () => {
       }),
       model: 'openrouter/test',
     }))
-    const drafted = await service.draft({ fixtureId: SQUIRREL_FIXTURE_ID, task: SQUIRREL_EATING_TASK })
-    expect(parseJevQueryJson(drafted.query)).toEqual({ type: 'noul', instructions: SQUIRREL_EATING_NOUL_QUERY })
-    expect(drafted.metadata.questionKind).toBe('noul')
-    expect(drafted.metadata.classes).toEqual([])
-    expect(drafted.metadata.model).toBe('cached-sample-places')
-    expect(JSON.stringify(drafted)).not.toMatch(/Location|Activity/)
+    for (const task of [SQUIRREL_EATING_TASK, 'Identify common locations where squirrels are spotted eating.']) {
+      await expect(service.draft({ fixtureId: SQUIRREL_FIXTURE_ID, task })).rejects.toMatchObject({
+        code: 'COLUMN_QUESTION',
+        statusCode: 422,
+        retryable: false,
+        message: expect.stringContaining('Eating'),
+      })
+    }
     expect(draftCalls).toHaveLength(0)
+  })
+
+  it('refuses a drafted Choice whose classes are column names, not values (issue #56)', async () => {
+    const draftCalls: unknown[] = []
+    const service = new AnalysisService({
+      store: new InMemoryAnalysisStore(),
+      classifier: makeClassifier([]),
+      draftProvider: makeDraftProvider(draftCalls, {
+        query: JSON.stringify({
+          type: 'choice',
+          instructions: 'Group each sighting by what the record is about.',
+          criteria: { Location: 'where the squirrel was', Activity: 'what the squirrel was doing' },
+        }),
+        model: 'openrouter/test',
+      }),
+      datasets: new InMemoryDatasetSource([{
+        datasetId: 'byod-census', fixtureId: 'byod-census', sourceType: 'upload', displayName: 'Census',
+        columns: ['Location', 'Other Activities', 'Notes'],
+        rows: [
+          { Location: 'Ground Plane', 'Other Activities': 'digging', Notes: 'near bench' },
+          { Location: 'Above Ground', 'Other Activities': 'nesting', Notes: 'in oak' },
+        ],
+      }]),
+    })
+    // The task names no yes/no column, so the provider is asked; its answer is then rejected.
+    await expect(service.draft({ datasetId: 'byod-census', task: 'What is each sighting about?' })).rejects.toMatchObject({
+      code: 'COLUMN_QUESTION',
+      message: expect.stringMatching(/Location, Other activities/),
+    })
+    expect(draftCalls).toHaveLength(1)
+  })
+
+  it('still drafts a judgment that only uses a yes/no column as an input', async () => {
+    const service = serviceWith(makeClassifier([]), makeDraftProvider([], {
+      query: JSON.stringify({ type: 'noul', instructions: 'Is this squirrel used to people, given eating and running?' }),
+      model: 'openrouter/test',
+    }))
+    const drafted = await service.draft({ fixtureId: SQUIRREL_FIXTURE_ID, task: 'Is this squirrel used to people, given eating and running?' })
+    expect(drafted.metadata.questionKind).toBe('noul')
   })
 
   it('does not return the cached sample noul for an unrelated fixture prompt', async () => {
@@ -1246,7 +1287,7 @@ describe('analysis domain contract', () => {
       requireDraftBudget: true,
     })
     await service.draft({ fixtureId: FOOTBALL_FIXTURE_ID, task: SAMPLE_WIN_LIKELIHOOD_TASK })
-    const proposed = await service.propose({ fixtureId: SQUIRREL_FIXTURE_ID })
+    const proposed = await service.propose({ fixtureId: FOOTBALL_FIXTURE_ID })
     expect(proposed.source).toBe('heuristic')
     expect(reservations).toBe(0)
     expect(providerCalls).toBe(0)

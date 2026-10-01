@@ -27,7 +27,6 @@ import {
   fixtureAnalysisSliceFor,
   inferQuestionKind,
   isFixturePlayerClassList,
-  isSampleDefaultEatingTask,
   isSampleDefaultPlayQualityTask,
   isSampleDefaultWinTask,
   classesFromLabelColumns,
@@ -36,10 +35,10 @@ import {
   SAMPLE_PLAY_QUALITY_LEVELS,
   SAMPLE_PLAY_QUALITY_QUERY,
   SAMPLE_WIN_NOUL_QUERY,
-  SQUIRREL_EATING_NOUL_QUERY,
   userAskedForFixturePlayers,
   type FixtureAnalysisSlice,
 } from '../shared/questionKind.js'
+import { columnQuestionCopy, columnQuestionFor } from '../dataset/columnQuestion.js'
 import { analysisContentKey, analysisContentKeyFromSnapshot, draftContentKey } from './analysisContentKey.js'
 import {
   buildJevQuery,
@@ -549,6 +548,12 @@ export const createSnapshotWritePipeline = (
   }
 }
 
+/** Throws when a per-row model run would only restate columns the table already has. */
+const assertNeedsModel = (input: Parameters<typeof columnQuestionFor>[0]): void => {
+  const answered = columnQuestionFor(input)
+  if (answered) throw new AnalysisError('COLUMN_QUESTION', columnQuestionCopy(answered), 422, false)
+}
+
 const datasetDraftClasses = (dataset: ResolvedAnalysisDataset): string[] => {
   const classes = dataset.classes && dataset.classes.length >= 2 ? [...dataset.classes] : []
   return isFixturePlayerClassList(classes) ? [] : classes
@@ -790,24 +795,8 @@ export class AnalysisService {
       }
       return withCacheWrite(canned, await this.writeDraftCache(contentKey || flightKey, canned))
     }
-    if (dataset.sourceType === 'fixture' && dataset.datasetId === SQUIRREL_FIXTURE_ID && isSampleDefaultEatingTask(task)) {
-      const canned = {
-        fixtureId: dataset.fixtureId,
-        datasetId: dataset.datasetId,
-        sourceType: dataset.sourceType,
-        query: stringifyJevQuery(buildJevQuery({ type: 'noul', instructions: SQUIRREL_EATING_NOUL_QUERY })),
-        metadata: {
-          provider: 'openrouter',
-          model: 'cached-sample-places',
-          rowCount: dataset.rows.length,
-          classes: [],
-          columns: [...dataset.columns],
-          displayName: dataset.displayName,
-          questionKind: 'noul' as const,
-        },
-      }
-      return withCacheWrite(canned, await this.writeDraftCache(contentKey || flightKey, canned))
-    }
+    // Refuse before spending anything when the table already holds the answer.
+    assertNeedsModel({ query: task, columns: dataset.columns, rows: dataset.rows })
     await this.reserveOpenRouterCall()
     const draft = await this.options.draftProvider.draft({
       fixtureId: dataset.fixtureId,
@@ -828,6 +817,13 @@ export class AnalysisService {
       query: parsedDraft?.instructions ?? draft.query,
       questionKind: parsedDraft?.type ?? draft.questionKind ?? questionKindHint,
       classes: parsedDraft && parsedDraft.type !== 'noul' ? classesFromJevQuery(parsedDraft) : draft.classes,
+    })
+    assertNeedsModel({
+      query: resolved.query,
+      questionKind: resolved.questionKind,
+      classes: resolved.classes,
+      columns: dataset.columns,
+      rows: dataset.rows,
     })
     const recovered = mergeClassLists(
       resolved.classes,

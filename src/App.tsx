@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DemoPicker, HeroPreview } from './components/LandingDemos'
-import { getDemoDashboard, getDemoSnapshot } from './demo'
+import { demoReplayDisclosure, getDemoDashboard, getDemoSnapshot } from './demo'
 import { copyText } from './browser/clipboard'
 import { AnalysisRunView } from './components/AnalysisRunView'
 import type { DashboardTileModel } from './components/DashboardTile'
 import { DatasetDashboard } from './components/DatasetDashboard'
 import { DatasetIntake } from './components/DatasetIntake'
 import { DatasetPreviewCard } from './components/DatasetPreview'
+import { StoryDashboard } from './components/story/StoryDashboard'
+import { buildStoryDashboard } from './insights/dashboard'
 import { SchemaStrip } from './components/SchemaStrip'
 import { StageFold } from './components/StageFold'
 import { Badge } from './components/ui/badge'
@@ -17,8 +19,8 @@ import { Label } from './components/ui/label'
 import { Textarea } from './components/ui/textarea'
 import { getFixtureDatasetPreview } from './dataset/sampleDataset'
 import { hasNamedHeuristicCuts, proposeInsights, queryFromInsight, sanitizeLlmInsightProposals, mergeDashboardInsights, type InsightProposal } from './dataset/insight'
-import { datasetHref, landHref, parseAppLocation, type AppRoute } from './app/route'
-import { CSV_MAX_BYTES, DatasetError, DATASET_ERROR_COPY, plainDatasetError } from './dataset/csvTypes'
+import { LOCAL_PATH, datasetHref, landHref, parseAppLocation, type AppRoute } from './app/route'
+import { CSV_MAX_BYTES, DatasetError, DATASET_ERROR_COPY, plainDatasetError, type ValidatedDataset } from './dataset/csvTypes'
 import { validateCsvText } from './dataset/validateDataset'
 import type {
   AnalysisDraftResult,
@@ -34,7 +36,7 @@ import {
   parseJevQueryJson,
 } from './shared/jevQuery'
 import type { DatasetIntakeStatus, DatasetPreview } from './shared/dataset'
-import { ANALYSIS_ERROR_COPY, plainAnalysisError, runSubsetCopy } from './runView/format'
+import { ANALYSIS_ERROR_COPY, COLUMN_QUESTION_CODE, COLUMN_QUESTION_COPY, plainAnalysisError, runSubsetCopy } from './runView/format'
 import { useTheme } from './theme'
 import './styles.css'
 
@@ -128,6 +130,32 @@ export const PRODUCT_TITLE = 'Dynamic insights from your data.'
 export const ENGINEER_MODE_PARAM = 'mode'
 export const ENGINEER_MODE_VALUE = 'engineer'
 
+export const LOCAL_DATA_NOTE = 'This file is read in your browser and is not uploaded.'
+
+/** Storage errors that mean "there is no live service here", not "this file is bad". */
+const INTAKE_OFFLINE_CODES = new Set(['UPLOADTHING_NOT_CONFIGURED', 'DATASET_INTAKE_UNAVAILABLE', 'DATASET_UNAVAILABLE', 'ANALYSIS_STORAGE_NOT_CONFIGURED'])
+
+const isIntakeOffline = (error: unknown): boolean => (
+  (error instanceof DatasetError && INTAKE_OFFLINE_CODES.has(error.code))
+  || (error instanceof Error && INTAKE_OFFLINE_CODES.has(error.message))
+)
+
+/** A dataset that lives only in this tab: charted locally, never stored or shared. */
+const localDatasetPreview = (validated: ValidatedDataset, filename: string): DatasetPreview => ({
+  datasetId: `local-${Date.now().toString(36)}`,
+  sourceType: 'upload',
+  displayName: filename.replace(/\.[^.]+$/, '') || 'Your CSV',
+  byteSize: validated.byteSize,
+  contentHash: 'local',
+  encoding: validated.encoding,
+  delimiter: validated.delimiter,
+  columns: validated.columns,
+  acceptedRowCount: validated.acceptedRowCount,
+  previewRows: validated.rows,
+  validationWarnings: validated.validationWarnings,
+  publicDataWarning: LOCAL_DATA_NOTE,
+})
+
 const fixtureIdFor = (dataset?: { sourceType?: string; datasetId?: string }): string | undefined => (
   dataset?.sourceType === 'fixture' ? dataset.datasetId : undefined
 )
@@ -212,7 +240,9 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const [route, setRoute] = useState<AppRoute>(() => parseAppLocation())
   const shareAnalysisId = route.kind === 'share' ? route.analysisId : undefined
   const isShareView = shareAnalysisId !== undefined
-  const demo = route.kind === 'demo' ? getDemoDashboard(route.demoId) : undefined
+  const demoId = route.kind === 'demo' ? route.demoId : undefined
+  const demo = useMemo(() => (demoId ? getDemoDashboard(demoId) : undefined), [demoId])
+  const isLocal = route.kind === 'local'
   const [dataset, setDataset] = useState<DatasetPreview | undefined>()
   const [intakeStatus, setIntakeStatus] = useState<DatasetIntakeStatus>()
   const [task, setTask] = useState(DEFAULT_TASK)
@@ -237,11 +267,14 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const [proposing, setProposing] = useState(false)
   const [runRequested, setRunRequested] = useState(false)
   const [manualShareUrl, setManualShareUrl] = useState('')
+  const [storyQuestion, setStoryQuestion] = useState('')
+  const [notice, setNotice] = useState<string>()
   const routeVersion = useRef(0)
 
   const navigate = (href: string) => {
     routeVersion.current += 1
     setIntakeBusy(false); setDrafting(false); setStarting(false)
+    setStoryQuestion(''); setNotice(undefined)
     window.history.pushState({}, '', href)
     setRoute(parseAppLocation())
     window.scrollTo?.({ top: 0, behavior: 'instant' })
@@ -256,6 +289,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     const sync = () => {
       routeVersion.current += 1
       setIntakeBusy(false); setDrafting(false); setStarting(false)
+      setStoryQuestion(''); setNotice(undefined)
       setRoute(parseAppLocation())
       const next = isEngineerMode()
       setEngineerMode(next)
@@ -343,13 +377,14 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     setProposing(false)
     setRunRequested(false)
     setManualShareUrl('')
+    setNotice(undefined)
   }
 
   const handleDraft = async () => {
     if (!datasetId) { setError('Choose a dataset first.'); return }
     if (!task.trim()) { setError('Enter a task before drafting a query.'); return }
     const version = routeVersion.current
-    setDrafting(true); setError(undefined); setIntakeError(undefined); setDraft(undefined); setQuery(''); setQueryCopyMessage(''); setShareMessage('')
+    setDrafting(true); setError(undefined); setIntakeError(undefined); setDraft(undefined); setQuery(''); setQueryCopyMessage(''); setShareMessage(''); setNotice(undefined)
     try {
       const result = await api.draft({ datasetId, fixtureId: fixtureIdFor(dataset), task: task.trim() })
       if (version !== routeVersion.current) return
@@ -359,7 +394,13 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
         questionKind: result.metadata.questionKind,
         classes: result.metadata.classes,
       }))
-    } catch (draftError) { if (version === routeVersion.current) setError(shortError(draftError, 'Could not draft a Jev query'))
+    } catch (draftError) {
+      if (version !== routeVersion.current) return
+      // The table already holds the answer: show it instead of running a model.
+      if (draftError instanceof Error && draftError.message === COLUMN_QUESTION_CODE) {
+        setStoryQuestion(task.trim())
+        setNotice(COLUMN_QUESTION_COPY)
+      } else setError(shortError(draftError, 'Could not draft a Jev query'))
     } finally { if (version === routeVersion.current) setDrafting(false) }
   }
 
@@ -415,7 +456,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     })
   }
 
-  const applyDataset = (preview: DatasetPreview, preferredTask?: string, shouldNavigate = true) => {
+  const applyDataset = (preview: DatasetPreview, preferredTask?: string, shouldNavigate = true, local = false) => {
     resetRunState()
     resetIntakeForm()
     setIntakeError(undefined)
@@ -428,7 +469,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       const nextQuery = queryFromInsight(insight)
       if (hasRunnableQuery(nextQuery)) setQuery(nextQuery)
     }
-    if (shouldNavigate) navigate(datasetHref(preview.datasetId, window.location.search))
+    if (shouldNavigate) navigate(local ? LOCAL_PATH : datasetHref(preview.datasetId, window.location.search))
   }
 
   const handleUpload = async (file: File) => {
@@ -438,9 +479,22 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       if (file.size > CSV_MAX_BYTES) throw new DatasetError('CSV_TOO_LARGE', DATASET_ERROR_COPY.CSV_TOO_LARGE, 413)
       const csvText = await readCsvText(file)
       if (version !== routeVersion.current) return
-      validateCsvText(csvText)
-      if (!api.createFromCsv) throw new DatasetError('UPLOADTHING_NOT_CONFIGURED', DATASET_ERROR_COPY.UPLOADTHING_NOT_CONFIGURED, 503)
-      const preview = await api.createFromCsv({ csvText, filename: file.name })
+      const validated = validateCsvText(csvText)
+      // Without the live service the dashboard is still built, entirely in this tab.
+      const offline = !api.createFromCsv || (intakeStatus !== undefined && (!intakeStatus.convex || !intakeStatus.uploadThing))
+      if (offline) {
+        applyDataset(localDatasetPreview(validated, file.name), undefined, true, true)
+        return
+      }
+      let preview: DatasetPreview
+      try {
+        preview = await api.createFromCsv!({ csvText, filename: file.name })
+      } catch (storeError) {
+        if (!isIntakeOffline(storeError)) throw storeError
+        if (version !== routeVersion.current) return
+        applyDataset(localDatasetPreview(validated, file.name), undefined, true, true)
+        return
+      }
       if (version !== routeVersion.current) return
       applyDataset(preview)
     } catch (uploadError) {
@@ -470,6 +524,11 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     if ((route.kind === 'land' || route.kind === 'demo') && dataset) {
       setDataset(undefined)
       resetRunState()
+    }
+    // A local file exists only in memory, so a reload has nothing to show.
+    if (route.kind === 'local' && !dataset) {
+      window.history.replaceState({}, '', landHref(window.location.search))
+      setRoute(parseAppLocation())
     }
     if (route.kind !== 'dataset') return
     if (dataset?.datasetId === route.datasetId) return
@@ -670,15 +729,28 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     else { setShareMessage('Copy link below'); setManualShareUrl(url) }
   }, [snapshot?.analysisId])
 
+  const copyDashboardUrl = useCallback(async () => {
+    const url = `${window.location.origin}${window.location.pathname}`
+    if (await copyText(url)) { setShareMessage('Copied'); setManualShareUrl('') }
+    else { setShareMessage('Copy link below'); setManualShareUrl(url) }
+  }, [])
+
   const copyQuery = useCallback(async () => {
     if (!query.trim()) return
     setQueryCopyMessage(await copyText(query) ? 'Copied' : 'Select the query to copy')
   }, [query])
 
   const activeDataset = demo?.dataset ?? dataset
+  const story = useMemo(() => (
+    activeDataset
+      ? buildStoryDashboard(activeDataset.columns.map((column) => column.name), activeDataset.previewRows, { noun: demo?.noun, question: storyQuestion })
+      : undefined
+  ), [activeDataset, demo?.noun, storyQuestion])
   const showIntake = !isShareView && !activeDataset
   const showShape = !isShareView && Boolean(activeDataset)
-  const showAdvanced = showShape && engineerMode && !demo
+  // Jev runs read rows from stored datasets, so they need the live service.
+  const canAskJev = !demo && !isLocal
+  const showAdvanced = showShape && engineerMode && canAskJev
   const showRun = Boolean(snapshot) && (isShareView || engineerMode)
   const toggleEngineerMode = () => {
     const next = !engineerMode
@@ -714,9 +786,9 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       </header>
       <section className={`hero${landing ? ' landing-hero' : ''}`} aria-labelledby="page-title">
         <div className="hero-text">
-          {landing ? <p className="hero-kicker"><span aria-hidden="true" /> A fresh perspective on your CSV</p> : <p className="eyebrow">{demo ? 'The example studio' : isShareView ? 'Shared analysis' : 'Your workspace'}</p>}
+          {landing ? <p className="hero-kicker"><span aria-hidden="true" /> A fresh perspective on your CSV</p> : <p className="eyebrow">{demo ? 'Built-in example' : isShareView ? 'Shared analysis' : 'Your dashboard'}</p>}
           <h1 id="page-title">{demo ? (route.kind === 'demo' && route.demoId === 'squirrels' ? 'Small creatures. Big picture.' : 'Every play tells a story.') : isShareView ? 'Inspect a saved run.' : PRODUCT_TITLE}</h1>
-          <p className="hero-copy">{demo ? 'Explore the charts, inspect the rows, and share what you find.' : isShareView ? 'Explore a saved analysis, replayed from stored results.' : landing ? 'Turn a table of rows into a dashboard worth sharing. Bring your data. Find the pattern. See the story.' : 'Inspect your data, discover insights, and share the results.'}</p>
+          <p className="hero-copy">{demo ? 'This dashboard was built from the table below with no setup: the charts and headlines are chosen from the columns.' : isShareView ? 'Explore a saved analysis, replayed from stored results.' : landing ? 'Drop in a CSV and get a dashboard worth presenting. The charts are chosen to fit your columns, and each one states what it found.' : 'Charts chosen to fit your columns, each stating what it found.'}</p>
         </div>
         {landing ? <HeroPreview /> : null}
       </section>
@@ -735,20 +807,40 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
         <StageFold open={showShape} animate={foldAnimate}>
           {activeDataset ? (
             <div className="stage-stack">
-              <div className="dataset-overview"><div><p className="eyebrow">{demo ? 'Built-in example' : 'Dataset'}</p><p className="dataset-title">{activeDataset.displayName}</p></div><div className="dataset-overview-actions"><span>{activeDataset.acceptedRowCount.toLocaleString()} rows <span aria-hidden="true">·</span> {activeDataset.columns.length} columns</span>{demo && route.kind === 'demo' && route.demoId === 'football' ? <Button variant="secondary" onClick={() => navigate('/share/demo-football')}>Replay timeline <ArrowUpRight /></Button> : null}</div></div>
+              <div className="dataset-overview"><div><p className="eyebrow">{demo ? 'Built-in example' : isLocal ? 'Your file' : 'Dataset'}</p><p className="dataset-title">{activeDataset.displayName}</p></div><div className="dataset-overview-actions"><span>{activeDataset.acceptedRowCount.toLocaleString()} rows <span aria-hidden="true">·</span> {activeDataset.columns.length} columns</span>{demo && route.kind === 'demo' && route.demoId === 'football' ? <Button variant="secondary" onClick={() => navigate('/share/demo-football')}>Replay timeline <ArrowUpRight /></Button> : null}</div></div>
               {demo ? <p className="demo-disclosure">{demo.disclosure}</p> : null}
-              {demo ? <div className="demo-stats" aria-label="Example at a glance"><div className="demo-stat"><strong>{demo.dataset.acceptedRowCount}</strong><span>{route.kind === 'demo' && route.demoId === 'squirrels' ? 'Squirrel sightings' : 'Seattle plays'}</span></div><div className="demo-stat"><strong>{route.kind === 'demo' && route.demoId === 'squirrels' ? demo.dataset.previewRows.filter((row) => row.eating === true).length : 4}</strong><span>{route.kind === 'demo' && route.demoId === 'squirrels' ? 'Observed eating' : 'Quarters of play'}</span></div><div className="demo-stat"><strong>{route.kind === 'demo' && route.demoId === 'squirrels' ? new Set(demo.dataset.previewRows.map((row) => row.hectare)).size : demo.tiles.length}</strong><span>{route.kind === 'demo' && route.demoId === 'squirrels' ? 'Mapped sectors' : 'Perspectives'}</span></div></div> : null}
+              {isLocal ? <p className="demo-disclosure">{LOCAL_DATA_NOTE} There is no link to share, and closing or reloading the tab clears it.</p> : null}
+              {notice ? <p className="demo-disclosure" role="status">{notice}</p> : null}
+              {story ? (
+                <StoryDashboard
+                  key={activeDataset.datasetId}
+                  dashboard={story}
+                  question={storyQuestion}
+                  onAsk={setStoryQuestion}
+                  shareLabel={shareMessage}
+                  onShare={isLocal ? undefined : () => void copyDashboardUrl()}
+                />
+              ) : null}
+              {canAskJev ? (
+                <section className="stage-stack" aria-labelledby="jev-heading">
+                  <div className="jev-section-heading">
+                    <h2 id="jev-heading">Go further with Jev</h2>
+                    <p>The dashboard above is computed from your columns. Jev reads each row with a model, for questions the columns cannot answer on their own.</p>
+                  </div>
+                  {!runRequested ? <div className="analysis-confirm"><div><h3>Have Jev read every row?</h3><p>Runs up to 4 model insights across {activeDataset.acceptedRowCount.toLocaleString()} rows. Each insight may use up to {(activeDataset.acceptedRowCount * 2).toLocaleString()} model calls, including retries. Results are public.</p></div><Button variant="run" onClick={() => setRunRequested(true)}>Analyze dataset <ArrowUpRight /></Button></div> : (
+                    <DatasetDashboard
+                      tiles={tiles}
+                      proposing={proposing}
+                      sourceRows={activeDataset.previewRows}
+                      onResume={(insightId) => void handleResumeTile(insightId)}
+                      resumingId={resumingId}
+                      shareMessage={shareMessage}
+                      onCopyShare={(analysisId) => void copyShareUrl(analysisId)}
+                    />
+                  )}
+                </section>
+              ) : null}
               <SchemaStrip dataset={activeDataset} />
-              {!demo && !runRequested ? <div className="analysis-confirm"><div><h3>Ready to discover the story?</h3><p>Run up to 4 insights across {activeDataset.acceptedRowCount.toLocaleString()} rows. Each insight may use up to {(activeDataset.acceptedRowCount * 2).toLocaleString()} model calls, including retries. Results are public.</p></div><Button variant="run" onClick={() => setRunRequested(true)}>Analyze dataset <ArrowUpRight /></Button></div> : null}
-              <DatasetDashboard
-                tiles={demo?.tiles ?? (runRequested ? tiles : proposeInsights(activeDataset).map((insight) => ({ insight })))}
-                proposing={proposing}
-                sourceRows={activeDataset.previewRows}
-                onResume={(insightId) => void handleResumeTile(insightId)}
-                resumingId={resumingId}
-                shareMessage={shareMessage}
-                onCopyShare={(analysisId) => void copyShareUrl(analysisId)}
-              />
               <DatasetPreviewCard dataset={activeDataset} onChange={() => {
                 setDataset(undefined)
                 resetRunState()
@@ -839,7 +931,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
             <span>{error}</span>
           </div>
         )}
-        {demoShare ? <p className="demo-disclosure">{getDemoDashboard(shareAnalysisId!.slice(5))?.disclosure}</p> : null}
+        {demoShare ? <p className="demo-disclosure">{demoReplayDisclosure(shareAnalysisId!)}</p> : null}
         {isShareView && shareLoading && <p className="empty-copy" role="status">Loading public snapshot…</p>}
         {isShareView && error && (
           <div className="error-banner" role="alert">

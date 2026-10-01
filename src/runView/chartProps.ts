@@ -39,6 +39,7 @@ type ChartVisual = {
   perspectiveLabel?: string
   compact?: boolean
   rankPlaces?: boolean
+  banded?: boolean
   heading?: string
   headingId?: string
   sourceRows?: readonly unknown[]
@@ -56,6 +57,7 @@ export const areChartPropsEqual = (prev: ChartVisual, next: ChartVisual): boolea
   && prev.perspectiveLabel === next.perspectiveLabel
   && prev.compact === next.compact
   && prev.rankPlaces === next.rankPlaces
+  && prev.banded === next.banded
   && prev.heading === next.heading
   && prev.headingId === next.headingId
   && sameSourceRows(prev.sourceRows, next.sourceRows)

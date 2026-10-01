@@ -16,6 +16,7 @@ import { insightEyebrow, perspectiveLabelFor, resolveChartVisual } from '../data
 import type { InsightProposal } from '../dataset/insight'
 import type { AnalysisRowInput, AnalysisSnapshot } from '../shared/analysis'
 import { downloadTextFile, resultsCsv, resultsCsvFilename } from '../runView/resultsCsv'
+import { hasRowOrder } from '../runView/bands'
 
 export type DashboardTileModel = {
   insight: InsightProposal
@@ -97,6 +98,13 @@ export const DashboardTile = memo(function DashboardTile({
       ...(sourceRows ?? []),
     ],
   }) ?? insight.perspectiveLabel
+  // Without a real row order, a line across row numbers would be noise.
+  const ordered = useMemo(() => {
+    const sample = sourceRows && sourceRows.length > 0 ? sourceRows : snapshot?.resultRows.map((row) => row.input) ?? []
+    const columns = snapshot?.columns ?? Object.keys(sample[0] ?? {})
+    return sample.length === 0 || hasRowOrder(columns, sample)
+  }, [snapshot?.columns, snapshot?.resultRows, sourceRows])
+  const banded = chartKind === 'series' && !ordered
   const headingId = `dashboard-heading-${insight.id}`
   const status = snapshot?.status
   const completeSnap = snapshot?.status === 'complete'
@@ -112,6 +120,7 @@ export const DashboardTile = memo(function DashboardTile({
       chartKind={chartKind}
       compact
       rankPlaces={rankPlaces}
+      banded={banded}
       heading={insight.title}
       headingId={headingId}
       sourceRows={sourceRows}
@@ -119,6 +128,7 @@ export const DashboardTile = memo(function DashboardTile({
       onSeek={() => undefined}
     />
   ), [
+    banded,
     chartKind,
     completeSnap,
     headingId,

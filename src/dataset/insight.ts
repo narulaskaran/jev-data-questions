@@ -22,6 +22,7 @@ import {
   type JevQuestionKind,
 } from '../shared/questionKind.js'
 import { inspectDatasetShape, type DatasetShape } from './shape.js'
+import { columnQuestionFor } from './columnQuestion.js'
 import type { AnalysisRowInput } from './csvTypes.js'
 
 export { isJunkLocationActivitySplit, looksLikePlaceEatingTask } from '../shared/questionKind.js'
@@ -117,7 +118,13 @@ export const isBannedRawColumnClassInsight = (
   return false
 }
 
-const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
+/**
+ * The saved squirrel replay (`/share/demo-squirrels`) and older shared runs
+ * still render this insight. It is no longer proposed for new runs: where rows
+ * are and how often a column is true are read straight from the table by the
+ * story dashboard, with no model calls.
+ */
+export const observedEatingInsight = (shape: Pick<DatasetShape, 'geo'>): InsightProposal => ({
   id: 'places-eating',
   title: 'Where are they eating?',
   question: 'Is this squirrel eating at this place?',
@@ -125,45 +132,6 @@ const eatingPlacesInsight = (shape: DatasetShape): InsightProposal => ({
   visual: 'places',
   perspective: undefined,
   preparation: shape.geo ? 'Map eating rows from coordinates.' : 'Rank eating locations.',
-  task: SQUIRREL_EATING_TASK,
-  questionKind: 'noul',
-  classes: [],
-  cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
-})
-
-const geoPlacesInsight = (): InsightProposal => ({
-  id: 'places-geo',
-  title: 'Where are they?',
-  question: 'Where are these rows?',
-  reason: 'Map of these rows.',
-  visual: 'places',
-  preparation: 'Plot place coordinates.',
-  task: 'Where are these rows?',
-  questionKind: 'noul',
-  classes: [],
-  cannedQuery: 'Does this row represent an active sighting at this place?',
-})
-
-const rankedPlacesInsight = (): InsightProposal => ({
-  id: 'places-ranked',
-  title: 'Where does this happen?',
-  question: 'Where do these rows happen?',
-  reason: 'Ranked locations.',
-  visual: 'places',
-  preparation: 'Rank location values.',
-  task: 'Where do these rows happen?',
-  questionKind: 'noul',
-  classes: [],
-  cannedQuery: 'Does this row happen at a notable place?',
-})
-
-const rankedEatingBarsInsight = (): InsightProposal => ({
-  id: 'bars-eating-places',
-  title: 'Which places have the most eating?',
-  question: 'Is this squirrel eating at this place?',
-  reason: 'Eating count by place.',
-  visual: 'bars',
-  preparation: 'Count eating rows per place.',
   task: SQUIRREL_EATING_TASK,
   questionKind: 'noul',
   classes: [],
@@ -181,11 +149,21 @@ export const insightEyebrow = (insight: Pick<InsightProposal, 'id' | 'visual'>):
 }
 
 export const isJunkDashboardInsight = (
-  insight: Pick<InsightProposal, 'title' | 'reason' | 'visual' | 'questionKind' | 'classes'>,
+  insight: Pick<InsightProposal, 'title' | 'reason' | 'visual' | 'questionKind' | 'classes'> & Partial<Pick<InsightProposal, 'question'>>,
   shape?: DatasetShape,
   rows: readonly AnalysisRowInput[] = [],
 ): boolean => {
   if (isBannedRawColumnClassInsight(insight, shape, rows) || isJunkLocationActivitySplit(insight.classes)) return true
+  // Maps, place rankings, and anything a column already records are observed
+  // views. Paying a model to restate them per row adds nothing.
+  if (insight.visual === 'places') return true
+  if (shape && insight.question && columnQuestionFor({
+    query: insight.question,
+    questionKind: insight.questionKind,
+    classes: insight.classes,
+    columns: shape.columns.map((column) => column.name),
+    rows,
+  })) return true
   if (/^(notable rows|rate each row|yes or no|play success|places)$/i.test(insight.title.trim())) return true
   if (/class bars|labels in this table|classify by shift/i.test(`${insight.title} ${insight.reason}`)) return true
   return false
@@ -284,14 +262,9 @@ const tryPushInsight = (
 const fillDashboardInsights = (
   insights: InsightProposal[],
   options: { shape: DatasetShape; rows: readonly AnalysisRowInput[] },
-): InsightProposal[] => {
-  const clean = insights.filter((item) => !isJunkDashboardInsight(item, options.shape, options.rows))
-  if (options.shape.hasEating && (options.shape.geo || options.shape.placeColumns.length > 0)) {
-    tryPushInsight(clean, eatingPlacesInsight(options.shape), options.shape, options.rows)
-    tryPushInsight(clean, rankedEatingBarsInsight(), options.shape, options.rows)
-  }
-  return clean.filter((item) => !isJunkDashboardInsight(item, options.shape, options.rows)).slice(0, MAX_INSIGHTS)
-}
+): InsightProposal[] => (
+  insights.filter((item) => !isJunkDashboardInsight(item, options.shape, options.rows)).slice(0, MAX_INSIGHTS)
+)
 
 export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'columns' | 'previewRows' | 'sourceType'>): InsightProposal[] => {
   const shape = inspectDatasetShape(dataset.columns, dataset.previewRows)
@@ -305,22 +278,6 @@ export const proposeInsights = (dataset: Pick<DatasetPreview, 'datasetId' | 'col
     })
     pushInsight(insights, winLikelihoodInsight(perspectiveLabel))
     pushInsight(insights, playQualityInsight(perspectiveLabel))
-  }
-
-  const eatingTable = dataset.datasetId === SQUIRREL_FIXTURE_ID || (shape.hasEating && (shape.geo || shape.placeColumns.length > 0))
-  if (eatingTable) {
-    pushInsight(insights, eatingPlacesInsight(shape))
-    pushInsight(insights, rankedEatingBarsInsight())
-  }
-  if (shape.geo && !insights.some((item) => item.visual === 'places')) {
-    pushInsight(insights, geoPlacesInsight())
-  }
-  if (!insights.some((item) => item.visual === 'places') && shape.placeColumns.length > 0) {
-    const column = shape.placeColumns.find((name) => name.toLowerCase() === 'location') ?? shape.placeColumns[0]
-    const classes = columnValues(dataset.previewRows, column ?? '')
-    if (classes.length >= 2 && !isJunkLocationActivitySplit(classes)) {
-      pushInsight(insights, rankedPlacesInsight())
-    }
   }
 
   return fillDashboardInsights(insights, {
@@ -406,17 +363,17 @@ const questionKindFromDraft = (question: string, classes: readonly string[], exp
   return 'noul'
 }
 
-export const packChartVisual = (input: Parameters<typeof resolveChartVisual>[0]): ChartVisualKind => (
-  resolveChartVisual({ ...input, visual: undefined })
-)
+export const packChartVisual = (input: Parameters<typeof resolveChartVisual>[0]): ChartVisualKind => {
+  const visual = resolveChartVisual({ ...input, visual: undefined })
+  // Maps and place rankings are drawn from the table's own columns by the
+  // story dashboard, so a new model run is charted by what it returns instead.
+  if (visual !== 'places') return visual
+  return input.questionKind === 'choice' ? 'bars' : 'series'
+}
 
 export const hasNamedHeuristicCuts = (
   insights: readonly Pick<InsightProposal, 'id' | 'visual'>[],
-): boolean => {
-  if (isLockedPlayStatePair(insights)) return true
-  const ids = new Set(insights.map((item) => item.id))
-  return ids.has('places-eating') && ids.has('bars-eating-places')
-}
+): boolean => isLockedPlayStatePair(insights)
 
 export const packInsightProposal = (
   draft: Record<string, unknown>,
