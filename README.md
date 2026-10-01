@@ -32,7 +32,7 @@ npm run build
 npx playwright install --with-deps chromium
 ```
 
-In one terminal, run `npm exec vite preview -- --host 127.0.0.1 --port 4173`. In another, run `npm run test:browser`. Set `SMOKE_BASE_URL` to use another local preview URL. The browser suite checks 30 route/theme/viewport combinations at 1440, 390, and 320 pixels, WCAG A/AA rules with axe, replay, CSV downloads, clipboard fallback, overflow, and absence of paid requests. Screenshots are saved to `artifacts/browser`. CI runs the same checks.
+In one terminal, run `npm exec vite preview -- --host 127.0.0.1 --port 4173`. In another, run `npm run test:browser`. Set `SMOKE_BASE_URL` to use another local preview URL. The browser suite checks 30 route/theme/viewport combinations at 1440, 390, and 320 pixels, WCAG A/AA rules with axe, replay, CSV downloads, clipboard fallback, overflow, and absence of paid requests. Screenshots are saved to `artifacts/browser`. CI runs the same checks. On a headless machine without root, see `AGENTS.md` for the one-command browser setup.
 
 Unit and Convex tests use mock providers/storage. They do not verify a provisioned production backend. See [the audit](docs/AUDIT.md) for fixes and validation limits, [the API contract](docs/analysis-api.md) for payloads, and [the working brief](CURSOR.md) for product conventions.
 

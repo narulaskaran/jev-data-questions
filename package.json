@@ -19,6 +19,8 @@
     "audit": "npm audit --audit-level=high",
     "test:watch": "vitest",
     "test:browser": "node scripts/browser-smoke.mjs",
+    "browser:setup": "bash scripts/browser-setup.sh",
+    "shoot": "node scripts/shoot.mjs",
     "fixture:validate": "node scripts/generate-football-fixture.mjs --validate",
     "samples:export": "node scripts/export-sample-csvs.mjs"
   },

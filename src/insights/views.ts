@@ -97,8 +97,6 @@ export interface ViewTable {
 export interface StoryView {
   id: string
   kind: ViewKind
-  /** Short label for the kind of reading: "Over time", "Breakdown". */
-  eyebrow: string
   /** The finding, stated as a sentence. */
   title: string
   /** What is plotted, so the headline can be checked against the chart. */
@@ -217,7 +215,6 @@ const countRanking = (dimension: FieldProfile, { noun }: Context): StoryView | u
   return {
     id: viewId('ranking', [dimension.name]),
     kind: 'ranking',
-    eyebrow: 'Breakdown',
     title,
     subtitle: `Number of ${noun.plural} by ${lowerFirst(dimension.label)}`,
     footnote: joinNotes(
@@ -292,7 +289,6 @@ const measureRanking = (dimension: FieldProfile, measure: FieldProfile, { noun }
   return {
     id: viewId('ranking', [dimension.name, measure.name]),
     kind: 'ranking',
-    eyebrow: 'Comparison',
     title,
     subtitle: `${aggregate} by ${lowerFirst(dimension.label)}`,
     footnote: joinNotes(
@@ -358,7 +354,6 @@ const rateByGroup = (dimension: FieldProfile, flag: FieldProfile, { noun }: Cont
   return {
     id: viewId('rate', [dimension.name, flag.name]),
     kind: 'rate',
-    eyebrow: 'Rate',
     title,
     subtitle: `Share of ${noun.plural} with ${lowerFirst(flagName)}, by ${lowerFirst(dimension.label)}`,
     footnote: joinNotes(missingNote(dimension, noun)),
@@ -394,7 +389,6 @@ const traitRates = (flags: readonly FieldProfile[], { noun }: Context): StoryVie
   return {
     id: viewId('traits', flags.map((flag) => flag.name)),
     kind: 'traits',
-    eyebrow: 'At a glance',
     title: `${top.flag.label} is the most common, in ${formatShare(top.rate)} of ${noun.plural}; ${lowerFirst(bottom.flag.label)} the least at ${formatShare(bottom.rate)}`,
     subtitle: `Share of ${noun.plural} marked yes in each yes/no column`,
     footnote: rated.length > shown.length ? `Top ${shown.length} of ${rated.length} yes/no columns shown.` : `A ${noun.singular} can be marked yes in more than one column.`,
@@ -580,7 +574,6 @@ const timeTrend = (time: FieldProfile, measure: FieldProfile | undefined, { noun
   return {
     id: viewId('trend', measure ? [time.name, measure.name] : [time.name]),
     kind: 'trend',
-    eyebrow: 'Over time',
     title,
     subtitle: `${subject} per ${GRAIN_PHRASE[grain]}, by ${lowerFirst(time.label)}`,
     footnote: joinNotes(
@@ -649,7 +642,6 @@ const sequenceLine = (sequence: FieldProfile, measures: readonly FieldProfile[],
   return {
     id: viewId('sequence', [sequence.name, measure.name]),
     kind: 'sequence',
-    eyebrow: 'In order',
     title: `${measure.label} went from ${startDisplay} to ${endDisplay} over ${formatCount(points.length)} ${noun.plural}${peakNote}`,
     subtitle: `${measure.label} at each ${noun.singular}, in ${lowerFirst(sequence.label)} order`,
     chart: { type: 'line', points, ticks, unit: measure.unit, highlight: peakNote ? (highest > values[last]! ? peak : values.indexOf(lowest)) : last, zeroBased: lowest >= 0, markers: false },
@@ -712,7 +704,6 @@ const histogram = (measure: FieldProfile, { noun }: Context): StoryView | undefi
   return {
     id: viewId('histogram', [measure.name]),
     kind: 'histogram',
-    eyebrow: 'Spread',
     title: q1 === q3
       ? `Most ${noun.plural} have ${name} of ${formatNumber(median, measure.unit)}`
       : `Typical ${name} is ${formatNumber(median, measure.unit)}; half of ${noun.plural} fall between ${formatNumber(q1, measure.unit)} and ${formatNumber(q3, measure.unit)}`,
@@ -767,7 +758,6 @@ const scatter = (measures: readonly FieldProfile[], { noun }: Context): StoryVie
   return {
     id: viewId('scatter', [x.name, y.name]),
     kind: 'scatter',
-    eyebrow: 'Relationship',
     title: `${y.label} ${r > 0 ? 'rises' : 'falls'} as ${lowerFirst(x.label)} increases, ${strength} linked (r = ${r.toFixed(2)})`,
     subtitle: `Each dot is one ${noun.singular}: ${lowerFirst(x.label)} across, ${lowerFirst(y.label)} up`,
     footnote: stride > 1 ? `Showing ${formatCount(points.length)} of ${formatCount(pairs.length)} ${noun.plural}.` : undefined,
@@ -816,7 +806,6 @@ const placeMap = (latitude: FieldProfile, longitude: FieldProfile, context: Cont
   return {
     id: viewId('map', [latitude.name, longitude.name]),
     kind: 'map',
-    eyebrow: 'Where',
     title: topName && top
       ? `${topName} has the most ${noun.plural}: ${formatCount(top.rows.length)} of ${formatCount(located.length)}`
       : `Where the ${formatCount(located.length)} ${noun.plural} are`,

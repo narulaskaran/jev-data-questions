@@ -32,7 +32,6 @@ export const ResultsTable = memo(function ResultsTable({
     <section className="results-card is-secondary" aria-labelledby="results-heading">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Details</p>
           <h3 id="results-heading">Incremental results</h3>
         </div>
         <span className="table-count">{rows.length} rows</span>

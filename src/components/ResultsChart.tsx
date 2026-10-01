@@ -255,7 +255,6 @@ export const ResultsChart = memo(function ResultsChart({
       {compact ? null : (
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Live chart</p>
           <h3 id={headingId}>{heading}</h3>
         </div>
         <span className="table-count">{latestLabel}</span>

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DatasetPreview } from '../shared/dataset'
 import { PREVIEW_VIEWPORT_SIZE, previewWindow } from '../dataset/previewWindow'
-import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from './ui/card'
 import { ArrowUpRight } from './ui/arrow'
@@ -9,12 +8,6 @@ import { ArrowUpRight } from './ui/arrow'
 const previewValue = (value: unknown): string => {
   if (value === null || value === undefined || value === '') return '—'
   return String(value)
-}
-
-const sourceLabel = (sourceType: DatasetPreview['sourceType']) => {
-  if (sourceType === 'fixture') return 'Sample'
-  if (sourceType === 'upload') return 'Uploaded CSV'
-  return 'Public CSV'
 }
 
 export const isNarrowPreview = (): boolean => {
@@ -67,16 +60,9 @@ export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPrev
   return (
     <Card className="dataset-preview is-secondary" aria-labelledby="dataset-heading">
       <CardHeader className="section-heading flex-row items-start justify-between space-y-0">
-        <div>
-          <p className="eyebrow">{sourceLabel(dataset.sourceType)}</p>
-          <h2 id="dataset-heading">{dataset.displayName}</h2>
-        </div>
-        <Badge variant="secondary">{dataset.acceptedRowCount} rows</Badge>
+        <h2 id="dataset-heading">Data</h2>
       </CardHeader>
       <CardContent>
-        {columns.length > 0 ? (
-          <p className="preview-meta">{columns.length} columns</p>
-        ) : null}
         <details className="preview-fold" open={previewOpen} onToggle={(event) => setPreviewOpen((event.currentTarget as HTMLDetailsElement).open)}>
           <summary className="preview-fold-summary">Preview table</summary>
           <div
@@ -133,7 +119,7 @@ export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPrev
       {dataset.attribution ? <CardContent><p className="dataset-attribution">{dataset.attribution.disclosure} <a href={dataset.attribution.sourceUrl} target="_blank" rel="noreferrer">Source <ArrowUpRight size={12} /></a> <a href={dataset.attribution.licenseUrl} target="_blank" rel="noreferrer">License <ArrowUpRight size={12} /></a></p></CardContent> : null}
       {onChange && (
         <CardFooter className="preview-actions">
-          <Button variant="ghost" type="button" onClick={onChange}>Change dataset</Button>
+          <Button variant="secondary" size="sm" type="button" onClick={onChange}>Change dataset</Button>
         </CardFooter>
       )}
     </Card>

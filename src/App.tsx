@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DemoPicker } from './components/LandingDemos'
-import { demoReplayDisclosure, isDemoAnalysisId, loadDemoDashboard, loadDemoSnapshot, type DemoDashboard } from './demo'
+import { demoDatasets, demoReplayDisclosure, isDemoAnalysisId, loadDemoDashboard, loadDemoSnapshot, type DemoDashboard } from './demo'
 import { copyText } from './browser/clipboard'
 import { AnalysisRunView } from './components/AnalysisRunView'
 import type { DashboardTileModel } from './components/DashboardTile'
@@ -127,7 +127,7 @@ export const defaultAnalysisApi: AnalysisApiClient = {
 }
 
 const DEFAULT_TASK = 'Classify each row using the visible columns.'
-export const PRODUCT_TITLE = 'Dynamic insights from your data.'
+export const PRODUCT_TITLE = 'Turn a CSV into a dashboard'
 export const ENGINEER_MODE_PARAM = 'mode'
 export const ENGINEER_MODE_VALUE = 'engineer'
 
@@ -782,22 +782,28 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const stage = isShareView ? 'share' : snapshot && engineerMode ? 'run' : activeDataset ? 'dataset' : 'intake'
   const landing = route.kind === 'land'
   const demoShare = shareAnalysisId !== undefined && isDemoAnalysisId(shareAnalysisId)
+  const pageTitle = isShareView
+    ? 'Saved analysis'
+    : activeDataset?.displayName ?? demoDatasets.find((item) => item.id === demoId)?.name ?? 'Dataset'
 
   return (
     <main className="analysis-shell" data-stage={stage} data-mode={engineerMode ? 'engineer' : 'product'}>
       <header className="site-header">
-        {landing ? null : <a className="brand" href="/" aria-label="Jev home" onClick={(event) => { event.preventDefault(); navigate('/'); setDataset(undefined); resetRunState() }}><span className="brand-mark" aria-hidden="true">j.</span><span>Jev<span className="brand-subtitle">Data, in perspective.</span></span></a>}
+        {landing ? null : <a className="brand" href="/" aria-label="Jev home" onClick={(event) => { event.preventDefault(); navigate('/'); setDataset(undefined); resetRunState() }}><span className="brand-mark" aria-hidden="true">j.</span><span>Jev</span></a>}
         <div className="site-header-actions">
           <ThemeToggle />
         </div>
       </header>
       {landing ? <h1 id="page-title" className="sr-only">{PRODUCT_TITLE}</h1> : (
-        <section className="hero" aria-labelledby="page-title">
-          <div className="hero-text">
-            <p className="eyebrow">{demo ? 'Built-in example' : isShareView ? 'Shared analysis' : 'Your dashboard'}</p>
-            <h1 id="page-title">{demo ? (route.kind === 'demo' && route.demoId === 'squirrels' ? 'Small creatures. Big picture.' : 'Every play tells a story.') : isShareView ? 'Inspect a saved run.' : PRODUCT_TITLE}</h1>
-            <p className="hero-copy">{demo ? 'This dashboard was built from the table below with no setup: the charts and headlines are chosen from the columns.' : isShareView ? 'Explore a saved analysis, replayed from stored results.' : 'Charts chosen to fit your columns, each stating what it found.'}</p>
+        <section className="page-head" aria-labelledby="page-title">
+          <div className="page-head-text">
+            <h1 id="page-title">{pageTitle}</h1>
+            {activeDataset ? <p className="page-meta">{formatCount(activeDataset.acceptedRowCount)} rows <span aria-hidden="true">·</span> {activeDataset.columns.length} columns</p> : null}
           </div>
+          {demo && route.kind === 'demo' && route.demoId === 'football' ? (
+            <Button variant="secondary" onClick={() => navigate('/share/demo-football')}>Replay timeline <ArrowUpRight /></Button>
+          ) : null}
+          {demoShare ? <Button variant="secondary" onClick={() => navigate(`/demo/${shareAnalysisId!.slice(5)}`)}>Back to dashboard</Button> : null}
         </section>
       )}
       <div className="workspace">
@@ -815,7 +821,6 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
         <StageFold open={showShape} animate={foldAnimate}>
           {activeDataset ? (
             <div className="stage-stack">
-              <div className="dataset-overview"><div><p className="eyebrow">{demo ? 'Built-in example' : isLocal ? 'Your file' : 'Dataset'}</p><p className="dataset-title">{activeDataset.displayName}</p></div><div className="dataset-overview-actions"><span>{formatCount(activeDataset.acceptedRowCount)} rows <span aria-hidden="true">·</span> {activeDataset.columns.length} columns</span>{demo && route.kind === 'demo' && route.demoId === 'football' ? <Button variant="secondary" onClick={() => navigate('/share/demo-football')}>Replay timeline <ArrowUpRight /></Button> : null}</div></div>
               {demo ? <p className="demo-disclosure">{demo.disclosure}</p> : null}
               {isLocal ? <p className="demo-disclosure">{LOCAL_DATA_NOTE} There is no link to share, and closing or reloading the tab clears it.</p> : null}
               {notice ? <p className="demo-disclosure" role="status">{notice}</p> : null}
@@ -867,7 +872,6 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
               <Card className="query-card advanced-json-body">
                 <CardHeader className="section-heading flex-row items-start justify-between space-y-0">
                   <div>
-                    <p className="eyebrow">Advanced</p>
                     <h2 id="query-heading">Jev query</h2>
                   </div>
                   {drafting ? <Badge variant="running">Drafting</Badge> : null}
@@ -966,7 +970,6 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       </div>
       {!isShareView && !landing ? (
         <footer className="site-footer">
-          <span>A little data. A clearer picture.</span>
           <a
             className="engineer-link"
             href={engineerHref(!engineerMode)}

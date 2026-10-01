@@ -247,7 +247,7 @@ describe('other table shapes', () => {
 
 describe('view selection', () => {
   const fake = (id: string, kind: StoryView['kind'], score: number, fields: string[]): StoryView => ({
-    id, kind, score, fields, eyebrow: '', title: id, subtitle: '', chart: { type: 'bars', items: [], max: 0 }, table: { columns: [], rows: [] },
+    id, kind, score, fields, title: id, subtitle: '', chart: { type: 'bars', items: [], max: 0 }, table: { columns: [], rows: [] },
   })
 
   it('discounts a view that reuses a grouping already on the page', () => {
