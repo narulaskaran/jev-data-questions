@@ -34,7 +34,7 @@ export const chartHeading = (
   perspectiveLabel?: string,
 ): string => {
   if (visual === 'places') return 'Places'
-  if (kind === 'noul') return perspectiveMetricTitle('win probability', perspectiveLabel)
+  if (kind === 'noul') return perspectiveLabel ? perspectiveMetricTitle('win probability', perspectiveLabel) : 'Probability'
   if (kind === 'score') return perspectiveMetricTitle(perspectiveLabel ? 'play quality' : 'Score', perspectiveLabel)
   return 'Class distribution'
 }
@@ -67,6 +67,11 @@ export const ANALYSIS_ERROR_COPY: Record<string, string> = {
   JEV_NOT_CONFIGURED: 'Jev is not configured on this deployment.',
   ANALYSIS_RUN_STALLED: STUCK_RUN_COPY,
   ANALYSIS_STORAGE_ERROR: 'Could not save analysis progress.',
+  ANALYSIS_BUDGET_NOT_CONFIGURED: 'Live analysis is unavailable on this deployment. Explore a built-in example instead.',
+  ANALYSIS_DRAFT_BUDGET_NOT_CONFIGURED: 'New insights are unavailable on this deployment. Explore a built-in example instead.',
+  ANALYSIS_DAILY_BUDGET_EXHAUSTED: 'Today’s analysis limit has been reached. Saved rows are kept. The limit resets at midnight UTC.',
+  ANALYSIS_DAILY_DRAFT_BUDGET_EXHAUSTED: 'Today’s insight-generation limit has been reached. Try again after midnight UTC.',
+  FORCE_NEW_DISABLED: 'A saved or running version of this analysis will be reused.',
 }
 
 export const plainAnalysisError = (code: string, fallback = 'This run hit an error.'): string => {
@@ -83,7 +88,7 @@ export const runErrorCopy = (
   error: { code: string; retryable: boolean },
   completedRows: number,
 ): { title: string; detail: string } => {
-  const next = completedRows > 0
+  const next = !error.retryable ? 'Saved rows are kept. This run cannot be resumed.' : completedRows > 0
     ? `Saved rows are kept. You can resume from row ${completedRows + 1}.`
     : 'You can retry this run.'
   if (error.code === ANALYSIS_RUN_STALLED_CODE) {

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { inject } from '@vercel/analytics'
 import { App } from './App'
 
-inject({ framework: 'vite' })
+if (import.meta.env.PROD) inject({ framework: 'vite' })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

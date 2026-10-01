@@ -7,6 +7,17 @@ import react from '@vitejs/plugin-react'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 
+const socialMetadata = (): Plugin => ({
+  name: 'social-metadata',
+  transformIndexHtml(html) {
+    const deploymentUrl = process.env.PUBLIC_SITE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined)
+    if (!deploymentUrl) return html
+    const site = new URL(deploymentUrl)
+    if (site.protocol !== 'https:' || site.username || site.password) throw new Error('PUBLIC_SITE_URL must be a public HTTPS URL without credentials')
+    return html.replace(/content="\/social-card\.png"/g, () => `content="${site.origin}/social-card.png"`)
+  },
+})
+
 const SERVER_ONLY_MARKERS = ['@typesafe-ai/sdk', 'JEV_API_KEY', 'OPENROUTER_KEY', 'UPLOADTHING_TOKEN', 'UPLOADTHING_SECRET', 'https://api.typesafe.ai', 'https://openrouter.ai', 'convex/browser', 'CONVEX_URL'] as const
 
 const browserServerBoundaryGuard = (): Plugin => ({
@@ -24,7 +35,7 @@ const browserServerBoundaryGuard = (): Plugin => ({
 })
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), browserServerBoundaryGuard()],
+  plugins: [react(), tailwindcss(), browserServerBoundaryGuard(), socialMetadata()],
   resolve: {
     alias: {
       '@': path.resolve(root, 'src'),

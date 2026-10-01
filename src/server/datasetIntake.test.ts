@@ -8,7 +8,7 @@ import { AnalysisError } from './analysis'
 const csv = 'label,count\nurgent,2\nroutine,1\n'
 
 describe('dataset intake', () => {
-  it('fails file upload without UploadThing, keeps public URL when Convex is up, and fails URL without Convex', async () => {
+  it('fails file and URL intake without UploadThing and fails URL without Convex', async () => {
     const missingBlob = new DatasetIntakeService({
       datasets: new InMemoryDatasetStore(),
       blobs: new UnconfiguredBlobStore(),
@@ -17,10 +17,7 @@ describe('dataset intake', () => {
     await expect(missingBlob.fromCsvText({ csvText: csv, filename: 'n.csv' })).rejects.toMatchObject({ code: 'UPLOADTHING_NOT_CONFIGURED', statusCode: 503 })
     expect(missingBlob.status()).toEqual({ convex: true, uploadThing: false, sampleAvailable: true })
 
-    const fetched = new TextEncoder().encode(csv)
-    const fetchMock: typeof fetch = vi.fn(async () => (
-      new Response(fetched, { status: 200, headers: { 'content-type': 'text/csv' } })
-    ))
+    const fetchMock: typeof fetch = vi.fn(async () => { throw new Error('must fail before fetching without blob storage') })
     const urlWithoutBlob = new DatasetIntakeService({
       datasets: new InMemoryDatasetStore(),
       blobs: new UnconfiguredBlobStore(),
@@ -28,10 +25,8 @@ describe('dataset intake', () => {
       fetch: fetchMock,
       lookup: async () => ['93.184.216.34'],
     })
-    const fromUrl = await urlWithoutBlob.fromPublicUrl({ url: 'https://example.com/data.csv' })
-    expect(fromUrl.sourceType).toBe('public_url')
-    expect(fromUrl.acceptedRowCount).toBe(2)
-    expect(fromUrl.previewRows).toHaveLength(2)
+    await expect(urlWithoutBlob.fromPublicUrl({ url: 'https://example.com/data.csv' })).rejects.toMatchObject({ code: 'UPLOADTHING_NOT_CONFIGURED', statusCode: 503 })
+    expect(fetchMock).not.toHaveBeenCalled()
 
     const missingConvex = new DatasetIntakeService({
       datasets: new InMemoryDatasetStore(),
@@ -47,7 +42,7 @@ describe('dataset intake', () => {
     const blobs = new InMemoryBlobStore()
     const fetched = new TextEncoder().encode(csv)
     const fetchMock: typeof fetch = vi.fn(async (input) => {
-      expect(String(input)).toBe('https://example.com/data.csv')
+      expect(String(input)).toBe('https://example.com/data.csv?token=secret#private')
       return new Response(fetched, { status: 200, headers: { 'content-type': 'text/csv' } })
     })
     const intake = new DatasetIntakeService({ datasets: store, blobs, convexConfigured: true, fetch: fetchMock, lookup: async () => ['93.184.216.34'] })
@@ -56,7 +51,7 @@ describe('dataset intake', () => {
     expect(uploaded.acceptedRowCount).toBe(2)
     expect(uploaded.previewRows[0]).toEqual({ label: 'urgent', count: 2 })
     expect(uploaded.previewRows).toHaveLength(2)
-    const fromUrl = await intake.fromPublicUrl({ url: 'https://example.com/data.csv' })
+    const fromUrl = await intake.fromPublicUrl({ url: 'https://example.com/data.csv?token=secret#private' })
     expect(fromUrl.sourceType).toBe('public_url')
     expect(fromUrl.acceptedRowCount).toBe(2)
     expect(fromUrl.previewRows).toHaveLength(2)

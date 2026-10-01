@@ -82,14 +82,16 @@ export const RowRail = memo(function RowRail({
   )
 
   const visible = rows.slice(window.start, window.end)
-  const playheadRatio = totalRows ? Math.min(100, Math.round(((playheadIndex + 1) / totalRows) * 100)) : 0
+  const selectedRow = rows[playheadIndex]
+  const selectedRowNumber = selectedRow ? selectedRow.rowIndex + 1 : 0
+  const playheadRatio = totalRows ? Math.min(100, Math.round((selectedRowNumber / totalRows) * 100)) : 0
 
   return (
     <aside className="run-rail" aria-label="Processed rows">
       <div className="section-heading">
         <div>
           <p className="eyebrow">Rows</p>
-          <h3>{rows.length ? `Row ${playheadIndex + 1} of ${totalRows}` : 'Waiting'}</h3>
+          <h3>{rows.length ? `Row ${selectedRowNumber} of ${totalRows}` : 'Waiting'}</h3>
         </div>
       </div>
       <Progress

@@ -14,13 +14,13 @@ const uploadThingDown: DatasetIntakeStatus = { convex: true, uploadThing: false,
 const storageDown: DatasetIntakeStatus = { convex: false, uploadThing: false, sampleAvailable: true }
 
 describe('DatasetIntake gates', () => {
-  it('blocks file upload only when UploadThing is down and keeps the public URL path live', () => {
+  it('blocks intake when either storage service is unavailable', () => {
     expect(isFileUploadBlocked(ready)).toBe(false)
     expect(isPublicUrlBlocked(ready)).toBe(false)
     expect(isFileUploadBlocked(uploadThingDown)).toBe(true)
-    expect(isPublicUrlBlocked(uploadThingDown)).toBe(false)
+    expect(isPublicUrlBlocked(uploadThingDown)).toBe(true)
     expect(isFileUploadBlocked(storageDown)).toBe(true)
-    expect(isPublicUrlBlocked(storageDown)).toBe(false)
+    expect(isPublicUrlBlocked(storageDown)).toBe(true)
     expect(isFileUploadBlocked(uploadThingDown, true)).toBe(true)
     expect(isPublicUrlBlocked(uploadThingDown, true)).toBe(true)
   })
@@ -37,16 +37,17 @@ describe('DatasetIntake gates', () => {
     expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
     expect(screen.getByLabelText(UPLOAD_CSV_COPY)).toBeDisabled()
     expect(screen.getByRole('button', { name: UPLOAD_CSV_COPY })).toBeDisabled()
-    expect(screen.getByLabelText(/public https csv url/i)).toBeEnabled()
-    expect(screen.getByRole('button', { name: USE_PUBLIC_CSV_URL_COPY })).toBeEnabled()
+    expect(screen.getByLabelText(/public https csv url/i)).toBeDisabled()
+    expect(screen.getByRole('button', { name: USE_PUBLIC_CSV_URL_COPY })).toBeDisabled()
     fireEvent.change(screen.getByLabelText(/public https csv url/i), {
       target: { value: 'https://jev-gamecast.vercel.app/samples/nyc-squirrel-census.csv' },
     })
     fireEvent.click(screen.getByRole('button', { name: USE_PUBLIC_CSV_URL_COPY }))
-    expect(onSubmitUrl).toHaveBeenCalledWith('https://jev-gamecast.vercel.app/samples/nyc-squirrel-census.csv')
+    expect(onSubmitUrl).not.toHaveBeenCalled()
+    expect(screen.getByText(/uploads are unavailable/i)).toBeInTheDocument()
   })
 
-  it('keeps the URL field enabled when Convex is also down so submit can fail with a short error', () => {
+  it('disables the URL field when durable storage is down', () => {
     render(
       <DatasetIntake
         status={storageDown}
@@ -56,6 +57,6 @@ describe('DatasetIntake gates', () => {
     )
     expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
     expect(screen.getByRole('button', { name: UPLOAD_CSV_COPY })).toBeDisabled()
-    expect(screen.getByRole('button', { name: USE_PUBLIC_CSV_URL_COPY })).toBeEnabled()
+    expect(screen.getByRole('button', { name: USE_PUBLIC_CSV_URL_COPY })).toBeDisabled()
   })
 })

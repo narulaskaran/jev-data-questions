@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { DemoPicker, HeroPreview } from './components/LandingDemos'
+import { getDemoDashboard, getDemoSnapshot } from './demo'
+import { copyText } from './browser/clipboard'
 import { AnalysisRunView } from './components/AnalysisRunView'
 import type { DashboardTileModel } from './components/DashboardTile'
 import { DatasetDashboard } from './components/DatasetDashboard'
@@ -8,13 +11,14 @@ import { SchemaStrip } from './components/SchemaStrip'
 import { StageFold } from './components/StageFold'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
+import { ArrowUpRight } from './components/ui/arrow'
 import { Card, CardContent, CardFooter, CardHeader } from './components/ui/card'
 import { Label } from './components/ui/label'
 import { Textarea } from './components/ui/textarea'
 import { getFixtureDatasetPreview } from './dataset/sampleDataset'
 import { hasNamedHeuristicCuts, proposeInsights, queryFromInsight, sanitizeLlmInsightProposals, mergeDashboardInsights, type InsightProposal } from './dataset/insight'
 import { datasetHref, landHref, parseAppLocation, type AppRoute } from './app/route'
-import { DatasetError, DATASET_ERROR_COPY, plainDatasetError } from './dataset/csvTypes'
+import { CSV_MAX_BYTES, DatasetError, DATASET_ERROR_COPY, plainDatasetError } from './dataset/csvTypes'
 import { validateCsvText } from './dataset/validateDataset'
 import type {
   AnalysisDraftResult,
@@ -85,7 +89,7 @@ const isAbortError = (error: unknown): boolean => (
 )
 
 const json = async <T,>(url: string, init: RequestInit, options: { timeoutMs?: number } = {}): Promise<T> => {
-  const timeoutMs = options.timeoutMs
+  const timeoutMs = options.timeoutMs ?? 30_000
   const controller = timeoutMs ? new AbortController() : undefined
   const timer = timeoutMs ? window.setTimeout(() => controller?.abort(), timeoutMs) : undefined
   try {
@@ -95,10 +99,11 @@ const json = async <T,>(url: string, init: RequestInit, options: { timeoutMs?: n
       headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
     })
     if (!response.ok) throw await apiError(response)
-    return response.json() as Promise<T>
+    return await response.json() as T
   } catch (error) {
     if (isAbortError(error)) {
-      throw new DatasetError('URL_TIMEOUT', 'This CSV took too long to load. Try a smaller file or another URL.', 504)
+      if (options.timeoutMs) throw new DatasetError('URL_TIMEOUT', 'This CSV took too long to load. Try a smaller file or another URL.', 504)
+      throw new Error('This request took too long. Please try again.')
     }
     throw error
   } finally {
@@ -207,6 +212,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const [route, setRoute] = useState<AppRoute>(() => parseAppLocation())
   const shareAnalysisId = route.kind === 'share' ? route.analysisId : undefined
   const isShareView = shareAnalysisId !== undefined
+  const demo = route.kind === 'demo' ? getDemoDashboard(route.demoId) : undefined
   const [dataset, setDataset] = useState<DatasetPreview | undefined>()
   const [intakeStatus, setIntakeStatus] = useState<DatasetIntakeStatus>()
   const [task, setTask] = useState(DEFAULT_TASK)
@@ -229,10 +235,16 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const [tiles, setTiles] = useState<DashboardTileModel[]>([])
   const [resumingId, setResumingId] = useState<string>()
   const [proposing, setProposing] = useState(false)
+  const [runRequested, setRunRequested] = useState(false)
+  const [manualShareUrl, setManualShareUrl] = useState('')
+  const routeVersion = useRef(0)
 
   const navigate = (href: string) => {
+    routeVersion.current += 1
+    setIntakeBusy(false); setDrafting(false); setStarting(false)
     window.history.pushState({}, '', href)
     setRoute(parseAppLocation())
+    window.scrollTo?.({ top: 0, behavior: 'instant' })
   }
 
   useEffect(() => {
@@ -242,6 +254,8 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
 
   useEffect(() => {
     const sync = () => {
+      routeVersion.current += 1
+      setIntakeBusy(false); setDrafting(false); setStarting(false)
       setRoute(parseAppLocation())
       const next = isEngineerMode()
       setEngineerMode(next)
@@ -258,13 +272,13 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   }, [shareMessage])
 
   useEffect(() => {
-    if (isShareView || !api.intakeStatus) return undefined
+    if (isShareView || route.kind === 'demo' || !api.intakeStatus) return undefined
     let active = true
     void api.intakeStatus().then((status) => { if (active) setIntakeStatus(status) }).catch(() => {
       if (active) setIntakeStatus({ convex: false, uploadThing: false, sampleAvailable: true })
     })
     return () => { active = false }
-  }, [api, isShareView])
+  }, [api, isShareView, route.kind])
 
   useEffect(() => {
     if (!shareAnalysisId) return undefined
@@ -273,7 +287,9 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     setError(undefined)
     setSnapshot(undefined)
     setDraft(undefined)
-    void api.share(shareAnalysisId).then((nextSnapshot) => {
+    const localSnapshot = getDemoSnapshot(shareAnalysisId)
+    const load = localSnapshot ? Promise.resolve(localSnapshot) : api.share(shareAnalysisId)
+    void load.then((nextSnapshot) => {
       if (active) setSnapshot(nextSnapshot)
     }).catch((readError) => {
       if (active) setError(shortError(readError, 'Could not read public snapshot'))
@@ -287,14 +303,21 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     if (!snapshot || snapshot.status === 'complete' || snapshot.status === 'error') return undefined
     let active = true
     let timer: number | undefined
+    let failures = 0
     const poll = async () => {
       try {
         const next = await (isShareView ? api.share(snapshot.analysisId) : api.read(snapshot.analysisId))
         if (!active) return
         setSnapshot(next)
-        if (next.status !== 'complete' && next.status !== 'error') timer = window.setTimeout(poll, 350)
+        failures = 0
+        setError(undefined)
+        if (next.status !== 'complete' && next.status !== 'error') timer = window.setTimeout(poll, 1500)
       } catch (readError) {
-        if (active) setError(shortError(readError, 'Could not read analysis progress'))
+        if (active) {
+          setError(`${shortError(readError, 'Could not read analysis progress')} Reconnecting…`)
+          failures += 1
+          timer = window.setTimeout(poll, Math.min(15_000, 1500 * 2 ** failures))
+        }
       }
     }
     timer = window.setTimeout(poll, 250)
@@ -318,28 +341,33 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     setTiles([])
     setResumingId(undefined)
     setProposing(false)
+    setRunRequested(false)
+    setManualShareUrl('')
   }
 
   const handleDraft = async () => {
     if (!datasetId) { setError('Choose a dataset first.'); return }
     if (!task.trim()) { setError('Enter a task before drafting a query.'); return }
+    const version = routeVersion.current
     setDrafting(true); setError(undefined); setIntakeError(undefined); setDraft(undefined); setQuery(''); setQueryCopyMessage(''); setShareMessage('')
     try {
       const result = await api.draft({ datasetId, fixtureId: fixtureIdFor(dataset), task: task.trim() })
+      if (version !== routeVersion.current) return
       setDraft(result)
       setQuery(formatDraftQueryForEditor({
         query: result.query,
         questionKind: result.metadata.questionKind,
         classes: result.metadata.classes,
       }))
-    } catch (draftError) { setError(shortError(draftError, 'Could not draft a Jev query'))
-    } finally { setDrafting(false) }
+    } catch (draftError) { if (version === routeVersion.current) setError(shortError(draftError, 'Could not draft a Jev query'))
+    } finally { if (version === routeVersion.current) setDrafting(false) }
   }
 
   const handleRun = async (nextQuery = query) => {
     if (!hasRunnableQuery(nextQuery) || !datasetId) return
     const parsed = parseJevQueryJson(nextQuery)
     if (!parsed) return
+    const version = routeVersion.current
     setStarting(true); setError(undefined); setIntakeError(undefined); setShareMessage(''); setRunLatency(undefined)
     try {
       const started = await api.start({
@@ -349,14 +377,16 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
         classes: classesFromJevQuery(parsed),
         questionKind: parsed.type,
       })
+      if (version !== routeVersion.current) return
       setRunLatency(started.status === 'complete' ? 'saved' : 'live')
       setSnapshot(started)
-    } catch (runError) { setError(shortError(runError, 'Could not start Jev analysis'))
-    } finally { setStarting(false) }
+    } catch (runError) { if (version === routeVersion.current) setError(shortError(runError, 'Could not start Jev analysis'))
+    } finally { if (version === routeVersion.current) setStarting(false) }
   }
 
   const handleResume = async () => {
-    if (!snapshot || snapshot.status !== 'error' || !datasetId) return
+    if (!snapshot || snapshot.status !== 'error' || !snapshot.error?.retryable || !datasetId) return
+    const version = routeVersion.current
     setStarting(true); setError(undefined); setIntakeError(undefined); setShareMessage(''); setRunLatency('live')
     try {
       const started = await api.start({
@@ -368,10 +398,11 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
         analysisId: snapshot.analysisId,
         resume: true,
       })
+      if (version !== routeVersion.current) return
       setRunLatency(started.status === 'complete' ? 'saved' : 'live')
       setSnapshot(started)
-    } catch (runError) { setError(shortError(runError, 'Could not resume Jev analysis'))
-    } finally { setStarting(false) }
+    } catch (runError) { if (version === routeVersion.current) setError(shortError(runError, 'Could not resume Jev analysis'))
+    } finally { if (version === routeVersion.current) setStarting(false) }
   }
 
   const readCsvText = async (file: File): Promise<string> => {
@@ -401,19 +432,24 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   }
 
   const handleUpload = async (file: File) => {
+    const version = routeVersion.current
     setIntakeBusy(true); setError(undefined); setIntakeError(undefined)
     try {
+      if (file.size > CSV_MAX_BYTES) throw new DatasetError('CSV_TOO_LARGE', DATASET_ERROR_COPY.CSV_TOO_LARGE, 413)
       const csvText = await readCsvText(file)
+      if (version !== routeVersion.current) return
       validateCsvText(csvText)
       if (!api.createFromCsv) throw new DatasetError('UPLOADTHING_NOT_CONFIGURED', DATASET_ERROR_COPY.UPLOADTHING_NOT_CONFIGURED, 503)
       const preview = await api.createFromCsv({ csvText, filename: file.name })
+      if (version !== routeVersion.current) return
       applyDataset(preview)
     } catch (uploadError) {
-      setIntakeError(shortError(uploadError, 'Could not use this CSV'))
-    } finally { setIntakeBusy(false) }
+      if (version === routeVersion.current) setIntakeError(shortError(uploadError, 'Could not use this CSV'))
+    } finally { if (version === routeVersion.current) setIntakeBusy(false) }
   }
 
   const handleUrl = async (url: string) => {
+    const version = routeVersion.current
     const trimmed = url.trim()
     if (!trimmed) {
       setIntakeError('Enter a public HTTPS CSV URL first.')
@@ -423,19 +459,23 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     try {
       if (!api.createFromUrl) throw new DatasetError('UPLOADTHING_NOT_CONFIGURED', DATASET_ERROR_COPY.UPLOADTHING_NOT_CONFIGURED, 503)
       const preview = await api.createFromUrl({ url: trimmed })
+      if (version !== routeVersion.current) return
       applyDataset(preview)
     } catch (urlError) {
-      setIntakeError(shortError(urlError, 'Could not use this CSV URL'))
-    } finally { setIntakeBusy(false) }
+      if (version === routeVersion.current) setIntakeError(shortError(urlError, 'Could not use this CSV URL'))
+    } finally { if (version === routeVersion.current) setIntakeBusy(false) }
   }
 
   useEffect(() => {
-    if (route.kind === 'land' && dataset) {
+    if ((route.kind === 'land' || route.kind === 'demo') && dataset) {
       setDataset(undefined)
       resetRunState()
     }
     if (route.kind !== 'dataset') return
     if (dataset?.datasetId === route.datasetId) return
+    setDataset(undefined)
+    resetRunState()
+    setIntakeError(undefined)
     const fixture = getFixtureDatasetPreview(route.datasetId)
     if (fixture) {
       applyDataset(fixture, undefined, false)
@@ -457,7 +497,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   }, [api, dataset?.datasetId, route])
 
   useEffect(() => {
-    if (!dataset || isShareView) return undefined
+    if (!dataset || route.kind !== 'dataset' || dataset.datasetId !== route.datasetId || !runRequested) return undefined
     let cancelled = false
     const startTiles = (proposed: InsightProposal[]) => {
       if (cancelled) return
@@ -481,6 +521,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
             }
             const parsed = parseJevQueryJson(nextQuery)
             if (!parsed) throw new Error('Could not start Jev analysis')
+            if (cancelled) return
             const started = await api.start({
               datasetId: dataset.datasetId,
               fixtureId: fixtureIdFor(dataset),
@@ -498,7 +539,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
             if (cancelled) return
             setTiles((current) => current.map((tile) => (
               tile.insight.id === insight.id
-                ? { ...tile, starting: false, error: shortError(startError, 'Could not start Jev analysis') }
+                ? { ...tile, starting: false, error: shortError(startError, 'Could not start Jev analysis'), retryable: true }
                 : tile
             )))
           }
@@ -542,7 +583,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       else finishEmpty()
     })
     return () => { cancelled = true }
-  }, [api, dataset, isShareView])
+  }, [api, dataset, route, runRequested])
 
   const liveTileKey = tiles
     .map((tile) => `${tile.insight.id}:${tile.snapshot?.analysisId ?? ''}:${tile.snapshot?.status ?? ''}`)
@@ -571,14 +612,11 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
         return {
           ...tile,
           snapshot: update.snapshot ?? tile.snapshot,
-          error: 'error' in update ? update.error : tile.error,
+          error: 'error' in update ? update.error : undefined,
         }
       }))
-      const stillLive = updates.some((update) => {
-        const status = update.snapshot?.status
-        return status === 'queued' || status === 'running'
-      })
-      if (stillLive) timer = window.setTimeout(() => { void poll() }, 350)
+      const stillLive = updates.some((update) => update.error || update.snapshot?.status === 'queued' || update.snapshot?.status === 'running')
+      if (stillLive) timer = window.setTimeout(() => { void poll() }, updates.some((update) => update.error) ? 5000 : 1500)
     }
     timer = window.setTimeout(() => { void poll() }, 250)
     return () => { active = false; if (timer !== undefined) window.clearTimeout(timer) }
@@ -586,55 +624,61 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
 
   const handleResumeTile = async (insightId: string) => {
     const tile = tiles.find((item) => item.insight.id === insightId)
-    if (!tile?.snapshot || tile.snapshot.status !== 'error' || !dataset?.datasetId) return
+    if (!tile || !dataset?.datasetId || (tile.snapshot && (tile.snapshot.status !== 'error' || !tile.snapshot.error?.retryable))) return
     setResumingId(insightId)
+    const version = routeVersion.current
     try {
+      let nextQuery = tile.snapshot?.query ?? queryFromInsight(tile.insight)
+      if (!hasRunnableQuery(nextQuery)) {
+        const drafted = await api.draft({ datasetId: dataset.datasetId, fixtureId: fixtureIdFor(dataset), task: tile.insight.task })
+        nextQuery = formatDraftQueryForEditor({ query: drafted.query, questionKind: drafted.metadata.questionKind, classes: drafted.metadata.classes })
+      }
+      const parsed = parseJevQueryJson(nextQuery)
+      if (!parsed) throw new Error('Could not start this analysis. Try another insight.')
+      if (version !== routeVersion.current) return
       const started = await api.start({
         datasetId: dataset.datasetId,
         fixtureId: fixtureIdFor(dataset),
-        query: tile.snapshot.query,
-        classes: [...tile.snapshot.classes],
-        questionKind: tile.snapshot.questionKind,
-        analysisId: tile.snapshot.analysisId,
-        resume: true,
+        query: nextQuery,
+        classes: classesFromJevQuery(parsed),
+        questionKind: parsed.type,
+        ...(tile.snapshot ? { analysisId: tile.snapshot.analysisId, resume: true } : {}),
       })
+      if (version !== routeVersion.current) return
       setTiles((current) => current.map((item) => (
         item.insight.id === insightId
           ? { ...item, snapshot: started, error: undefined, latencyHint: started.status === 'complete' ? 'saved' : 'live' }
           : item
       )))
     } catch (runError) {
+      if (version !== routeVersion.current) return
       setTiles((current) => current.map((item) => (
         item.insight.id === insightId
           ? { ...item, error: shortError(runError, 'Could not resume Jev analysis') }
           : item
       )))
     } finally {
-      setResumingId(undefined)
+      if (version === routeVersion.current) setResumingId(undefined)
     }
   }
 
   const copyShareUrl = useCallback(async (analysisId?: string) => {
     const id = analysisId ?? snapshot?.analysisId
     if (!id) return
-    const url = `${window.location.origin}/share/${encodeURIComponent(id)}`
-    try { await navigator.clipboard?.writeText(url); setShareMessage('Copied')
-    } catch { setShareMessage('Share URL ready') }
+    const url = `${window.location.origin}${id.startsWith('demo-') ? `/demo/${id.slice(5)}` : `/share/${encodeURIComponent(id)}`}`
+    if (await copyText(url)) { setShareMessage('Copied'); setManualShareUrl('') }
+    else { setShareMessage('Copy link below'); setManualShareUrl(url) }
   }, [snapshot?.analysisId])
 
   const copyQuery = useCallback(async () => {
     if (!query.trim()) return
-    try {
-      await navigator.clipboard?.writeText(query)
-      setQueryCopyMessage('Copied')
-    } catch {
-      setQueryCopyMessage('Copy failed')
-    }
+    setQueryCopyMessage(await copyText(query) ? 'Copied' : 'Select the query to copy')
   }, [query])
 
-  const showIntake = !isShareView && !dataset
-  const showShape = !isShareView && Boolean(dataset)
-  const showAdvanced = showShape && engineerMode
+  const activeDataset = demo?.dataset ?? dataset
+  const showIntake = !isShareView && !activeDataset
+  const showShape = !isShareView && Boolean(activeDataset)
+  const showAdvanced = showShape && engineerMode && !demo
   const showRun = Boolean(snapshot) && (isShareView || engineerMode)
   const toggleEngineerMode = () => {
     const next = !engineerMode
@@ -656,19 +700,25 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     })
     : undefined
   const choiceClasses = parsedQuery?.type === 'choice' ? Object.keys(parsedQuery.criteria) : []
-  const stage = isShareView ? 'share' : snapshot && (engineerMode || isShareView) ? 'run' : dataset ? 'dataset' : 'intake'
+  const stage = isShareView ? 'share' : snapshot && engineerMode ? 'run' : activeDataset ? 'dataset' : 'intake'
+  const landing = route.kind === 'land'
+  const demoShare = shareAnalysisId ? getDemoSnapshot(shareAnalysisId) : undefined
 
   return (
     <main className="analysis-shell" data-stage={stage} data-mode={engineerMode ? 'engineer' : 'product'}>
       <header className="site-header">
-        <a className="brand" href="/" aria-label="Jev home">Jev</a>
+        <a className="brand" href="/" aria-label="Jev home" onClick={(event) => { event.preventDefault(); navigate('/'); setDataset(undefined); resetRunState() }}><span className="brand-mark" aria-hidden="true">j.</span><span>Jev<span className="brand-subtitle">Data, in perspective.</span></span></a>
         <div className="site-header-actions">
           <ThemeToggle />
         </div>
       </header>
-      <section className="hero" aria-labelledby="page-title">
-        <h1 id="page-title">{isShareView ? 'Inspect a saved run.' : PRODUCT_TITLE}</h1>
-        {isShareView ? <p className="hero-copy">A saved Jev run, replayed from stored predictions.</p> : null}
+      <section className={`hero${landing ? ' landing-hero' : ''}`} aria-labelledby="page-title">
+        <div className="hero-text">
+          {landing ? <p className="hero-kicker"><span aria-hidden="true" /> A fresh perspective on your CSV</p> : <p className="eyebrow">{demo ? 'The example studio' : isShareView ? 'Shared analysis' : 'Your workspace'}</p>}
+          <h1 id="page-title">{demo ? (route.kind === 'demo' && route.demoId === 'squirrels' ? 'Small creatures. Big picture.' : 'Every play tells a story.') : isShareView ? 'Inspect a saved run.' : PRODUCT_TITLE}</h1>
+          <p className="hero-copy">{demo ? 'Explore the charts, inspect the rows, and share what you find.' : isShareView ? 'Explore a saved analysis, replayed from stored results.' : landing ? 'Turn a table of rows into a dashboard worth sharing. Bring your data. Find the pattern. See the story.' : 'Inspect your data, discover insights, and share the results.'}</p>
+        </div>
+        {landing ? <HeroPreview /> : null}
       </section>
       <div className="workspace">
         <StageFold open={showIntake} animate={foldAnimate}>
@@ -680,21 +730,26 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
             onUploadFile={(file) => void handleUpload(file)}
             onSubmitUrl={(url) => void handleUrl(url)}
           />
+          {landing ? <DemoPicker onOpen={(id) => navigate(`/demo/${id}`)} /> : null}
         </StageFold>
         <StageFold open={showShape} animate={foldAnimate}>
-          {dataset ? (
+          {activeDataset ? (
             <div className="stage-stack">
-              <SchemaStrip dataset={dataset} />
+              <div className="dataset-overview"><div><p className="eyebrow">{demo ? 'Built-in example' : 'Dataset'}</p><p className="dataset-title">{activeDataset.displayName}</p></div><div className="dataset-overview-actions"><span>{activeDataset.acceptedRowCount.toLocaleString()} rows <span aria-hidden="true">·</span> {activeDataset.columns.length} columns</span>{demo && route.kind === 'demo' && route.demoId === 'football' ? <Button variant="secondary" onClick={() => navigate('/share/demo-football')}>Replay timeline <ArrowUpRight /></Button> : null}</div></div>
+              {demo ? <p className="demo-disclosure">{demo.disclosure}</p> : null}
+              {demo ? <div className="demo-stats" aria-label="Example at a glance"><div className="demo-stat"><strong>{demo.dataset.acceptedRowCount}</strong><span>{route.kind === 'demo' && route.demoId === 'squirrels' ? 'Squirrel sightings' : 'Seattle plays'}</span></div><div className="demo-stat"><strong>{route.kind === 'demo' && route.demoId === 'squirrels' ? demo.dataset.previewRows.filter((row) => row.eating === true).length : 4}</strong><span>{route.kind === 'demo' && route.demoId === 'squirrels' ? 'Observed eating' : 'Quarters of play'}</span></div><div className="demo-stat"><strong>{route.kind === 'demo' && route.demoId === 'squirrels' ? new Set(demo.dataset.previewRows.map((row) => row.hectare)).size : demo.tiles.length}</strong><span>{route.kind === 'demo' && route.demoId === 'squirrels' ? 'Mapped sectors' : 'Perspectives'}</span></div></div> : null}
+              <SchemaStrip dataset={activeDataset} />
+              {!demo && !runRequested ? <div className="analysis-confirm"><div><h3>Ready to discover the story?</h3><p>Run up to 4 insights across {activeDataset.acceptedRowCount.toLocaleString()} rows. Each insight may use up to {(activeDataset.acceptedRowCount * 2).toLocaleString()} model calls, including retries. Results are public.</p></div><Button variant="run" onClick={() => setRunRequested(true)}>Analyze dataset <ArrowUpRight /></Button></div> : null}
               <DatasetDashboard
-                tiles={tiles}
+                tiles={demo?.tiles ?? (runRequested ? tiles : proposeInsights(activeDataset).map((insight) => ({ insight })))}
                 proposing={proposing}
-                sourceRows={dataset.previewRows}
+                sourceRows={activeDataset.previewRows}
                 onResume={(insightId) => void handleResumeTile(insightId)}
                 resumingId={resumingId}
                 shareMessage={shareMessage}
                 onCopyShare={(analysisId) => void copyShareUrl(analysisId)}
               />
-              <DatasetPreviewCard dataset={dataset} onChange={() => {
+              <DatasetPreviewCard dataset={activeDataset} onChange={() => {
                 setDataset(undefined)
                 resetRunState()
                 setIntakeError(undefined)
@@ -704,6 +759,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
             </div>
           ) : null}
         </StageFold>
+        {manualShareUrl ? <div className="share-fallback" role="status"><Label htmlFor="share-url">Copy this public link</Label><input id="share-url" readOnly value={manualShareUrl} onFocus={(event) => event.currentTarget.select()} /><a href={manualShareUrl} target="_blank" rel="noreferrer">Open link <ArrowUpRight /></a></div> : null}
         <StageFold open={showAdvanced} animate={foldAnimate}>
           {dataset && engineerMode ? (
             <details className="advanced-json query-card" open={jsonOpen} onToggle={(event) => setJsonOpen((event.currentTarget as HTMLDetailsElement).open)}>
@@ -783,6 +839,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
             <span>{error}</span>
           </div>
         )}
+        {demoShare ? <p className="demo-disclosure">{getDemoDashboard(shareAnalysisId!.slice(5))?.disclosure}</p> : null}
         {isShareView && shareLoading && <p className="empty-copy" role="status">Loading public snapshot…</p>}
         {isShareView && error && (
           <div className="error-banner" role="alert">
@@ -809,6 +866,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       </div>
       {!isShareView ? (
         <footer className="site-footer">
+          <span>A little data. A clearer picture.</span>
           <a
             className="engineer-link"
             href={engineerHref(!engineerMode)}

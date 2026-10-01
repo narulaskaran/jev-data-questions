@@ -45,7 +45,7 @@ describe('rail meta line', () => {
 describe('run view copy', () => {
   it('uses Results for the panel and chart labels for the plot', () => {
     expect(runViewHeading()).toBe('Results')
-    expect(chartHeading('noul')).toBe('Win probability')
+    expect(chartHeading('noul')).toBe('Probability')
     expect(chartHeading('noul', 'series', 'SEA')).toBe('SEA win probability')
     expect(chartHeading('noul', 'series', 'SEA')).not.toBe('Win probability')
     expect(chartHeading('noul', 'places')).toBe('Places')
@@ -74,7 +74,7 @@ describe('run view copy', () => {
     expect(plainAnalysisError('JEV_MALFORMED_RESPONSE')).not.toMatch(/JEV_MALFORMED_RESPONSE/)
     expect(runErrorCopy({ code: 'JEV_MALFORMED_RESPONSE', retryable: false }, 31)).toEqual({
       title: "Couldn't finish this run",
-      detail: 'Jev returned a response this run could not use. Saved rows are kept. You can resume from row 32.',
+      detail: 'Jev returned a response this run could not use. Saved rows are kept. This run cannot be resumed.',
     })
     expect(resumeRunLabel(31)).toBe('Resume from row 32')
     expect(savedRunCopy()).toBe('')

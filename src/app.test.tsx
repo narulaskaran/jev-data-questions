@@ -127,7 +127,9 @@ const makeApi = (overrides: Partial<AnalysisApiClient> = {}): AnalysisApiClient 
 
 const openFixture = (api: AnalysisApiClient, datasetId = FOOTBALL_FIXTURE_ID, search = '') => {
   window.history.pushState({}, '', `/dataset/${datasetId}${search}`)
-  return render(<App api={api} />)
+  const rendered = render(<App api={api} />)
+  fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
+  return rendered
 }
 
 const enterSample = async (api: AnalysisApiClient, datasetId = FOOTBALL_FIXTURE_ID) => {
@@ -189,7 +191,7 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/location vs activity/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/football is the sample, not the product/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/same live chart as the sample/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /upload csv or public https csv url/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /bring your own data/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/^upload csv$/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^upload csv$/i })).toBeInTheDocument()
     expect(screen.queryByText(/choose file/i)).not.toBeInTheDocument()
@@ -205,7 +207,8 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/review the json/i)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^engineer$/i })).toBeInTheDocument()
-    expect(screen.queryByText(/playground limits|5 mb|5,000|engineer playground|how a run works|demo playground/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/up to 5 mb/i)).toBeInTheDocument()
+    expect(screen.getByText(/datasets and results are public/i)).toBeInTheDocument()
     expect(document.querySelector('[data-mode="product"]')).toBeTruthy()
     expect(window.location.search).not.toMatch(/mode=engineer/)
     expect(screen.queryByText(/espn|gamecast|ask a football question|analyze your business/i)).not.toBeInTheDocument()
@@ -274,9 +277,9 @@ describe('Jev insight product flow', () => {
     expect(screen.getByText(/^26 columns$/)).toBeInTheDocument()
     expect(screen.queryByText(/showing first/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/delimiter/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/not evidence of model quality/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /^source$/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /^license$/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/not evidence of model quality/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /source/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /license/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: /2026 super bowl demo/i })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'posteam_score' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'defteam_score' })).toBeInTheDocument()
@@ -347,7 +350,7 @@ describe('Jev insight product flow', () => {
     render(<App api={api} />)
     expect(document.querySelector('[data-mode="engineer"]')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /upload csv or public https csv url/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /bring your own data/i })).toBeInTheDocument()
     window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}?mode=engineer`)
     window.dispatchEvent(new PopStateEvent('popstate'))
     expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
@@ -754,12 +757,12 @@ describe('Jev insight product flow', () => {
     })
     await startEngineerRun(api)
     const rail = await screen.findByRole('complementary', { name: /processed rows/i })
-    await waitFor(() => expect(within(rail).getByRole('button', { name: /row 2 of 39/i })).toBeInTheDocument())
+    await waitFor(() => expect(within(rail).getByRole('button', { name: /row 2 of 39/i })).toBeInTheDocument(), { timeout: 4000 })
     await waitFor(() => expect(document.querySelector('[data-class="C.Kupp"]')).toHaveAttribute('data-count', '1'))
     fireEvent.click(within(rail).getByRole('button', { name: /row 1 of 39/i }))
     await waitFor(() => expect(document.querySelector('[data-class="C.Kupp"]')).toHaveAttribute('data-count', '0'))
     expect(within(rail).getByText(new RegExp(`${input.play_id}`))).toBeInTheDocument()
-    await waitFor(() => expect(within(rail).getByRole('button', { name: /row 3 of 39/i })).toBeInTheDocument())
+    await waitFor(() => expect(within(rail).getByRole('button', { name: /row 3 of 39/i })).toBeInTheDocument(), { timeout: 4000 })
     expect(document.querySelector('[data-class="C.Kupp"]')).toHaveAttribute('data-count', '0')
     fireEvent.change(screen.getByRole('slider', { name: /chart playhead/i }), { target: { value: '2' } })
     fireEvent.pointerUp(screen.getByRole('slider', { name: /chart playhead/i }))
@@ -819,8 +822,9 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/classify by /i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
     await waitFor(() => expect(api.propose).toHaveBeenCalled())
-    expect(await screen.findByText(/no insights for this table/i)).toBeInTheDocument()
+    expect(await screen.findByText(/couldn’t find a useful insight/i)).toBeInTheDocument()
     expect(document.querySelector('.dashboard-grid')).toBeNull()
     expect(api.start).not.toHaveBeenCalled()
     expect(screen.queryByRole('region', { name: /current row inspector/i })).not.toBeInTheDocument()
@@ -907,8 +911,8 @@ describe('Jev insight product flow', () => {
     })
     render(<App api={api} />)
     await waitFor(() => expect(screen.getByLabelText(/upload csv/i)).toBeDisabled())
-    expect(screen.getByRole('button', { name: /use public csv url/i })).toBeEnabled()
-    expect(screen.getByLabelText(/public https csv url/i)).toBeEnabled()
+    expect(screen.getByRole('button', { name: /use public csv url/i })).toBeDisabled()
+    expect(screen.getByLabelText(/public https csv url/i)).toBeDisabled()
     expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
     expect(screen.queryByText(/not configured on this deployment/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/durable storage/i)).not.toBeInTheDocument()
@@ -920,23 +924,24 @@ describe('Jev insight product flow', () => {
     window.dispatchEvent(new PopStateEvent('popstate'))
     expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
     expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
+    expect(api.start).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
     await waitFor(() => expect(api.start).toHaveBeenCalled())
   })
 
-  it('keeps public CSV URL live when only file upload storage is down', async () => {
+  it('explains unavailable intake and keeps a free demo available when upload storage is down', async () => {
     const api = makeApi({
       intakeStatus: vi.fn(async (): Promise<DatasetIntakeStatus> => ({ convex: true, uploadThing: false, sampleAvailable: true })),
     })
     render(<App api={api} />)
     await waitFor(() => expect(screen.getByLabelText(/upload csv/i)).toBeDisabled())
-    expect(screen.getByRole('button', { name: /use public csv url/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /use public csv url/i })).toBeDisabled()
     expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
-    fireEvent.change(screen.getByLabelText(/public https csv url/i), {
-      target: { value: 'https://jev-gamecast.vercel.app/samples/nyc-squirrel-census.csv' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))
-    expect(await screen.findByRole('heading', { name: 'remote.csv' })).toBeInTheDocument()
-    expect(api.createFromUrl).toHaveBeenCalledWith({ url: 'https://jev-gamecast.vercel.app/samples/nyc-squirrel-census.csv' })
+    expect(screen.getByText(/uploads are unavailable/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: /a city park, mapped/i }))
+    expect(await screen.findByRole('heading', { name: /small creatures/i })).toBeInTheDocument()
+    expect(api.createFromUrl).not.toHaveBeenCalled()
+    expect(api.start).not.toHaveBeenCalled()
     expect(api.createFromCsv).not.toHaveBeenCalled()
   })
 
@@ -1020,7 +1025,7 @@ describe('Jev insight product flow', () => {
     const failed = snapshot({
       status: 'error',
       progress: { completedRows: 31, totalRows: 39, completedCalls: 31, totalCalls: 39 },
-      error: { code: 'JEV_MALFORMED_RESPONSE', retryable: false },
+      error: { code: 'JEV_MALFORMED_RESPONSE', retryable: true },
     })
     const api = makeApi({
       start: vi.fn(async () => failed),
@@ -1103,8 +1108,8 @@ describe('Jev insight product flow', () => {
     fireEvent.change(screen.getByLabelText(/public https csv url/i), { target: { value: 'http://example.com/data.csv' } })
     fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/couldn't load dataset/i)
-    expect(alert).toHaveTextContent(/use an https csv url/i)
+    expect(alert).toHaveTextContent(/use a public https link/i)
+    expect(api.createFromUrl).not.toHaveBeenCalled()
     expect(screen.queryByText(/couldn't run/i)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /choose a dataset/i })).toBeInTheDocument()
   })
@@ -1153,7 +1158,7 @@ describe('Jev insight product flow', () => {
       return node
     })
     try {
-      fireEvent.click(await screen.findByRole('button', { name: /download results csv/i }))
+      fireEvent.click(await screen.findByRole('button', { name: /^download results csv$/i }))
       expect(URL.createObjectURL).toHaveBeenCalled()
       expect(click).toHaveBeenCalled()
     } finally {
@@ -1256,6 +1261,8 @@ describe('Jev insight product flow', () => {
     expectNamedDashboard()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /choose a dataset/i })).not.toBeInTheDocument()
+    expect(api.start).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
     expect(vi.mocked(api.start).mock.calls.map((call) => call[0]?.questionKind).sort()).toEqual(['noul', 'score'])
   })
@@ -1291,6 +1298,7 @@ describe('Jev insight product flow', () => {
     render(<App api={api} />)
     const file = new File(['message,tier\nhello,gold\n'], 'tickets.csv', { type: 'text/csv' })
     fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
+    fireEvent.click(await screen.findByRole('button', { name: /analyze dataset/i }))
     expect(await screen.findByRole('heading', { name: 'Urgent tickets' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Frustrated customers' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /classify by shift/i })).not.toBeInTheDocument()
@@ -1305,7 +1313,8 @@ describe('Jev insight product flow', () => {
     render(<App api={api} />)
     const file = new File(['message,tier\nhello,gold\n'], 'tickets.csv', { type: 'text/csv' })
     fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
-    expect(await screen.findByText(/no insights for this table/i)).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /analyze dataset/i }))
+    expect(await screen.findByText(/couldn’t find a useful insight/i)).toBeInTheDocument()
     expect(document.querySelector('.dashboard-grid')).toBeNull()
     expect(api.start).not.toHaveBeenCalled()
   })
@@ -1327,6 +1336,7 @@ describe('Jev insight product flow', () => {
     expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: "How good were SEA's plays?" })).toBeInTheDocument()
     expect(api.propose).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
   })
 
@@ -1368,5 +1378,95 @@ describe('Jev insight product flow', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('audit boundaries and recovery', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    window.history.replaceState({}, '', '/')
+  })
+
+  it('requires explicit confirmation before a dataset link starts any paid work', async () => {
+    const api = makeApi()
+    window.history.replaceState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}`)
+    render(<App api={api} />)
+    expect(await screen.findByRole('button', { name: /analyze dataset/i })).toBeInTheDocument()
+    expect(api.start).not.toHaveBeenCalled()
+    expect(api.draft).not.toHaveBeenCalled()
+    expect(api.propose).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
+  })
+
+  it.each(['squirrels', 'football'])('opens the %s demo without any API requests', async (id) => {
+    const api = makeApi()
+    window.history.replaceState({}, '', `/demo/${id}`)
+    render(<App api={api} />)
+    expect(document.querySelectorAll('.dashboard-tile')).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: /download results csv/i })).toHaveLength(2)
+    expect(api.intakeStatus).not.toHaveBeenCalled()
+    expect(api.propose).not.toHaveBeenCalled()
+    expect(api.draft).not.toHaveBeenCalled()
+    expect(api.start).not.toHaveBeenCalled()
+    expect(api.read).not.toHaveBeenCalled()
+  })
+
+  it('does not substitute a demo for an unknown public analysis', async () => {
+    const api = makeApi({ share: vi.fn(async () => { throw new Error('ANALYSIS_NOT_FOUND') }) })
+    window.history.replaceState({}, '', '/share/missing')
+    render(<App api={api} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/public snapshot unavailable/i)
+    expect(api.share).toHaveBeenCalledWith('missing')
+    expect(api.start).not.toHaveBeenCalled()
+    expect(document.querySelector('.chart-shell')).toBeNull()
+  })
+
+  it('reconnects after failed progress reads and clears the recovered error', async () => {
+    vi.useFakeTimers()
+    let reads = 0
+    const api = makeApi({ read: vi.fn(async () => {
+      reads += 1
+      if (reads <= 2) throw new Error('Temporary connection problem')
+      return snapshot({ status: 'complete' })
+    }) })
+    window.history.replaceState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}`)
+    await act(async () => { render(<App api={api} />) })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
+    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+    expect(screen.getAllByRole('alert')).toHaveLength(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+    expect(reads).toBe(4)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(document.querySelectorAll('[data-complete-snap]')).toHaveLength(2)
+  })
+
+  it('ignores an intake response after the user opens a demo', async () => {
+    let finish: ((value: DatasetPreview) => void) | undefined
+    const api = makeApi({ createFromUrl: vi.fn(() => new Promise<DatasetPreview>((resolve) => { finish = resolve })) })
+    render(<App api={api} />)
+    fireEvent.change(screen.getByLabelText(/public https csv url/i), { target: { value: 'https://example.com/data.csv' } })
+    fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))
+    fireEvent.click(screen.getByRole('link', { name: /a city park, mapped/i }))
+    await act(async () => { finish?.(uploaded) })
+    expect(window.location.pathname).toBe('/demo/squirrels')
+    expect(screen.getByRole('heading', { name: /small creatures/i })).toBeInTheDocument()
+    expect(api.start).not.toHaveBeenCalled()
+  })
+
+  it('retries a failed tile start instead of leaving a permanent skeleton', async () => {
+    let starts = 0
+    const api = makeApi({ start: vi.fn(async () => {
+      starts += 1
+      if (starts <= 2) throw new Error('JEV_CONNECTION')
+      return snapshot()
+    }) })
+    openFixture(api)
+    const retry = await screen.findByRole('button', { name: 'Retry Will SEA win?' })
+    fireEvent.click(retry)
+    await waitFor(() => expect(starts).toBe(3))
+    await waitFor(() => expect(document.querySelector('[data-insight-id="series-win"]')).toHaveAttribute('data-complete-snap'))
   })
 })

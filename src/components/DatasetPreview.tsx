@@ -4,6 +4,7 @@ import { PREVIEW_VIEWPORT_SIZE, previewWindow } from '../dataset/previewWindow'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from './ui/card'
+import { ArrowUpRight } from './ui/arrow'
 
 const previewValue = (value: unknown): string => {
   if (value === null || value === undefined || value === '') return '—'
@@ -80,6 +81,9 @@ export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPrev
           <summary className="preview-fold-summary">Preview table</summary>
           <div
             ref={scrollRef}
+            tabIndex={0}
+            role="region"
+            aria-label="Scrollable dataset rows"
             className={`table-scroll preview-table${view.virtualized ? ' is-virtualized' : ''}`}
             onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
           >
@@ -125,6 +129,8 @@ export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPrev
         </div>
         </details>
       </CardContent>
+      {dataset.validationWarnings.length > 0 ? <CardContent><ul className="dataset-warnings" aria-label="Dataset validation notes">{dataset.validationWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></CardContent> : null}
+      {dataset.attribution ? <CardContent><p className="dataset-attribution">{dataset.attribution.disclosure} <a href={dataset.attribution.sourceUrl} target="_blank" rel="noreferrer">Source <ArrowUpRight size={12} /></a> <a href={dataset.attribution.licenseUrl} target="_blank" rel="noreferrer">License <ArrowUpRight size={12} /></a></p></CardContent> : null}
       {onChange && (
         <CardFooter className="preview-actions">
           <Button variant="ghost" type="button" onClick={onChange}>Change dataset</Button>

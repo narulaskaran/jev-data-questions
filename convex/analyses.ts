@@ -4,6 +4,8 @@ import { v } from 'convex/values'
 
 const MAX_ROWS = 5_000
 const MAX_CALLS = 5_000
+const MAX_DAILY_CALL_BUDGET = 5_000
+const MAX_DAILY_DRAFT_BUDGET = 1_000
 const MAX_ID_LENGTH = 200
 const MAX_QUERY_LENGTH = 20_000
 const MAX_DOCUMENT_JSON = 200_000
@@ -548,5 +550,36 @@ export const listPublicAnalyses = query({
       totalRows: document.progress.totalRows,
       createdAt: document.createdAt,
     }))
+  },
+})
+
+/** One atomic UTC-day permit per outbound Jev attempt, including retries. */
+export const reserveAnalysisCallInternal = internalMutation({
+  args: { day: v.string(), provider: v.union(v.literal('jev'), v.literal('openrouter')), dailyLimit: v.number() },
+  handler: async (ctx, { day, provider, dailyLimit }) => {
+    const maxLimit = provider === 'jev' ? MAX_DAILY_CALL_BUDGET : MAX_DAILY_DRAFT_BUDGET
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isInteger(dailyLimit) || dailyLimit < 1 || dailyLimit > maxLimit) {
+      throw new Error('Invalid analysis daily budget')
+    }
+    const existing = await ctx.db.query('analysisDailyBudgets').withIndex('by_provider_day', (q: any) => q.eq('provider', provider).eq('day', day)).unique()
+    if (existing) {
+      if (existing.callsReserved >= dailyLimit) return { allowed: false, callsReserved: existing.callsReserved, dailyLimit }
+      const callsReserved = existing.callsReserved + 1
+      await ctx.db.patch(existing._id, { callsReserved, dailyLimit, updatedAtMs: Date.now() })
+      return { allowed: true, callsReserved, dailyLimit }
+    }
+    await ctx.db.insert('analysisDailyBudgets', { provider, day, callsReserved: 1, dailyLimit, updatedAtMs: Date.now() })
+    return { allowed: true, callsReserved: 1, dailyLimit }
+  },
+})
+
+export const authorizedReserveAnalysisCall = action({
+  args: { authToken: v.string(), provider: v.union(v.literal('jev'), v.literal('openrouter')), dailyLimit: v.number() },
+  handler: async (ctx: any, { authToken, provider, dailyLimit }: { authToken: string; provider: 'jev' | 'openrouter'; dailyLimit: number }): Promise<{ allowed: boolean; callsReserved: number; dailyLimit: number }> => {
+    authorizeWrite(authToken)
+    const maxLimit = provider === 'jev' ? MAX_DAILY_CALL_BUDGET : MAX_DAILY_DRAFT_BUDGET
+    if (!Number.isInteger(dailyLimit) || dailyLimit < 1 || dailyLimit > maxLimit) throw new Error('Invalid analysis daily budget')
+    const day = new Date().toISOString().slice(0, 10)
+    return await ctx.runMutation(internal.analyses.reserveAnalysisCallInternal, { day, provider, dailyLimit })
   },
 })

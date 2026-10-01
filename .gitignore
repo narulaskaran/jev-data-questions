@@ -1,6 +1,8 @@
 node_modules
 dist
 .vite
+.vitest
+artifacts/browser
 *.local
 .DS_Store
 

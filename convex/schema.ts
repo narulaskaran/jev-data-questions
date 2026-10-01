@@ -122,6 +122,13 @@ export default defineSchema({
     createdAt: v.string(),
     updatedAt: v.string(),
   }).index('by_content_key', ['contentKey']),
+  analysisDailyBudgets: defineTable({
+    provider: v.union(v.literal('jev'), v.literal('openrouter')),
+    day: v.string(),
+    callsReserved: v.number(),
+    dailyLimit: v.number(),
+    updatedAtMs: v.number(),
+  }).index('by_provider_day', ['provider', 'day']),
   analysisRows: defineTable({
     analysisId: v.string(),
     rowIndex: v.number(),

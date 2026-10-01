@@ -1,0 +1,1 @@
+export const ArrowUpRight = ({ size }: { size?: number }) => <svg className="arrow-icon" width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M5 15 15 5M5 5h10v10" /></svg>

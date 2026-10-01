@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo, useRef, type CSSProperties, type PointerEve
 import { classDistribution, distributionAt } from '../dataset/classDistribution'
 import { classColor } from '../runView/classColor'
 import { areChartPropsEqual, barWidth } from '../runView/chartProps'
-import { clampPlayhead, playDomainCount, playIndexFromRatio, type PlayheadMotion } from '../runView/playhead'
+import { clampPlayhead, playDomainCount, type PlayheadMotion } from '../runView/playhead'
 import { areaPath, jevSeriesPoints, linePath, seriesExtent, seriesX } from '../runView/seriesPath'
 import {
   normalizePoints,
@@ -15,6 +15,22 @@ import { chartHeading, seriesPlayStatus } from '../runView/format'
 import { Button } from './ui/button'
 
 const EMPTY_CLASSES: readonly string[] = []
+
+const indexForRowPosition = (rows: readonly AnalysisResultRow[], position: number): number => {
+  if (rows.length < 2 || position < rows[0]!.rowIndex) return 0
+  let low = 0
+  let high = rows.length
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    if (rows[middle]!.rowIndex <= position) low = middle + 1
+    else high = middle
+  }
+  return Math.max(0, low - 1)
+}
+
+const rowPositionFromRatio = (ratio: number, domainCount: number): number => (
+  Math.round(Math.min(1, Math.max(0, ratio)) * Math.max(0, domainCount - 1))
+)
 
 const ClassBar = memo(function ClassBar({
   name,
@@ -141,13 +157,15 @@ export const ResultsChart = memo(function ResultsChart({
     () => (places.hasMap ? normalizePoints(places.points) : []),
     [places.hasMap, places.points],
   )
-  const eatingDots = mapPoints.filter((point) => point.weight >= 0.5).length
-  const otherDots = mapPoints.length - eatingDots
-  const rankScale = Math.max(...places.ranks.map((entry) => entry.eating || entry.count), 1)
+  const eatingDots = mapPoints.filter((point) => point.eating === true).length
+  const otherDots = mapPoints.filter((point) => point.eating === false).length
+  const unknownDots = mapPoints.filter((point) => point.eating === undefined).length
+  const rankScale = Math.max(...places.ranks.map((entry) => entry.eating), 1)
   const waiting = visual === 'places' || rankPlaces
     ? placeRows.length === 0
     : classified === 0
-  const playheadValue = series.find((point) => point.rowIndex === playheadIndex)?.yValue
+  const selectedRowIndex = rows[playheadIndex]?.rowIndex ?? playheadIndex
+  const playheadValue = series.find((point) => point.rowIndex === selectedRowIndex)?.yValue
   const eatingSummary = places.ranks
     .map((item) => `${item.name} ${item.eating}`)
     .join(' · ')
@@ -180,8 +198,8 @@ export const ResultsChart = memo(function ResultsChart({
     const rect = node.getBoundingClientRect()
     if (rect.width <= 0) return 0
     const t = (clientX - rect.left) / rect.width
-    return playIndexFromRatio(t, totalRows, completedCount)
-  }, [completedCount, totalRows])
+    return indexForRowPosition(rows, rowPositionFromRatio(t, domainCount))
+  }, [domainCount, rows])
 
   const emitSeek = (index: number, phase?: 'scrub' | 'release') => {
     onSeek(clampPlayhead(index, completedCount), phase)
@@ -204,15 +222,17 @@ export const ResultsChart = memo(function ResultsChart({
     emitSeek(indexFromClientX(event.clientX), 'release')
   }
 
+  const indexForRangePosition = (position: number) => indexForRowPosition(rows, position)
+
   const handleRange = (event: SyntheticEvent<HTMLInputElement>) => {
-    emitSeek(Number(event.currentTarget.value), 'scrub')
+    emitSeek(indexForRangePosition(Number(event.currentTarget.value)), 'scrub')
   }
 
   const handleRangeCommit = (event: SyntheticEvent<HTMLInputElement>) => {
-    emitSeek(Number(event.currentTarget.value), 'release')
+    emitSeek(indexForRangePosition(Number(event.currentTarget.value)), 'release')
   }
 
-  const cursorX = seriesX(playheadIndex, domainCount)
+  const cursorX = seriesX(selectedRowIndex, domainCount)
   const extent = visual === 'series' ? seriesExtent(series, domainCount) : 1
 
   return (
@@ -236,12 +256,14 @@ export const ResultsChart = memo(function ResultsChart({
         data-waiting={waiting ? 'true' : 'false'}
         data-chart-kind={visual}
         data-rank-places={rankPlaces ? 'true' : undefined}
-        role="img"
+        role="group"
         aria-label={aria}
       >
         <div
           ref={plotRef}
           className="chart-plot"
+          role="img"
+          aria-label={aria}
           style={(rankPlaces || (visual === 'places' && !places.hasMap)) ? { '--rank-rows': String(places.ranks.length) } as CSSProperties : undefined}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -320,7 +342,7 @@ export const ResultsChart = memo(function ResultsChart({
                     cx={point.px}
                     cy={point.py}
                     r={0.018 + point.weight * 0.012}
-                    data-eating={point.weight >= 0.5 ? 'true' : 'false'}
+                    data-eating={point.eating === undefined ? 'unknown' : String(point.eating)}
                     opacity={0.25 + point.weight * 0.7}
                   />
                 ))}
@@ -328,6 +350,7 @@ export const ResultsChart = memo(function ResultsChart({
               <ul className="place-legend" aria-label="Eating map legend">
                 <li data-eating="true">Eating · {eatingDots}</li>
                 <li data-eating="false">Not eating · {otherDots}</li>
+                {unknownDots > 0 ? <li data-eating="unknown">Unknown · {unknownDots}</li> : null}
               </ul>
             </>
           ) : null}
@@ -371,16 +394,16 @@ export const ResultsChart = memo(function ResultsChart({
             <span className="visually-hidden">Chart playhead</span>
             <input
               aria-label="Chart playhead"
-              aria-valuetext={completedCount ? `Row ${playheadIndex + 1} of ${totalRows || completedCount}` : 'Waiting'}
+              aria-valuetext={completedCount ? `Row ${selectedRowIndex + 1} of ${totalRows || completedCount}` : 'Waiting'}
               type="range"
               min={0}
               max={completedCount ? Math.max(0, domainCount - 1) : 0}
-              value={completedCount ? playheadIndex : 0}
+              value={completedCount ? selectedRowIndex : 0}
               disabled={!completedCount}
               onChange={handleRange}
               onPointerDown={(event) => {
                 if (!completedCount) return
-                emitSeek(Number(event.currentTarget.value), 'scrub')
+                emitSeek(indexForRangePosition(Number(event.currentTarget.value)), 'scrub')
               }}
               onPointerUp={handleRangeCommit}
               onKeyUp={handleRangeCommit}

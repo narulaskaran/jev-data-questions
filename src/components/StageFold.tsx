@@ -29,7 +29,7 @@ export const StageFold = ({
       aria-labelledby={labelledBy}
       className={cn('stage-fold', open && 'is-open', motion && 'is-animate', className)}
       style={{ '--stage-fold-ms': `${STAGE_FOLD_MS}ms` } as CSSProperties}
-      {...(!open ? { inert: true } : {})}
+      {...(!open ? { inert: '' } : {})}
       {...props}
     >
       <div className="stage-fold-clip">

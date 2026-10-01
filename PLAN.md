@@ -1,5 +1,7 @@
 # Jev Dataset Analysis — MVP Implementation Plan
 
+> **Current release update (2026-10-01):** `CURSOR.md`, `README.md`, and `docs/AUDIT.md` supersede historical instructions below about a BYOD-only landing and automatically starting dashboard tiles. The current release includes two credential-free, clearly labeled demos, explicit Analyze confirmation, durable daily provider call budgets, and a standalone `DEMO_ONLY=1` deployment mode. The stages below preserve the original plan and remaining live operator gates.
+
 > **For agents:** The active product is **Jev Data Analysis**, not a live football gamecast. Read this file and `CURSOR.md` before writing code. `docs/analysis-api.md` is the current fixture-first API contract. Do not revive ESPN live-feed gamecast as the product, and do not restart the MVP from a blank repo.
 
 > **For Hermes:** Use the Kanban workflow and independent review/QA gates. P0 product decisions below are recorded. Implementation is already in progress on `origin/main`; continue from the current workbench rather than Stage 0 scaffolding.

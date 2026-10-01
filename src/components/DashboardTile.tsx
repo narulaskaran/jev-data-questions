@@ -23,6 +23,7 @@ export type DashboardTileModel = {
   starting?: boolean
   startedAt?: number
   error?: string
+  retryable?: boolean
   latencyHint?: 'saved' | 'live'
 }
 
@@ -32,6 +33,7 @@ export const DashboardTile = memo(function DashboardTile({
   starting,
   startedAt,
   error,
+  retryable = false,
   latencyHint,
   sourceRows,
   lead,
@@ -81,9 +83,11 @@ export const DashboardTile = memo(function DashboardTile({
   const rankPlaces = insight.id === 'bars-eating-places'
   const paintsRanks = rankPlaces && (sourceRows?.length ?? 0) > 0
   const empty = rows.length === 0 && !paintsPlaces && !paintsRanks
-  const showSkeleton = empty && chartKind !== 'places' && !paintsRanks
-  const showError = Boolean(errorCopy) && !paintsPlaces && !paintsRanks
-  const showProgress = Boolean(starting || snapshot)
+  const showSkeleton = empty && !errorCopy && chartKind !== 'places' && !paintsRanks
+  const showError = Boolean(errorCopy)
+  const demoModel = snapshot?.resultRows[0]?.model
+  const isDemo = demoModel === 'observed-data' || demoModel === 'illustrative-demo'
+  const showProgress = Boolean(starting || (snapshot && !isDemo))
   const waitingCopy = starting && !snapshot && !stallCopy ? 'Starting…' : undefined
   const perspectiveLabel = perspectiveLabelFor({
     datasetId: snapshot?.datasetId ?? insight.perspectiveLabel,
@@ -148,29 +152,29 @@ export const DashboardTile = memo(function DashboardTile({
         <div className="dashboard-tile-actions">
         {status ? (
           <Badge variant={status === 'complete' ? 'complete' : status === 'error' ? 'error' : 'running'}>
-            {status === 'complete' ? `${percent}%` : status === 'error' ? 'Error' : starting ? 'Starting…' : `${percent}%`}
+            {status === 'complete' ? isDemo ? demoModel === 'observed-data' ? 'Observed' : 'Illustrative' : `${percent}%` : status === 'error' ? 'Error' : starting ? 'Starting…' : `${percent}%`}
           </Badge>
         ) : starting ? (
           <Badge variant="running">Starting…</Badge>
         ) : null}
-        {lead && snapshot && rows.length > 0 ? (
+        {snapshot && completeSnap && rows.length > 0 ? (
           <Button
             variant="ghost"
             size="sm"
             type="button"
             onClick={() => downloadTextFile(resultsCsvFilename(snapshot), resultsCsv(snapshot))}
-            aria-label="Download results CSV"
+            aria-label={lead ? 'Download results CSV' : `Download results CSV for ${insight.title}`}
           >
             Download CSV
           </Button>
         ) : null}
-        {lead && snapshot && onCopyShare ? (
+        {snapshot && completeSnap && onCopyShare ? (
           <Button
             variant="ghost"
             size="sm"
             type="button"
             onClick={onCopyShare}
-            aria-label="Copy shareable public URL"
+            aria-label={lead ? 'Copy shareable public URL' : `Copy shareable public URL for ${insight.title}`}
           >
             {shareMessage || 'Share'}
           </Button>
@@ -190,7 +194,7 @@ export const DashboardTile = memo(function DashboardTile({
               </span>
               <b>{percent}%</b>
             </div>
-            <ProgressBar value={percent} indeterminate={!snapshot || (snapshot.status !== 'complete' && snapshot.progress.completedRows === 0)} />
+            <ProgressBar value={percent} aria-label={`${insight.title} progress`} indeterminate={!snapshot || (snapshot.status !== 'complete' && snapshot.progress.completedRows === 0)} />
           </div>
         ) : null}
         {stallCopy ? <p className="run-stall" role="status">{stallCopy}</p> : null}
@@ -200,16 +204,16 @@ export const DashboardTile = memo(function DashboardTile({
               <b>{errorCopy.title}</b>
               <span>{errorCopy.detail}</span>
             </div>
-            {snapshot?.error && onResume ? (
+            {onResume && (snapshot?.error?.retryable || (!snapshot && retryable)) ? (
               <Button
                 variant="secondary"
                 size="sm"
                 type="button"
                 onClick={onResume}
                 disabled={resuming}
-                aria-label={resumeRunLabel(snapshot.progress.completedRows)}
+                aria-label={snapshot ? resumeRunLabel(snapshot.progress.completedRows) : `Retry ${insight.title}`}
               >
-                {resuming ? 'Resuming…' : resumeRunLabel(snapshot.progress.completedRows)}
+                {resuming ? (snapshot ? 'Resuming…' : 'Retrying…') : snapshot ? resumeRunLabel(snapshot.progress.completedRows) : 'Retry'}
               </Button>
             ) : null}
           </div>

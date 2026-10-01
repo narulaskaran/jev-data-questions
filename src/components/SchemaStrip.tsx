@@ -6,7 +6,7 @@ export const COLUMN_TYPES_COPY = 'Column types'
 export const SchemaStrip = ({ dataset }: { dataset: DatasetPreview }) => {
   const shape = inspectDatasetShape(dataset.columns, dataset.previewRows)
   const summary = schemaStripParts(shape).join(' · ')
-  const columns = shape.columns.slice(0, 18)
+  const columns = shape.columns
   return (
     <section className="schema-strip" aria-label="Dataset shape">
       <p className="schema-strip-summary">{summary}</p>

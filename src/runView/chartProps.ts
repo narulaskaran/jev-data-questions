@@ -11,6 +11,21 @@ export const sameStringList = (left: readonly string[] = [], right: readonly str
   left === right || (left.length === right.length && left.every((value, index) => value === right[index]))
 )
 
+const sameRows = (left: readonly AnalysisResultRow[], right: readonly AnalysisResultRow[]): boolean => (
+  left === right || (left.length === right.length && left.every((row, index) => {
+    const other = right[index]
+    if (!other) return false
+    return row.rowIndex === other.rowIndex
+      && row.input === other.input
+      && row.selectedClass === other.selectedClass
+      && row.value === other.value
+  }))
+)
+
+const sameSourceRows = (left: readonly unknown[] = [], right: readonly unknown[] = []): boolean => (
+  left === right || (left.length === right.length && left.every((row, index) => row === right[index]))
+)
+
 type ChartVisual = {
   rows: readonly AnalysisResultRow[]
   playheadIndex: number
@@ -43,12 +58,9 @@ export const areChartPropsEqual = (prev: ChartVisual, next: ChartVisual): boolea
   && prev.rankPlaces === next.rankPlaces
   && prev.heading === next.heading
   && prev.headingId === next.headingId
-  && (prev.sourceRows?.length ?? 0) === (next.sourceRows?.length ?? 0)
+  && sameSourceRows(prev.sourceRows, next.sourceRows)
   && sameStringList(prev.classes, next.classes)
-  && prev.rows[prev.playheadIndex]?.selectedClass === next.rows[next.playheadIndex]?.selectedClass
-  && prev.rows[prev.playheadIndex]?.value === next.rows[next.playheadIndex]?.value
-  && prev.rows[prev.rows.length - 1]?.rowIndex === next.rows[next.rows.length - 1]?.rowIndex
-  && prev.rows[prev.rows.length - 1]?.value === next.rows[next.rows.length - 1]?.value
+  && sameRows(prev.rows, next.rows)
 )
 
 type RailVisual = {
@@ -67,7 +79,5 @@ export const areRailPropsEqual = (prev: RailVisual, next: RailVisual): boolean =
   && prev.chartKind === next.chartKind
   && prev.perspectiveLabel === next.perspectiveLabel
   && sameStringList(prev.classes, next.classes)
-  && prev.rows[prev.playheadIndex]?.selectedClass === next.rows[next.playheadIndex]?.selectedClass
-  && prev.rows[prev.playheadIndex]?.value === next.rows[next.playheadIndex]?.value
-  && prev.rows[prev.rows.length - 1]?.rowIndex === next.rows[next.rows.length - 1]?.rowIndex
+  && sameRows(prev.rows, next.rows)
 )

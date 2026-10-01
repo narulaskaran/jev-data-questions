@@ -22,9 +22,9 @@ const probability = (value: number | undefined): string => (
 export const resultsCsv = (snapshot: AnalysisSnapshot): string => {
   const kind = inferQuestionKind(snapshot.query, snapshot.classes, snapshot.questionKind)
   const classes = kind === 'choice' ? [...snapshot.classes] : []
-  const header = kind === 'choice' ? ['row_id', 'selected_class', ...classes] : ['row_id', 'probability']
+  const header = kind === 'choice' ? ['row_id', 'selected_class', ...classes] : ['row_id', kind === 'score' ? 'score' : 'probability']
   const lines = [header.map(escapeCsvCell).join(',')]
-  for (const row of snapshot.resultRows) {
+  for (const row of [...snapshot.resultRows].sort((left, right) => left.rowIndex - right.rowIndex)) {
     const rowId = String(row.rowIndex + 1)
     if (kind === 'choice') {
       lines.push([rowId, cell(row.selectedClass), ...classes.map((name) => probability(row.probabilities?.[name]))].map(escapeCsvCell).join(','))

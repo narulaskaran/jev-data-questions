@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { STAGE_FOLD_MS, StageFold } from './StageFold'
 
 describe('StageFold motion', () => {
+  it('makes collapsed content inert with the React 18 attribute syntax', () => {
+    render(<StageFold open={false} animate><button>Hidden action</button></StageFold>)
+    expect(document.querySelector('[data-stage-fold]')).toHaveAttribute('inert', '')
+  })
   afterEach(() => {
     vi.unstubAllGlobals()
   })

@@ -102,6 +102,19 @@ describe('OpenRouter analysis draft adapter', () => {
 })
 
 describe('editable Jev classifier adapter', () => {
+  it.each([429, 500])('does not let SDK HTTP %s retries bypass the daily budget', async (status) => {
+    const fetcher = vi.fn(async () => fetchResponse({ error: { message: 'placeholder error' } }, status))
+    const reserveCall = vi.fn(async () => undefined)
+    const provider = new TypeSafeClassifierProvider({ apiKey: 'placeholder', fetch: fetcher })
+    vi.stubGlobal('window', undefined)
+    try {
+      await expect(provider.classify({ analysisId: 'budget-test', fixtureId: FOOTBALL_FIXTURE_ID, datasetId: FOOTBALL_FIXTURE_ID, query: 'Is this row useful?', rowIndex: 0, row: input, classes: [], questionKind: 'noul', reserveCall })).rejects.toMatchObject({ code: `JEV_${status}` })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(reserveCall).toHaveBeenCalledTimes(1)
+  })
   it('fails a run before creating work when JEV_API_KEY is missing', async () => {
     vi.stubEnv('JEV_API_KEY', '')
     const service = new AnalysisService({
@@ -153,6 +166,7 @@ describe('editable Jev classifier adapter', () => {
 
   it('retries an unreadable duplicate-replay body with a fresh idempotency key', async () => {
     const keys: Array<string | undefined> = []
+    let reservedCalls = 0
     const client: ClassifierClientBoundary = {
       async systemOne(_request, options) {
         keys.push(options?.headers?.['Idempotency-Key'])
@@ -170,8 +184,10 @@ describe('editable Jev classifier adapter', () => {
       row: input,
       classes: [],
       questionKind: 'noul',
+      reserveCall: async () => { reservedCalls += 1 },
     })).resolves.toMatchObject({ questionKind: 'noul', value: 0.41 })
     expect(keys).toEqual(['analysis:analysis-dup-1:0', 'analysis:analysis-dup-1:0:r1'])
+    expect(reservedCalls).toBe(2)
   })
 
   it('exhausts one replay retry and keeps JEV_MALFORMED_RESPONSE retryable', async () => {

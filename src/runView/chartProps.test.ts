@@ -25,6 +25,14 @@ describe('chart visual compare', () => {
     expect(areChartPropsEqual({ ...prev, playing: false, playbackEnabled: true }, { ...prev, playing: true, playbackEnabled: true })).toBe(false)
   })
 
+  it('does not skip an update when an earlier result changes', () => {
+    const rows = [row(0, 'gold'), row(1, 'silver')]
+    const props = { rows, playheadIndex: 1, classes: ['gold', 'silver'], totalRows: 10, motion: 'seek' as const }
+    const changed = [{ ...rows[0]!, selectedClass: 'silver' }, rows[1]!]
+    expect(areChartPropsEqual(props, { ...props, rows: changed })).toBe(false)
+    expect(areRailPropsEqual({ ...props, totalRows: 10 }, { ...props, rows: changed, totalRows: 10 })).toBe(false)
+  })
+
   it('lets the rail skip when only the snapshot object identity changed', () => {
     const rows = [row(0, 'gold'), row(1, 'silver')]
     const prev = { rows, playheadIndex: 1, totalRows: 10, classes: ['gold', 'silver'] }

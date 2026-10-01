@@ -2,6 +2,7 @@ export type AppRoute =
   | { kind: 'land' }
   | { kind: 'dataset'; datasetId: string }
   | { kind: 'share'; analysisId: string }
+  | { kind: 'demo'; demoId: string }
 
 export const DATASET_PATH_RE = /^\/dataset\/([^/]+)\/?$/
 export const SHARE_PATH_RE = /^\/share\/([^/]+)\/?$/
@@ -31,6 +32,8 @@ export const shareHref = (analysisId: string, search = ''): string => (
 )
 
 export const parseAppPath = (pathname: string): AppRoute => {
+  const demo = pathname.match(/^\/demo\/(squirrels|football)\/?$/)
+  if (demo) return { kind: 'demo', demoId: demo[1] }
   const share = pathname.match(SHARE_PATH_RE)
   if (share) {
     const analysisId = decodeSegment(share[1] ?? '')

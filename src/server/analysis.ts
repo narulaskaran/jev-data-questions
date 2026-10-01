@@ -147,6 +147,7 @@ export interface AnalysisClassifier {
     row: AnalysisRowInput
     classes: readonly string[]
     questionKind?: JevQuestionKind
+    reserveCall?: () => Promise<void>
   }): Promise<AnalysisClassification>
 }
 
@@ -373,6 +374,12 @@ export interface AnalysisServiceOptions {
   idFactory?: () => string
   /** Override Jev pool size (clamped 1–8). Default `ANALYSIS_CLASSIFY_CONCURRENCY`. */
   classifyConcurrency?: number
+  /** Production requires durable daily reservations; deterministic tests can omit them. */
+  requireCallBudget?: boolean
+  /** Production also bounds uncached OpenRouter draft/proposal generations. */
+  requireDraftBudget?: boolean
+  /** forceNew bypasses completed/in-flight content reuse and is opt-in in production. */
+  allowForceNew?: boolean
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -598,6 +605,7 @@ export class AnalysisService {
         source: resolved.insights.length > 0 ? resolved.source : 'empty',
       }
     }
+    await this.reserveOpenRouterCall()
     try {
       const shape = inspectDatasetShape(preview.columns, preview.previewRows)
       const drafted = await proposer({
@@ -635,6 +643,9 @@ export class AnalysisService {
   }
 
   async start(input: AnalysisStartInput): Promise<AnalysisSnapshot> {
+    if (input.forceNew === true && this.options.allowForceNew === false) {
+      throw new AnalysisError('FORCE_NEW_DISABLED', 'Starting a duplicate paid run is disabled.', 403, false)
+    }
     const query = this.requireQuery(input.query)
     const parsedQuery = parseJevQueryJson(query)
     const requestedAnalysisId = input.analysisId === undefined ? undefined : typeof input.analysisId === 'string' ? input.analysisId.trim() : undefined
@@ -797,6 +808,7 @@ export class AnalysisService {
       }
       return withCacheWrite(canned, await this.writeDraftCache(contentKey || flightKey, canned))
     }
+    await this.reserveOpenRouterCall()
     const draft = await this.options.draftProvider.draft({
       fixtureId: dataset.fixtureId,
       datasetId: dataset.datasetId,
@@ -900,6 +912,9 @@ export class AnalysisService {
     const classes = input.questionKind === 'noul' ? [] : normalizeClasses(input.parsedQuery ? classesFromJevQuery(input.parsedQuery) : input.inputClasses, input.dataset.classes ?? [])
     if (input.questionKind === 'choice' && classes.length < 2) throw new AnalysisError('INVALID_CLASSES', 'Query classes must contain between 2 and 32 labels')
     if (input.dataset.rows.length > ANALYSIS_MAX_ROWS || input.dataset.rows.length > ANALYSIS_MAX_CALLS) throw new AnalysisError('ANALYSIS_BOUNDS_EXCEEDED', 'Dataset exceeds analysis bounds', 413)
+    if (this.options.requireCallBudget && (!this.options.store.hasCallBudget?.() || !this.options.store.reserveCall)) {
+      throw new AnalysisError('ANALYSIS_BUDGET_NOT_CONFIGURED', 'Paid analysis is unavailable until the daily Jev call budget is configured.', 503, false)
+    }
     this.options.classifier.assertConfigured?.()
     const timestamp = nowIso(this.now)
     const snapshot: AnalysisSnapshot = {
@@ -933,6 +948,13 @@ export class AnalysisService {
       console.error('[analysis] draft cache read failed', { contentKey, message: cacheFailureReason(error) })
       return undefined
     }
+  }
+
+  private async reserveOpenRouterCall(): Promise<void> {
+    if (this.options.requireDraftBudget && (!this.options.store.hasDraftBudget?.() || !this.options.store.reserveDraftCall)) {
+      throw new AnalysisError('ANALYSIS_DRAFT_BUDGET_NOT_CONFIGURED', 'OpenRouter generation is unavailable until the daily draft budget is configured.', 503, false)
+    }
+    await this.options.store.reserveDraftCall?.()
   }
 
   private async writeDraftCache(contentKey: string, draft: AnalysisDraftResult): Promise<'ok' | 'skipped'> {
@@ -1064,6 +1086,7 @@ export class AnalysisService {
               row,
               classes,
               questionKind,
+              ...(this.options.store.reserveCall ? { reserveCall: () => Promise.resolve(this.options.store.reserveCall!()) } : {}),
             }), classes, questionKind)
             applyResult(resultFromClassification(rowIndex, row, classification))
           } catch (error) {

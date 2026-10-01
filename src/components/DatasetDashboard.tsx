@@ -3,7 +3,7 @@ import { DashboardTile, type DashboardTileModel } from './DashboardTile'
 import type { AnalysisRowInput } from '../shared/analysis'
 
 export const FINDING_INSIGHTS_COPY = 'Finding insights…'
-export const EMPTY_INSIGHTS_COPY = 'No insights for this table.'
+export const EMPTY_INSIGHTS_COPY = 'We couldn’t find a useful insight for this table. Try a dataset with clearer categories, numbers, or places, or use Engineer to ask a specific question.'
 
 export const DatasetDashboard = ({
   tiles,
@@ -70,7 +70,15 @@ export const DatasetDashboard = ({
           onResume={onResume ? () => onResume(tile.insight.id) : undefined}
           resuming={resumingId === tile.insight.id}
           shareMessage={shareMessage}
-          onCopyShare={onCopyShare && tile.snapshot ? () => onCopyShare(tile.snapshot!.analysisId) : undefined}
+          onCopyShare={onCopyShare && tile.snapshot ? () => {
+            const analysisId = tile.snapshot!.analysisId
+            // Curated demos expose a replayable dataset URL, while their
+            // secondary per-insight IDs are presentation-only.
+            const shareId = analysisId.startsWith('demo-')
+              ? `demo-${analysisId.split('-')[1]}`
+              : analysisId
+            onCopyShare(shareId)
+          } : undefined}
         />
       ))}
     </section>

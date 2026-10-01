@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs><linearGradient id="wash" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#6355ff" stop-opacity=".18"/><stop offset="1" stop-color="#6355ff" stop-opacity="0"/></linearGradient></defs>
+  <rect width="1200" height="630" fill="#fafafa"/>
+  <rect x="72" y="60" width="48" height="48" rx="14" fill="#18181b"/>
+  <g font-family="Arial, sans-serif"><text x="84" y="95" fill="#fafafa" font-size="36" font-weight="700">j.</text><text x="134" y="94" fill="#18181b" font-size="28" font-weight="600">Jev</text>
+    <text x="72" y="232" fill="#18181b" font-size="64" font-weight="700" letter-spacing="-3">Dynamic insights</text><text x="72" y="304" fill="#18181b" font-size="64" font-weight="700" letter-spacing="-3">from your data.</text>
+    <text x="72" y="370" fill="#62626a" font-size="22">A little data. A clearer picture.</text><text x="72" y="542" fill="#62626a" font-size="17">Bring a CSV. Find the pattern. Share the story.</text>
+  </g>
+  <rect x="690" y="180" width="442" height="284" rx="20" fill="#fff" stroke="#e4e4e7"/>
+  <g font-family="Arial, sans-serif" fill="#62626a" font-size="14"><text x="718" y="220">From a table to a story</text><text x="718" y="435">Your data, in perspective.</text></g>
+  <g stroke="#e4e4e7" stroke-dasharray="3 6"><path d="M718 270h384M718 320h384M718 370h384"/></g>
+  <path fill="url(#wash)" d="m718 374 32-16 28 7 30-42 29 20 31-36 30 12 29-43 30 18 29-32 29 9 28-32 29 13 31-26v155H718Z"/>
+  <path fill="none" stroke="#6355ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="m718 374 32-16 28 7 30-42 29 20 31-36 30 12 29-43 30 18 29-32 29 9 28-32 29 13 31-26"/>
+  <circle cx="957" cy="294" r="6" fill="#6355ff"/>
+  <circle cx="957" cy="294" r="13" fill="#6355ff" opacity=".12"/>
+</svg>

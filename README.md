@@ -1,104 +1,72 @@
 # Jev Data Analysis
 
-Bring a dataset. Inspect its shape. See the right chart. Jev fills the values.
+Turn a small CSV into a dashboard of useful insights. Inspect the data, choose to analyze it, watch results arrive, and export or share the finished charts.
 
-This is Jev data analysis: upload a CSV or paste a public CSV URL. The UI inspects schema/shape and proposes insights; Jev still fills values. It is not a live sports product.
+The built-in demos work entirely in the browser. The squirrel dashboard shows observed eating counts from a census-shaped fixture; the football dashboard uses explicitly illustrative rules, not Jev predictions. Neither requires credentials or makes provider requests.
 
-Start with `CURSOR.md` and `PLAN.md`. The API contract is `docs/analysis-api.md`.
+## Run locally
 
-## Local demo
+Use Node **22.12+ or 24** (Node 24 is used in CI).
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Open the Vite URL. QA this locally — do not wait on a Production deploy. The landing page is **Bring your own** only (CSV upload or public HTTPS CSV URL) under **Dynamic insights from your data.** There are no sample demo buttons. Entering a dataset opens `/dataset/:id` with a dashboard of 2–4 charts already running, mixing chart types on one page. Draft / Edit Jev JSON stay behind `?mode=engineer`.
+Open the Vite URL, then choose **Explore example**. Direct links are `/demo/squirrels` and `/demo/football`. Saved demo replay is also available at `/share/demo-football`. Every completed tile has CSV export and sharing; blocked clipboard access reveals a selectable link.
 
-Checked-in fixture CSVs for a from-scratch BYOD pass:
+CSV upload and public HTTPS URL intake require the live backend described below. Opening a dataset shows its schema and proposed chart placeholders. **Analyze dataset** explicitly starts insight generation and analysis. Visiting datasets, demos, or shared results never starts paid work. Advanced query editing is behind the footer **Engineer** link (`?mode=engineer`).
 
-- `public/samples/seahawks-super-bowl-2026.csv` → `/samples/seahawks-super-bowl-2026.csv`
-- `public/samples/nyc-squirrel-census.csv` → `/samples/nyc-squirrel-census.csv`
+Uploads and results are public. Use non-sensitive data only. Intake accepts at most **5 MB, 5,000 rows, and 100 columns**. CSV URL fetches reject credentials and private/reserved destinations, validate each redirect, pin the connection to validated DNS answers, and enforce streamed size and timeout limits.
 
-Regenerate them with `npm run samples:export` if the fixtures change.
-
-Visiting or sharing a page never starts a paid Jev run. The browser never calls Jev, OpenRouter, ESPN, UploadThing, or privileged Convex writes. Tests never make a paid provider request.
-
-## Verify
+## Validate
 
 ```bash
 npm test
-npm run test:convex
-npm run typecheck
 npm run typecheck:server
 npm run typecheck:functions
 npm run typecheck:convex
-npm run build
+npm run fixture:validate
 npm run audit
+npm run build
+npx playwright install --with-deps chromium
 ```
 
-`test:convex` uses the official `convex-test` mock runtime. It is not evidence of a deployed Convex environment.
+In one terminal, run `npm exec vite preview -- --host 127.0.0.1 --port 4173`. In another, run `npm run test:browser`. Set `SMOKE_BASE_URL` to use another local preview URL. The browser suite checks 30 route/theme/viewport combinations at 1440, 390, and 320 pixels, WCAG A/AA rules with axe, replay, CSV downloads, clipboard fallback, overflow, and absence of paid requests. Screenshots are saved to `artifacts/browser`. CI runs the same checks.
 
-## Sample fixtures
+Unit and Convex tests use mock providers/storage. They do not verify a provisioned production backend. See [the audit](docs/AUDIT.md) for fixes and validation limits, [the API contract](docs/analysis-api.md) for payloads, and [the working brief](CURSOR.md) for product conventions.
 
-- `src/fixtures/footballTimeline.ts` — 71 Seattle run/pass/sack plays. Default insight is win likelihood per play (full-game rows with in-progress scores). Play quality / grading is a Score series over the same 71 plays. Validate with `npm run fixture:validate`. Raw CSV: `public/samples/seahawks-super-bowl-2026.csv`.
-- `src/fixtures/squirrelCensus.ts` — slim 2018 Central Park Squirrel Census-shaped table (lat/lng, location, eating). Default insights are **Where are they eating?** (labeled map with counts) and **Which places have the most eating?** (ranked bars) — never Location vs Activity Choice bars or a P(moving) series. Raw CSV: `public/samples/nyc-squirrel-census.csv`.
+## Share a standalone demo
 
-## API
+Import the repository into Vercel as a Vite project using Node 24. Set server environment **`DEMO_ONLY=1`** for the deployment. The checked-in build command then builds the frontend without deploying Convex, and the API runtime disables live dataset storage/intake and analysis even if old credentials remain present. The two local demos, export, and demo links work without any services or secrets. Route rewrites and social preview artwork are included. Social image URLs use Vercel’s deployment hostname automatically; set `PUBLIC_SITE_URL=https://<your-domain>` to use a custom canonical domain.
 
-Dataset intake:
+This is the simplest share-ready configuration. The live BYOD surface becomes available only when its services and call budgets are configured.
 
-- `GET /api/datasets/status` — Convex / UploadThing / sample flags, no secrets
-- `POST /api/datasets/from-csv` — upload a CSV
-- `POST /api/datasets/from-url` — fetch a public HTTPS CSV
-- `GET /api/datasets/<id>` — sanitized preview
-- `GET /api/browse` — public dataset metadata
+## Enable live BYOD
 
-Analysis:
-
-- `POST /api/analysis/propose` — server-only OpenRouter proposes 2–4 named dashboard insights for BYOD; fixture-shaped tables stay on heuristics; junk is dropped
-- `POST /api/analysis/draft` — server-only OpenRouter drafts an editable query; identical dataset+task hits the durable draft cache
-- `POST /api/analysis/run` — starts a bounded Jev run (the only path that calls Jev)
-- `GET /api/analysis/<id>` — progress snapshot
-- `GET /api/share/<id>` — public readback; no provider call
-
-After a complete run, **Download CSV** exports `row_id,probability` (Noul/Score) or `row_id,selected_class,<class…>` (Choice). Formula-like cells are escaped. Dataset-load failures show next to the chooser, not as “Couldn't run”.
-
-Payload shapes and error codes live in `docs/analysis-api.md`.
-
-## Operator deploy
-
-Durable analysis, share, and dataset storage needs Convex. Production fails closed with `ANALYSIS_STORAGE_NOT_CONFIGURED` until it is provisioned. In-memory stores are for local tests only.
-
-```bash
-npx convex dev
-npx convex deploy --cmd 'npm run build'
-printf '%s' "$CONVEX_WRITE_SECRET" | npx convex env set CONVEX_WRITE_SECRET
-```
-
-Set these server-side. Never put secrets in a `VITE_*` variable:
+Remove `DEMO_ONLY=1`. Provision the existing Convex and UploadThing integration and set these server-only variables. Never put secrets in `VITE_*` variables.
 
 ```text
 CONVEX_URL=https://<deployment>.convex.cloud
 CONVEX_WRITE_SECRET=<operator-provisioned-secret>
-CONVEX_DEPLOY_KEY=<Convex production deploy key, Vercel Production only>
+CONVEX_DEPLOY_KEY=<production-deploy-key>
 OPENROUTER_KEY=<operator-provisioned-secret>
 JEV_API_KEY=<operator-provisioned-secret>
-UPLOADTHING_TOKEN=<UploadThing dashboard API Keys → V7 token>
+UPLOADTHING_TOKEN=<UploadThing-V7-token>
+ANALYSIS_DAILY_CALL_BUDGET=1000
+ANALYSIS_DAILY_DRAFT_BUDGET=100
 ```
 
-`VITE_CONVEX_URL` is accepted as an alias for `CONVEX_URL`. Keep the same Convex write secret in Convex and the server runtime. Import the repo into Vercel as a Vite project (Node 20+).
+The sample budgets above are illustrative operator limits. Jev accepts an integer from 1–5,000 and OpenRouter from 1–1,000. Missing or invalid budgets disable new paid calls. Convex atomically reserves permits across concurrent server instances per provider and UTC day. Failed attempts consume permits; retries are counted; SDK automatic retries are disabled. Cached drafts, joined runs, completed snapshots, and local demos require no new permits. These are call-count limits, not dollar limits. Existing saved live results remain readable when a budget is exhausted.
 
-Vercel Production uses `vercel.json` `buildCommand` `node scripts/vercel-build.mjs`. On `VERCEL_ENV=production` it requires `CONVEX_DEPLOY_KEY` and `CONVEX_WRITE_SECRET`, runs `npx convex deploy --cmd 'npm run build'`, then attempts `npx convex env set CONVEX_WRITE_SECRET`. If the deploy key lacks `deployment:env:write`, that env-set step logs a warning and the Vercel build still succeeds. Convex function deploy failures still fail the build. Set `SKIP_CONVEX_ENV_SYNC=1` to skip env-set. Preview and local Vercel builds skip Convex deploy so they cannot push to prod. A frontend-only `npm run build` leaves Convex on stale functions; BYOD then fails with Convex HTTP `[Request ID] Server Error`.
+`ANALYSIS_ALLOW_FORCE_NEW=true` is an optional operator override for recomputation; it is disabled by default. The normal UI always reuses identical saved or running analyses.
 
-Generate the deploy key in Convex dashboard → this production deployment → Settings → Generate Production Deploy Key (enable `deployment:deploy`). Attach it to Vercel **Production only**.
+Keep the same write secret in Convex and the server runtime. `VITE_CONVEX_URL` remains an accepted URL alias. UploadThing needs its dashboard **API Keys → V7** token containing `apiKey`, `appId`, and `regions`; a standalone raw key cannot upload.
 
-BYOD CSV upload and public URL intake also need `UPLOADTHING_TOKEN`: the dashboard **API Keys → V7** token (base64 JSON `{ apiKey, appId, regions }`). A raw `sk_…` key is not enough to upload. The sample on-ramp does not need UploadThing. Caps and fail-closed codes are in `docs/analysis-api.md`.
+Production `npm run build:vercel` deploys Convex functions before building the frontend and attempts write-secret synchronization. It requires `CONVEX_DEPLOY_KEY` and `CONVEX_WRITE_SECRET`. If the deploy key lacks `deployment:env:write`, set the secret in the Convex dashboard yourself; `SKIP_CONVEX_ENV_SYNC=1` skips synchronization. Preview builds never deploy Convex. A frontend-only build cannot update live backend functions.
 
-Historical Gamecast ESPN and cron code still exists under `historical/`. Those routes are not shipped as Vercel functions.
+## Fixtures and boundaries
 
-## Safety
+The checked-in fixture CSVs are `/samples/seahawks-super-bowl-2026.csv` and `/samples/nyc-squirrel-census.csv`; regenerate with `npm run samples:export`. Football has 71 plays. The squirrel fixture has 96 rows. Demo model/disclosure labels distinguish observed values, illustrative calculations, and live Jev output. Score CSV exports use `score`; Noul exports use `probability`; class exports include selected class and class probabilities. Formula-like cells are escaped.
 
-- Server-only modules own OpenRouter, the TypeSafe/Jev SDK, UploadThing, `JEV_API_KEY`, `OPENROUTER_KEY`, `UPLOADTHING_TOKEN`, `CONVEX_WRITE_SECRET`, `CONVEX_DEPLOY_KEY`, and the Convex HTTP client.
-- The Vite build fails if those markers enter a browser chunk.
-- Missing keys, invalid Convex URLs, and durable-read or intake failures fail closed. They do not silently become live success.
+Server modules own Jev, OpenRouter, UploadThing, and privileged Convex writes. A build guard prevents server credentials and provider endpoints from entering browser chunks. Historical ESPN/gamecast code remains under `historical/` and is outside the shipped routes.

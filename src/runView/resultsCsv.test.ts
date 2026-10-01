@@ -32,7 +32,7 @@ describe('results CSV export', () => {
     expect(resultsCsvFilename(snapshot())).toBe('jev-results-analysis-demo-1.csv')
   })
 
-  it('emits row_id,probability for Noul/Score runs', () => {
+  it('emits row_id,probability for Noul runs', () => {
     const csv = resultsCsv(snapshot({
       query: '{"type":"noul","instructions":"Will SEA win given this play state?"}',
       questionKind: 'noul',
@@ -66,5 +66,12 @@ describe('results CSV export', () => {
       vi.restoreAllMocks()
       vi.unstubAllGlobals()
     }
+  })
+  it('labels normalized scores accurately and exports out-of-order results in source order', () => {
+    const csv = resultsCsv(snapshot({ query: '{"type":"score","instructions":"Score quality"}', questionKind: 'score', classes: [], resultRows: [
+      { rowIndex: 4, input: {}, model: 'illustrative-demo', value: 0.8 },
+      { rowIndex: 0, input: {}, model: 'illustrative-demo', value: 0.2 },
+    ] }))
+    expect(csv).toBe('row_id,score\n1,0.2\n5,0.8\n')
   })
 })

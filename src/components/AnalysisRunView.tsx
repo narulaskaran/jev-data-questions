@@ -61,7 +61,7 @@ const Progress = memo(function Progress({
   return (
     <div className="progress-block" aria-label="Analysis progress">
       <div className="progress-line"><span>{completedRows} / {totalRows} rows</span><b>{percent}%</b></div>
-      <ProgressBar value={percent} />
+      <ProgressBar value={percent} aria-label="Analysis progress" />
     </div>
   )
 })
@@ -208,7 +208,7 @@ export const AnalysisRunView = memo(function AnalysisRunView({
               <b>{errorCopy.title}</b>
               <span>{errorCopy.detail}</span>
             </div>
-            {onResume ? (
+            {onResume && snapshot.error?.retryable ? (
               <Button
                 variant="secondary"
                 size="sm"

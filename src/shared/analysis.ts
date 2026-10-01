@@ -11,6 +11,8 @@ export {
 } from './questionKind.js'
 
 export const ANALYSIS_MAX_CALLS = 5_000
+export const ANALYSIS_MAX_DAILY_CALL_BUDGET = 5_000
+export const ANALYSIS_MAX_DAILY_DRAFT_BUDGET = 1_000
 export const ANALYSIS_MAX_ROWS = 5_000
 export const ANALYSIS_MAX_CLASSES = 32
 export const ANALYSIS_MAX_CLASS_LENGTH = 80
@@ -121,6 +123,12 @@ export interface AnalysisStorage {
   claimByContentKey(contentKey: string, snapshot: AnalysisSnapshot): Promise<AnalysisSnapshot> | AnalysisSnapshot
   getDraftByContentKey(contentKey: string): Promise<AnalysisDraftResult | undefined> | AnalysisDraftResult | undefined
   putDraft(contentKey: string, draft: AnalysisDraftResult): Promise<void> | void
+  hasCallBudget?(): boolean
+  /** Atomically reserve one paid provider attempt from today's global budget. */
+  reserveCall?(): Promise<void> | void
+  hasDraftBudget?(): boolean
+  /** Atomically reserve one OpenRouter generation from today's global budget. */
+  reserveDraftCall?(): Promise<void> | void
   claim?(analysisId: string, ownerToken: string, nowMs: number, leaseMs: number): Promise<'claimed' | 'busy' | 'complete' | 'missing' | 'error'> | 'claimed' | 'busy' | 'complete' | 'missing' | 'error'
   release?(analysisId: string, ownerToken: string): Promise<void> | void
   /** Mark a lease-dead queued/running snapshot as a retryable error. Missing stays undefined. */
