@@ -141,8 +141,12 @@ const startSampleRun = async (api: AnalysisApiClient) => {
   await enterSample(api)
 }
 
+/** Engineer mode has no link in the product UI; it is entered with the URL parameter. */
 const openEngineer = () => {
-  fireEvent.click(screen.getByRole('link', { name: /^engineer$/i }))
+  act(() => {
+    window.history.pushState({}, '', `${window.location.pathname}?mode=engineer`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  })
 }
 
 const startEngineerRun = async (api: AnalysisApiClient) => {
@@ -329,7 +333,9 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByRole('textbox', { name: /jev query json/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /draft task/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /run jev/i })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('link', { name: /^engineer$/i }))
+    expect(screen.queryByRole('link', { name: /^engineer$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
+    openEngineer()
     expect(document.querySelector('[data-mode="engineer"]')).toBeTruthy()
     expect(window.location.search).toMatch(/mode=engineer/)
     expect(screen.getByText(/edit jev json/i)).toBeInTheDocument()
@@ -738,7 +744,7 @@ describe('Jev insight product flow', () => {
     fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
     expect(await screen.findByRole('heading', { name: 'tickets.csv' })).toBeInTheDocument()
     expect(api.createFromCsv).toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: /change dataset/i }))
+    fireEvent.click(screen.getByRole('link', { name: /back/i }))
     fireEvent.change(screen.getByLabelText(/public https csv url/i), { target: { value: 'https://example.com/data.csv' } })
     fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))
     expect(await screen.findByRole('heading', { name: 'remote.csv' })).toBeInTheDocument()
@@ -914,7 +920,20 @@ describe('Jev insight product flow', () => {
     expect(document.querySelector('.page-meta')).toHaveTextContent('71 rows · 16 columns')
     expect(screen.queryByText(/built-in example|in perspective|clearer picture|tells a story/i)).not.toBeInTheDocument()
     expect(document.querySelector('.eyebrow')).toBeNull()
+    // Same chrome as the landing: no brand link and no footer. The way out is the Back link.
+    expect(screen.queryByRole('link', { name: /jev/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back/i })).toHaveAttribute('href', '/')
     expect(screen.getByRole('button', { name: /replay timeline/i })).toBeInTheDocument()
+  })
+
+  it('sends a demo replay back to its dashboard', async () => {
+    window.history.pushState({}, '', '/share/demo-football')
+    render(<App api={makeApi()} />)
+    expect(await screen.findByRole('heading', { level: 1, name: 'Saved analysis' })).toBeInTheDocument()
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: /back/i }))
+    expect(window.location.pathname).toBe('/demo/football')
   })
 
   const salesCsv = 'region,units\nWest,10\nEast,20\nWest,30\nEast,5\nNorth,7\nNorth,9\nWest,12\nEast,3\n'
@@ -1095,13 +1114,13 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/couldn't run/i)).not.toBeInTheDocument()
   })
 
-  it('clears the public CSV URL after Change dataset', async () => {
+  it('clears the public CSV URL after going back from a dataset', async () => {
     const api = makeApi()
     render(<App api={api} />)
     fireEvent.change(screen.getByLabelText(/public https csv url/i), { target: { value: 'https://example.com/data.csv' } })
     fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))
     expect(await screen.findByRole('heading', { name: 'remote.csv' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /change dataset/i }))
+    fireEvent.click(screen.getByRole('link', { name: /back/i }))
     expect(screen.getByLabelText(/public https csv url/i)).toHaveValue('')
   })
 

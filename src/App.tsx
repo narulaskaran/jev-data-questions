@@ -782,6 +782,17 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const stage = isShareView ? 'share' : snapshot && engineerMode ? 'run' : activeDataset ? 'dataset' : 'intake'
   const landing = route.kind === 'land'
   const demoShare = shareAnalysisId !== undefined && isDemoAnalysisId(shareAnalysisId)
+  // A demo replay returns to its dashboard; everything else returns to the start.
+  const backHref = demoShare ? `/demo/${shareAnalysisId!.slice(5)}` : landHref(window.location.search)
+  const goBack = () => {
+    if (!demoShare) {
+      setDataset(undefined)
+      resetRunState()
+      setIntakeError(undefined)
+      resetIntakeForm()
+    }
+    navigate(backHref)
+  }
   const pageTitle = isShareView
     ? 'Saved analysis'
     : activeDataset?.displayName ?? demoDatasets.find((item) => item.id === demoId)?.name ?? 'Dataset'
@@ -789,7 +800,6 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   return (
     <main className="analysis-shell" data-stage={stage} data-mode={engineerMode ? 'engineer' : 'product'}>
       <header className="site-header">
-        {landing ? null : <a className="brand" href="/" aria-label="Jev home" onClick={(event) => { event.preventDefault(); navigate('/'); setDataset(undefined); resetRunState() }}><span className="brand-mark" aria-hidden="true">j.</span><span>Jev</span></a>}
         <div className="site-header-actions">
           <ThemeToggle />
         </div>
@@ -797,13 +807,13 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       {landing ? <h1 id="page-title" className="sr-only">{PRODUCT_TITLE}</h1> : (
         <section className="page-head" aria-labelledby="page-title">
           <div className="page-head-text">
+            <a className="page-back" href={backHref} onClick={(event) => { event.preventDefault(); goBack() }}><span aria-hidden="true">←</span> Back</a>
             <h1 id="page-title">{pageTitle}</h1>
             {activeDataset ? <p className="page-meta">{formatCount(activeDataset.acceptedRowCount)} rows <span aria-hidden="true">·</span> {activeDataset.columns.length} columns</p> : null}
           </div>
           {demo && route.kind === 'demo' && route.demoId === 'football' ? (
             <Button variant="secondary" onClick={() => navigate('/share/demo-football')}>Replay timeline <ArrowUpRight /></Button>
           ) : null}
-          {demoShare ? <Button variant="secondary" onClick={() => navigate(`/demo/${shareAnalysisId!.slice(5)}`)}>Back to dashboard</Button> : null}
         </section>
       )}
       <div className="workspace">
@@ -854,13 +864,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
                 </section>
               ) : null}
               <SchemaStrip dataset={activeDataset} />
-              <DatasetPreviewCard dataset={activeDataset} onChange={() => {
-                setDataset(undefined)
-                resetRunState()
-                setIntakeError(undefined)
-                resetIntakeForm()
-                navigate(landHref(window.location.search))
-              }} />
+              <DatasetPreviewCard dataset={activeDataset} />
             </div>
           ) : null}
         </StageFold>
@@ -968,7 +972,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
           ) : null}
         </StageFold>
       </div>
-      {!isShareView && !landing ? (
+      {engineerMode && !isShareView && !landing ? (
         <footer className="site-footer">
           <a
             className="engineer-link"

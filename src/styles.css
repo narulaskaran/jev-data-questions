@@ -133,24 +133,9 @@ button, a { cursor: pointer; }
 .site-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border);
 }
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--foreground);
-  text-decoration: none;
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.brand:hover { color: var(--foreground); }
 
 .site-header-actions {
   display: flex;
@@ -584,19 +569,7 @@ h3 {
 }
 
 /* The public studio: a clear first step, with a preview of the result. */
-.brand-mark {
-  display: grid; place-items: center; width: 38px; height: 38px;
-  border-radius: 12px; background: var(--foreground); color: var(--background);
-  font-size: 26px; font-weight: 700; line-height: 1; letter-spacing: -0.08em;
-}
-.brand { gap: 10px; }
-.site-header { padding-bottom: 20px; }
-.page-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; padding: 32px 0 20px; }
-.page-head-text { min-width: 0; }
-.page-head h1 { overflow-wrap: anywhere; text-wrap: balance; }
-.page-meta { margin: 6px 0 0; color: var(--muted-foreground); font-size: 13px; font-variant-numeric: tabular-nums; }
 .site-header-actions { margin-left: auto; }
-.analysis-shell[data-stage='intake'] .site-header { border-bottom: 0; padding-bottom: 0; }
 .analysis-shell[data-stage='intake'] .workspace { padding-top: clamp(8px, 5vh, 56px); }
 .analysis-shell[data-stage='intake'] .stage-fold-body { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 40px; align-items: start; }
 .column-head { display: grid; align-content: start; gap: 6px; margin-bottom: 16px; }

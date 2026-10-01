@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DatasetPreview } from '../shared/dataset'
 import { PREVIEW_VIEWPORT_SIZE, previewWindow } from '../dataset/previewWindow'
-import { Button } from './ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from './ui/card'
+import { Card, CardContent, CardHeader } from './ui/card'
 import { ArrowUpRight } from './ui/arrow'
 
 const previewValue = (value: unknown): string => {
@@ -16,7 +15,7 @@ export const isNarrowPreview = (): boolean => {
   return window.innerWidth <= 390
 }
 
-export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPreview; onChange?: () => void }) => {
+export const DatasetPreviewCard = ({ dataset }: { dataset: DatasetPreview }) => {
   const columns = dataset.columns
   const rows = dataset.previewRows
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -117,11 +116,6 @@ export const DatasetPreviewCard = ({ dataset, onChange }: { dataset: DatasetPrev
       </CardContent>
       {dataset.validationWarnings.length > 0 ? <CardContent><ul className="dataset-warnings" aria-label="Dataset validation notes">{dataset.validationWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></CardContent> : null}
       {dataset.attribution ? <CardContent><p className="dataset-attribution">{dataset.attribution.disclosure} <a href={dataset.attribution.sourceUrl} target="_blank" rel="noreferrer">Source <ArrowUpRight size={12} /></a> <a href={dataset.attribution.licenseUrl} target="_blank" rel="noreferrer">License <ArrowUpRight size={12} /></a></p></CardContent> : null}
-      {onChange && (
-        <CardFooter className="preview-actions">
-          <Button variant="secondary" size="sm" type="button" onClick={onChange}>Change dataset</Button>
-        </CardFooter>
-      )}
     </Card>
   )
 }
