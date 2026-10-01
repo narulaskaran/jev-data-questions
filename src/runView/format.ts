@@ -57,6 +57,9 @@ export const runStallCopy = (status: AnalysisStatus, updatedAt: string, nowMs: n
   return STILL_WORKING_COPY
 }
 
+export const COLUMN_QUESTION_CODE = 'COLUMN_QUESTION'
+export const COLUMN_QUESTION_COPY = 'Your columns already answer this, so no model run is needed. The dashboard now leads with the charts that answer it.'
+
 export const ANALYSIS_ERROR_COPY: Record<string, string> = {
   INVALID_CLASSES: INVALID_CLASSES_COPY,
   JEV_MALFORMED_RESPONSE: 'Jev returned a response this run could not use.',
@@ -72,6 +75,7 @@ export const ANALYSIS_ERROR_COPY: Record<string, string> = {
   ANALYSIS_DAILY_BUDGET_EXHAUSTED: 'Today’s analysis limit has been reached. Saved rows are kept. The limit resets at midnight UTC.',
   ANALYSIS_DAILY_DRAFT_BUDGET_EXHAUSTED: 'Today’s insight-generation limit has been reached. Try again after midnight UTC.',
   FORCE_NEW_DISABLED: 'A saved or running version of this analysis will be reused.',
+  COLUMN_QUESTION: COLUMN_QUESTION_COPY,
 }
 
 export const plainAnalysisError = (code: string, fallback = 'This run hit an error.'): string => {

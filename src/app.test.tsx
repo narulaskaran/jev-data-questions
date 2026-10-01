@@ -353,7 +353,7 @@ describe('Jev insight product flow', () => {
     expect(screen.getByRole('heading', { name: /bring your own data/i })).toBeInTheDocument()
     window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}?mode=engineer`)
     window.dispatchEvent(new PopStateEvent('popstate'))
-    expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /analyze dataset/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/^Jev query JSON$/i)).toBeInTheDocument()
     expect(document.querySelector('details.advanced-json')).toHaveAttribute('open')
     fireEvent.click(screen.getByRole('link', { name: /^product$/i }))
@@ -636,96 +636,53 @@ describe('Jev insight product flow', () => {
     expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ questionKind: 'noul' }))
   })
 
-  it('opens the squirrel census sample and runs a places insight, never Location vs Activity bars', async () => {
-    const eatingQuery = formatDraftQueryForEditor({
-      query: SQUIRREL_EATING_NOUL_QUERY,
-      questionKind: 'noul',
-      classes: [],
-    })
-    const eatingDraft: AnalysisDraftResult = {
-      fixtureId: SQUIRREL_FIXTURE_ID,
-      datasetId: SQUIRREL_FIXTURE_ID,
-      sourceType: 'fixture',
-      query: eatingQuery,
-      metadata: {
-        provider: 'openrouter',
-        model: 'cached-sample-places',
-        rowCount: 96,
-        questionKind: 'noul',
-        classes: [],
-        columns: ['x', 'y', 'location', 'eating'],
-        displayName: 'Squirrel census',
-      },
-    }
-    const eatingRun = snapshot({
-      analysisId: 'analysis-squirrel-1',
-      fixtureId: SQUIRREL_FIXTURE_ID,
-      datasetId: SQUIRREL_FIXTURE_ID,
-      query: eatingQuery,
-      questionKind: 'noul',
-      classes: [],
-      status: 'complete',
-      progress: { completedRows: 3, totalRows: 3, completedCalls: 3, totalCalls: 3 },
-      columns: ['x', 'y', 'location', 'eating'],
-      resultRows: [
-        { rowIndex: 0, input: { x: -73.97, y: 40.78, location: 'Ground Plane', eating: true }, model: 'jev-latest', questionKind: 'noul', value: 0.9 },
-        { rowIndex: 1, input: { x: -73.96, y: 40.79, location: 'Above Ground', eating: false }, model: 'jev-latest', questionKind: 'noul', value: 0.1 },
-        { rowIndex: 2, input: { x: -73.975, y: 40.782, location: 'Ground Plane', eating: true }, model: 'jev-latest', questionKind: 'noul', value: 0.85 },
-      ],
-    })
-    const api = makeApi({
-      draft: vi.fn(async () => eatingDraft),
-      start: vi.fn(async () => eatingRun),
-      read: vi.fn(async () => eatingRun),
-    })
-    openFixture(api, SQUIRREL_FIXTURE_ID)
+  it('opens the squirrel census sample as an observed dashboard, never Location vs Activity bars', async () => {
+    const api = makeApi()
+    window.history.pushState({}, '', `/dataset/${SQUIRREL_FIXTURE_ID}`)
+    render(<App api={api} />)
     expect(window.location.pathname).toBe(`/dataset/${SQUIRREL_FIXTURE_ID}`)
+    const story = screen.getByRole('region', { name: 'Dashboard' })
+    // The map, the trend, and the rates are read straight from the columns.
+    expect(within(story).getByRole('heading', { name: /Hectare 14D has the most rows: 32 of 3,023/ })).toBeInTheDocument()
+    expect(story.querySelector('[data-view-kind="map"]')).toBeTruthy()
+    expect(story.querySelector('[data-view-kind="trend"]')).toBeTruthy()
+    expect(within(story).getByText('3,023')).toBeInTheDocument()
     expect(screen.getByLabelText(/dataset shape/i)).toBeInTheDocument()
     expect(screen.queryByText(/location vs activity/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Where are they eating?' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Which places have the most eating?' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: /on the move/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: /how active/i })).not.toBeInTheDocument()
-    expect(Number(document.querySelector('.dashboard-grid')?.getAttribute('data-insight-count'))).toBeGreaterThanOrEqual(2)
-    expectDiverseDashboard()
-    expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /run insight/i })).not.toBeInTheDocument()
-    expect(screen.queryByText(/^Location$/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/^Activity$/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/classify by shift/i)).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
-    const placesTile = document.querySelector('[data-insight-id="places-eating"]') as HTMLElement
-    expect(placesTile).toHaveAttribute('data-lead')
-    expect(placesTile).toHaveAttribute('data-visual', 'places')
-    expect(await within(placesTile).findByRole('img', { name: /map of where they are eating/i })).toBeInTheDocument()
-    expect(within(placesTile).getByRole('list', { name: /eating map legend/i })).toBeInTheDocument()
-    expect(within(placesTile).getByText('Each dot is a sighting')).toBeInTheDocument()
-    expect(placesTile.querySelectorAll('.place-pin')).toHaveLength(0)
-    expect(placesTile.querySelectorAll('[data-place-label]')).toHaveLength(0)
-    expect(placesTile.querySelector('[data-place-labels="0"]')).toBeTruthy()
-    expect(screen.queryByText(/using saved run/i)).not.toBeInTheDocument()
-    expect(placesTile.querySelector('[data-chart-kind="places"]')).toBeTruthy()
-    expect(placesTile.querySelector('[data-place-points]')).toBeTruthy()
-    const barsTile = document.querySelector('[data-insight-id="bars-eating-places"]') as HTMLElement
-    expect(barsTile).toHaveAttribute('data-visual', 'bars')
-    expect(within(barsTile).getByRole('img', { name: /eating count by place/i })).toBeInTheDocument()
-    expect(within(barsTile).getByText('Eating count')).toBeInTheDocument()
-    expect(within(placesTile).getByText('Eating')).toBeInTheDocument()
-    expect(within(barsTile).getByText('Most eating')).toBeInTheDocument()
     expect(document.querySelector('[data-class="Location"]')).toBeNull()
     expect(document.querySelector('[data-class="Activity"]')).toBeNull()
-    expect(document.querySelector('[data-class="AM"]')).toBeNull()
-    expect(screen.queryByRole('complementary', { name: /processed rows/i })).not.toBeInTheDocument()
+    expect(document.querySelector('.dashboard-tile')).toBeNull()
+    expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
+    // Nothing above cost a model call.
+    expect(api.propose).not.toHaveBeenCalled()
     expect(api.draft).not.toHaveBeenCalled()
-    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({
-      datasetId: SQUIRREL_FIXTURE_ID,
-      fixtureId: SQUIRREL_FIXTURE_ID,
-      questionKind: 'noul',
-      classes: [],
-    }))
-    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ query: expect.stringMatching(/eating given this sighting/i) }))
-    expect(api.start).not.toHaveBeenCalledWith(expect.objectContaining({ query: expect.stringMatching(/on the move/i) }))
+    expect(api.start).not.toHaveBeenCalled()
+
+    // Asking the issue's question reorders the dashboard around the columns that answer it.
+    fireEvent.change(within(story).getByLabelText('Ask about your columns'), { target: { value: 'identify common locations where squirrels are spotted eating' } })
+    fireEvent.click(within(story).getByRole('button', { name: 'Ask' }))
+    expect(within(story).getByRole('status')).toHaveTextContent(/Leading with charts about: .*Location.*Eating/)
+    expect(story.querySelector('.story-card h2')).toHaveTextContent('Eating is 1.5× as common for Ground Plane as for Above Ground')
+    expect(api.start).not.toHaveBeenCalled()
+
+    // Jev is only asked for what the columns cannot answer, and proposes nothing here.
+    fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
+    await waitFor(() => expect(api.propose).toHaveBeenCalledWith(expect.objectContaining({ datasetId: SQUIRREL_FIXTURE_ID })))
+    expect(await screen.findByText(/couldn’t find a useful insight/i)).toBeInTheDocument()
+    expect(api.start).not.toHaveBeenCalled()
+  })
+
+  it('answers a column question from the dashboard when a draft is refused', async () => {
+    const api = makeApi({ draft: vi.fn(async () => { throw new Error('COLUMN_QUESTION') }) })
+    window.history.pushState({}, '', `/dataset/${SQUIRREL_FIXTURE_ID}`)
+    render(<App api={api} />)
+    openEngineer()
+    fireEvent.change(screen.getByLabelText(/^Analysis task$/i), { target: { value: 'Where are squirrels eating, by location?' } })
+    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
+    expect(await screen.findByText(/your columns already answer this/i)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(document.querySelector('.story-card h2')).toHaveTextContent('Eating is 1.5× as common for Ground Plane as for Above Ground')
+    expect(api.start).not.toHaveBeenCalled()
   })
 
   it('follows the live edge until the user scrubs back, then seeks from the row rail', async () => {
@@ -910,8 +867,8 @@ describe('Jev insight product flow', () => {
       createFromCsv: vi.fn(async () => { throw new Error('UPLOADTHING_NOT_CONFIGURED') }),
     })
     render(<App api={api} />)
-    await waitFor(() => expect(screen.getByLabelText(/upload csv/i)).toBeDisabled())
-    expect(screen.getByRole('button', { name: /use public csv url/i })).toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: /use public csv url/i })).toBeDisabled())
+    expect(screen.getByLabelText(/upload csv/i)).toBeEnabled()
     expect(screen.getByLabelText(/public https csv url/i)).toBeDisabled()
     expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
     expect(screen.queryByText(/not configured on this deployment/i)).not.toBeInTheDocument()
@@ -922,7 +879,7 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByRole('button', { name: /^squirrel census$/i })).not.toBeInTheDocument()
     window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}`)
     window.dispatchEvent(new PopStateEvent('popstate'))
-    expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Dashboard' })).toBeInTheDocument()
     expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
     expect(api.start).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
@@ -934,10 +891,10 @@ describe('Jev insight product flow', () => {
       intakeStatus: vi.fn(async (): Promise<DatasetIntakeStatus> => ({ convex: true, uploadThing: false, sampleAvailable: true })),
     })
     render(<App api={api} />)
-    await waitFor(() => expect(screen.getByLabelText(/upload csv/i)).toBeDisabled())
-    expect(screen.getByRole('button', { name: /use public csv url/i })).toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: /use public csv url/i })).toBeDisabled())
+    expect(screen.getByLabelText(/upload csv/i)).toBeEnabled()
     expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
-    expect(screen.getByText(/uploads are unavailable/i)).toBeInTheDocument()
+    expect(screen.getByText(/read in your browser and is not uploaded/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: /a city park, mapped/i }))
     expect(await screen.findByRole('heading', { name: /small creatures/i })).toBeInTheDocument()
     expect(api.createFromUrl).not.toHaveBeenCalled()
@@ -945,9 +902,41 @@ describe('Jev insight product flow', () => {
     expect(api.createFromCsv).not.toHaveBeenCalled()
   })
 
-  it('shows a short BYOD error without durable-storage jargon', async () => {
+  const salesCsv = 'region,units\nWest,10\nEast,20\nWest,30\nEast,5\nNorth,7\nNorth,9\nWest,12\nEast,3\n'
+
+  it.each([
+    ['the status reports storage off', { intakeStatus: vi.fn(async (): Promise<DatasetIntakeStatus> => ({ convex: false, uploadThing: false, sampleAvailable: true })) }, 0],
+    ['the upload is refused as not configured', { createFromCsv: vi.fn(async () => { throw new Error('UPLOADTHING_NOT_CONFIGURED') }) }, 1],
+  ])('builds the dashboard in the browser when %s', async (_label, overrides, uploadAttempts) => {
+    const api = makeApi(overrides)
+    render(<App api={api} />)
+    if (uploadAttempts === 0) await waitFor(() => expect(screen.getByRole('button', { name: /use public csv url/i })).toBeDisabled())
+    const file = new File([salesCsv], 'store sales.csv', { type: 'text/csv' })
+    fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
+    const story = await screen.findByRole('region', { name: 'Dashboard' })
+    expect(window.location.pathname).toBe('/local')
+    expect(api.createFromCsv).toHaveBeenCalledTimes(uploadAttempts)
+    expect(screen.getAllByText('store sales').length).toBeGreaterThan(0)
+    expect(within(story).getByRole('heading', { name: 'West leads units with 52, 54% of the total' })).toBeInTheDocument()
+    expect(screen.getByText(/read in your browser and is not uploaded\. There is no link to share/i)).toBeInTheDocument()
+    // No stored dataset means no share link and no paid model runs.
+    expect(screen.queryByRole('button', { name: /copy a link to this dashboard/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /analyze dataset/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(api.start).not.toHaveBeenCalled()
+    expect(api.propose).not.toHaveBeenCalled()
+  })
+
+  it('returns to the landing page when a local dashboard is reloaded', async () => {
+    window.history.pushState({}, '', '/local')
+    render(<App api={makeApi()} />)
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    expect(screen.getByRole('heading', { name: /bring your own data/i })).toBeInTheDocument()
+  })
+
+  it('shows a short BYOD error without durable-storage jargon when a live upload fails', async () => {
     const api = makeApi({
-      createFromCsv: vi.fn(async () => { throw new Error('UPLOADTHING_NOT_CONFIGURED') }),
+      createFromCsv: vi.fn(async () => { throw new Error('UPLOADTHING_FAILED') }),
     })
     render(<App api={api} />)
     const file = new File(['message,tier\nhello,gold\n'], 'tickets.csv', { type: 'text/csv' })
@@ -956,6 +945,7 @@ describe('Jev insight product flow', () => {
     expect(screen.getByText(/couldn't load dataset/i)).toBeInTheDocument()
     expect(screen.queryByText(/not configured on this deployment/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/durable storage/i)).not.toBeInTheDocument()
+    expect(window.location.pathname).toBe('/')
     expect(api.start).not.toHaveBeenCalled()
   })
 
@@ -1254,16 +1244,20 @@ describe('Jev insight product flow', () => {
     const api = makeApi()
     window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}`)
     render(<App api={api} />)
-    expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: "How good were SEA's plays?" })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Play success' })).not.toBeInTheDocument()
+    // The observed dashboard is there at once; model tiles wait for the explicit action.
+    expect(await screen.findByRole('region', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(document.querySelectorAll('.story-card').length).toBeGreaterThanOrEqual(3)
+    expect(screen.queryByRole('heading', { name: 'Will SEA win?' })).not.toBeInTheDocument()
     expect(document.querySelector('[data-stage="dataset"]')).toBeTruthy()
-    expectNamedDashboard()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /choose a dataset/i })).not.toBeInTheDocument()
     expect(api.start).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: "How good were SEA's plays?" })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Play success' })).not.toBeInTheDocument()
+    expectNamedDashboard()
     expect(vi.mocked(api.start).mock.calls.map((call) => call[0]?.questionKind).sort()).toEqual(['noul', 'score'])
   })
 
@@ -1333,11 +1327,11 @@ describe('Jev insight product flow', () => {
     render(<App api={api} />)
     const file = new File(['play_id\n1\n'], 'seahawks-super-bowl-2026.csv', { type: 'text/csv' })
     fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
-    expect(await screen.findByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /analyze dataset/i }))
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: "How good were SEA's plays?" })).toBeInTheDocument()
     expect(api.propose).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
-    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
   })
 
   it('humanizes the schema strip and keeps the preview table secondary', async () => {
@@ -1403,8 +1397,15 @@ describe('audit boundaries and recovery', () => {
     const api = makeApi()
     window.history.replaceState({}, '', `/demo/${id}`)
     render(<App api={api} />)
-    expect(document.querySelectorAll('.dashboard-tile')).toHaveLength(2)
-    expect(screen.getAllByRole('button', { name: /download results csv/i })).toHaveLength(2)
+    const cards = document.querySelectorAll('.story-card')
+    expect(cards.length).toBeGreaterThanOrEqual(4)
+    // Every chart states a finding, and offers its data as a table and a CSV.
+    for (const card of cards) expect(card.querySelector('h2')?.textContent?.split(' ').length).toBeGreaterThanOrEqual(5)
+    expect(screen.getAllByRole('button', { name: /download csv for/i })).toHaveLength(cards.length)
+    expect(screen.getAllByRole('button', { name: /show data table for/i })).toHaveLength(cards.length)
+    expect(screen.getByRole('button', { name: /copy a link to this dashboard/i })).toBeInTheDocument()
+    expect(document.querySelector('.dashboard-tile')).toBeNull()
+    expect(screen.queryByRole('button', { name: /analyze dataset/i })).not.toBeInTheDocument()
     expect(api.intakeStatus).not.toHaveBeenCalled()
     expect(api.propose).not.toHaveBeenCalled()
     expect(api.draft).not.toHaveBeenCalled()

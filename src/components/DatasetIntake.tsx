@@ -16,11 +16,15 @@ export const UPLOAD_CSV_COPY = 'Upload CSV'
 export const USE_PUBLIC_CSV_URL_COPY = 'Use public CSV URL'
 export const LOADING_DATASET_COPY = 'Loading dataset…'
 
-export const isFileUploadBlocked = (status?: DatasetIntakeStatus, busy = false): boolean => (
-  busy || status?.uploadThing === false || status?.convex === false
-)
+export const LOCAL_ONLY_COPY = 'Your CSV is read in your browser and is not uploaded. Loading from a link needs the live service, which is off on this deployment.'
 
-export const isPublicUrlBlocked = (status?: DatasetIntakeStatus, busy = false): boolean => isFileUploadBlocked(status, busy)
+const isServiceOff = (status?: DatasetIntakeStatus): boolean => status?.uploadThing === false || status?.convex === false
+
+/** A file can always be charted in the browser; only a busy intake blocks it. */
+export const isFileUploadBlocked = (_status?: DatasetIntakeStatus, busy = false): boolean => busy
+
+/** Fetching a link is done by the server, so it needs the live service. */
+export const isPublicUrlBlocked = (status?: DatasetIntakeStatus, busy = false): boolean => busy || isServiceOff(status)
 
 export const DatasetIntake = ({
   status,
@@ -41,6 +45,7 @@ export const DatasetIntake = ({
   const urlBlocked = isPublicUrlBlocked(status, disabled)
   const [csvUrl, setCsvUrl] = useState('')
   const [urlHint, setUrlHint] = useState<string>()
+  const [dragging, setDragging] = useState(false)
   const [busySince, setBusySince] = useState<number>()
   const [nowMs, setNowMs] = useState(() => Date.now())
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -70,12 +75,27 @@ export const DatasetIntake = ({
           <CardHeader>
             <p className="eyebrow">Bring your own</p>
             <CardTitle>Bring your own data.</CardTitle>
-            <p className="intake-description">Upload CSV or public HTTPS CSV URL</p>
+            <p className="intake-description">Drop in a CSV and get a dashboard in seconds.</p>
           </CardHeader>
           <CardContent>
-            <div className="byod-file">
+            <div
+              className={`byod-file${dragging ? ' is-dragging' : ''}`}
+              onDragOver={(event) => {
+                if (fileBlocked) return
+                event.preventDefault()
+                setDragging(true)
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(event) => {
+                if (fileBlocked) return
+                event.preventDefault()
+                setDragging(false)
+                const file = event.dataTransfer.files?.[0]
+                if (file) onUploadFile(file)
+              }}
+            >
               <svg className="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/></svg>
-              <p>One file. A new perspective.</p>
+              <p>Drop a CSV here, or choose a file.</p>
               <input
                 ref={fileInputRef}
                 id="csv-file"
@@ -142,8 +162,9 @@ export const DatasetIntake = ({
               {urlHint ? <p id="csv-url-hint" className="field-hint" role="alert">{urlHint}</p> : null}
               <Button variant="secondary" type="submit" disabled={urlBlocked}>{USE_PUBLIC_CSV_URL_COPY} <ArrowUpRight /></Button>
             </form>
-            <p className="public-data-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18"/></svg>Datasets and results are public. Upload only data you can share.</p>
-            {status && (!status.convex || !status.uploadThing) ? <p className="intake-unavailable" role="status">Uploads are unavailable on this deployment. Explore a built-in example to get started.</p> : null}
+            {isServiceOff(status)
+              ? <p className="intake-unavailable" role="status">{LOCAL_ONLY_COPY}</p>
+              : <p className="public-data-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18"/></svg>Datasets and results are public. Upload only data you can share.</p>}
           </CardContent>
         </Card>
       </div>

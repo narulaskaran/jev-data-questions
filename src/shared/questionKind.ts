@@ -62,10 +62,6 @@ export const isJunkLocationActivitySplit = (classes: readonly string[] = []): bo
   return labels.has('location') && labels.has('activity')
 }
 
-export const isSampleDefaultEatingTask = (task: string): boolean => (
-  normalizeAnalysisTask(task) === normalizeAnalysisTask(SQUIRREL_EATING_TASK) || looksLikePlaceEatingTask(task)
-)
-
 export const normalizeAnalysisTask = (task: string): string => task.trim().replace(/\s+/g, ' ').toLowerCase()
 
 export const isSampleDefaultWinTask = (task: string): boolean => (

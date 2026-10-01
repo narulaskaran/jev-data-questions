@@ -10,6 +10,7 @@ import {
   isBannedRawColumnClassInsight,
   isJunkLocationActivitySplit,
   looksLikePlaceEatingTask,
+  observedEatingInsight,
   perspectiveLabelFor,
   proposeInsights,
   resolveChartVisual,
@@ -26,7 +27,7 @@ describe('shape inspection', () => {
   it('reads geo, place, eating, and cardinality from the squirrel fixture', () => {
     const dataset = getSquirrelDatasetPreview()
     const shape = inspectDatasetShape(dataset.columns, dataset.previewRows)
-    expect(shape.geo).toEqual({ lat: 'y', lng: 'x' })
+    expect(shape.geo).toEqual({ lat: 'latitude', lng: 'longitude' })
     expect(shape.placeColumns).toEqual(expect.arrayContaining(['location', 'hectare']))
     expect(shape.hasEating).toBe(true)
     expect(shape.hasPlayState).toBe(false)
@@ -65,10 +66,15 @@ describe('shape inspection', () => {
 })
 
 describe('shape → viz routing', () => {
-  it('routes squirrel eating places to a map, never Location vs Activity Choice bars', () => {
+  it('proposes no model run for squirrel eating places: the table already answers it', () => {
     const dataset = getSquirrelDatasetPreview()
-    const insights = proposeInsights(dataset)
-    expect(insights[0]).toEqual(expect.objectContaining({
+    // Where rows are and how often a column is true come from the story
+    // dashboard, so nothing is queued for a paid per-row run.
+    expect(proposeInsights(dataset)).toEqual([])
+    expect(hasNamedHeuristicCuts(proposeInsights(dataset))).toBe(false)
+    // The saved replay and older shared runs still draw the observed map.
+    const saved = observedEatingInsight({ geo: { lat: 'latitude', lng: 'longitude' } })
+    expect(saved).toEqual(expect.objectContaining({
       id: 'places-eating',
       title: 'Where are they eating?',
       visual: 'places',
@@ -76,29 +82,7 @@ describe('shape → viz routing', () => {
       questionKind: 'noul',
       cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
     }))
-    expect(insights.length).toBeGreaterThanOrEqual(2)
-    expect(insights.length).toBeLessThanOrEqual(4)
-    expect(hasDiverseChartTypes(insights)).toBe(true)
-    expect(insights[0]?.reason).not.toMatch(/not class bars|location vs activity/i)
-    expect(insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'bars-eating-places']))
-    expect(insights.find((item) => item.id === 'bars-eating-places')).toEqual(expect.objectContaining({
-      title: 'Which places have the most eating?',
-      visual: 'bars',
-      questionKind: 'noul',
-      task: SQUIRREL_EATING_TASK,
-      cannedQuery: SQUIRREL_EATING_NOUL_QUERY,
-    }))
-    expect(insights.find((item) => item.id === 'bars-eating-places')?.classes).toEqual([])
-    expect(insightEyebrow(insights[0]!)).toBe('Eating')
-    expect(insightEyebrow(insights.find((item) => item.id === 'bars-eating-places')!)).toBe('Most eating')
-    expect(insights.some((item) => item.id === 'series-activity')).toBe(false)
-    expect(new Set(insights.map((item) => item.visual)).size).toBeGreaterThanOrEqual(2)
-    expect(insights.some((item) => /classify by shift|labels in this table/i.test(`${item.title} ${item.reason}`))).toBe(false)
-    expect(insights.some((item) => item.classes.some((name) => /^(am|pm)$/i.test(name)) && item.classes.length <= 2)).toBe(false)
-    expect(insights.flatMap((item) => item.classes)).not.toEqual(expect.arrayContaining(['Location', 'Activity']))
-    expect(insights.every((item) => !/location vs activity|not class bars/i.test(`${item.title} ${item.reason}`))).toBe(true)
-    expect(insights.every((item) => !/class bars/i.test(item.reason))).toBe(true)
-    expect(insights.every((item) => !isBannedRawColumnClassInsight(item))).toBe(true)
+    expect(insightEyebrow(saved)).toBe('Eating')
     expect(resolveChartVisual({
       datasetId: SQUIRREL_FIXTURE_ID,
       task: 'identify common locations where squirrels are spotted eating',
@@ -205,7 +189,7 @@ describe('shape → viz routing', () => {
     expect(insights.every((item) => !/^(notable rows|rate each row|yes or no)$/i.test(item.title))).toBe(true)
   })
 
-  it('proposes places first for a messy BYOD table with geo, location, activity, and eating', () => {
+  it('proposes no model run for a messy BYOD table with geo, location, activity, and eating', () => {
     const insights = proposeInsights({
       datasetId: 'dataset-messy-squirrel',
       sourceType: 'upload',
@@ -223,22 +207,7 @@ describe('shape → viz routing', () => {
         { x: -73.975, y: 40.782, location: 'Ground Plane', activity: 'foraging', eating: true, primary_fur_color: 'Black' },
       ],
     })
-    expect(insights.length).toBeGreaterThanOrEqual(2)
-    expect(insights.length).toBeLessThanOrEqual(4)
-    expect(hasDiverseChartTypes(insights)).toBe(true)
-    expect(insights[0]).toEqual(expect.objectContaining({
-      id: 'places-eating',
-      visual: 'places',
-      questionKind: 'noul',
-    }))
-    expect(insights.some((item) => item.id === 'bars-eating-places')).toBe(true)
-    expect(insights.some((item) => item.visual === 'bars')).toBe(true)
-    expect(insights.some((item) => item.id === 'series-activity')).toBe(false)
-    expect(insights.flatMap((item) => item.classes)).not.toEqual(expect.arrayContaining(['Location', 'Activity']))
-    expect(insights.every((item) => !isJunkLocationActivitySplit(item.classes))).toBe(true)
-    expect(insights.every((item) => !/location vs activity|not class bars/i.test(`${item.title} ${item.reason}`))).toBe(true)
-    expect(insights.every((item) => !/class bars/i.test(item.reason))).toBe(true)
-    expect(insights.some((item) => item.visual === 'places')).toBe(true)
+    expect(insights).toEqual([])
   })
 
   it('does not propose Location vs Activity bars when a type column holds those meta labels', () => {
@@ -261,16 +230,8 @@ describe('shape → viz routing', () => {
     expect(insights.every((item) => !/^classify by /i.test(item.title))).toBe(true)
   })
 
-  it('never leads squirrel with AM/PM or raw-column class bars', () => {
+  it('bans AM/PM and raw-column class bars', () => {
     const dataset = getSquirrelDatasetPreview()
-    const insights = proposeInsights(dataset)
-    expect(insights[0]).toEqual(expect.objectContaining({
-      id: 'places-eating',
-      title: 'Where are they eating?',
-      visual: 'places',
-    }))
-    expect(insights.some((item) => item.id === 'bars-eating-places')).toBe(true)
-    expect(insights.some((item) => /classify by shift/i.test(item.title))).toBe(false)
     expect(isBannedRawColumnClassInsight({
       title: 'Classify by shift',
       reason: 'Labels in this table.',
@@ -278,8 +239,13 @@ describe('shape → viz routing', () => {
       questionKind: 'choice',
       classes: ['AM', 'PM'],
     })).toBe(true)
-    expect(insights.every((item) => !isBannedRawColumnClassInsight(item, inspectDatasetShape(dataset.columns, dataset.previewRows), dataset.previewRows))).toBe(true)
-    expect(hasDiverseChartTypes(insights)).toBe(true)
+    expect(isBannedRawColumnClassInsight({
+      title: 'Where they sit',
+      reason: 'A cut.',
+      visual: 'bars',
+      questionKind: 'choice',
+      classes: ['Ground Plane', 'Above Ground'],
+    }, inspectDatasetShape(dataset.columns, dataset.previewRows), dataset.previewRows)).toBe(true)
   })
 
   it('fails QA if every dashboard tile is the same viz kind', () => {
@@ -295,8 +261,6 @@ describe('shape → viz routing', () => {
     })).toBe(true)
     expect(dashboardVisualQaOk(proposeInsights(getSampleDatasetPreview()))).toBe(true)
     expect(hasDiverseChartTypes(proposeInsights(getSampleDatasetPreview()))).toBe(false)
-    expect(hasDiverseChartTypes(proposeInsights(getSquirrelDatasetPreview()))).toBe(true)
-    expect(dashboardVisualQaOk(proposeInsights(getSquirrelDatasetPreview()))).toBe(true)
   })
 })
 
@@ -381,9 +345,29 @@ describe('LLM insight proposals', () => {
     expect(sea.source).toBe('heuristic')
     expect(sea.insights.map((item) => item.id)).toEqual(['series-win', 'series-play-quality'])
     const places = resolveDashboardInsights(squirrel, { insights: [] })
-    expect(hasNamedHeuristicCuts(places.insights)).toBe(true)
-    expect(places.insights.map((item) => item.id)).toEqual(expect.arrayContaining(['places-eating', 'bars-eating-places']))
-    expect(places.insights.some((item) => item.id === 'series-activity')).toBe(false)
+    expect(places.insights).toEqual([])
+    expect(places.source).toBe('empty')
+  })
+
+  it('drops proposals that only restate a column the table already has', () => {
+    const squirrel = {
+      ...getSquirrelDatasetPreview(),
+      datasetId: 'dataset-byod-squirrel',
+      sourceType: 'upload' as const,
+    }
+    const resolved = resolveDashboardInsights(squirrel, {
+      insights: [
+        // Asks for a value the `eating` column records for every row.
+        { title: 'Eating squirrels', question: 'Is this squirrel eating?', reason: 'Diet.', questionKind: 'noul' },
+        // Classes that name columns instead of values (issue #56).
+        { title: 'Eating spots', question: 'Identify common locations where squirrels are spotted eating.', reason: 'Places.', questionKind: 'choice', classes: ['Location', 'Activity'] },
+        // A judgment no column holds.
+        { title: 'Used to people', question: 'Is this squirrel comfortable around people, given its behavior?', reason: 'Habituation.', questionKind: 'noul' },
+      ],
+    })
+    expect(resolved.insights.map((item) => item.title)).toEqual(['Used to people'])
+    expect(resolved.insights[0]?.visual).toBe('series')
+    expect(resolved.source).toBe('llm')
   })
 })
 

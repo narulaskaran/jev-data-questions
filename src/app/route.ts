@@ -3,7 +3,10 @@ export type AppRoute =
   | { kind: 'dataset'; datasetId: string }
   | { kind: 'share'; analysisId: string }
   | { kind: 'demo'; demoId: string }
+  /** A CSV opened in this tab only. Its rows live in memory, so the path carries no ID. */
+  | { kind: 'local' }
 
+export const LOCAL_PATH = '/local'
 export const DATASET_PATH_RE = /^\/dataset\/([^/]+)\/?$/
 export const SHARE_PATH_RE = /^\/share\/([^/]+)\/?$/
 
@@ -34,6 +37,7 @@ export const shareHref = (analysisId: string, search = ''): string => (
 export const parseAppPath = (pathname: string): AppRoute => {
   const demo = pathname.match(/^\/demo\/(squirrels|football)\/?$/)
   if (demo) return { kind: 'demo', demoId: demo[1] }
+  if (/^\/local\/?$/.test(pathname)) return { kind: 'local' }
   const share = pathname.match(SHARE_PATH_RE)
   if (share) {
     const analysisId = decodeSegment(share[1] ?? '')

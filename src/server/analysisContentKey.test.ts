@@ -86,7 +86,7 @@ describe('analysis content key', () => {
       datasetId: 'tickets',
       task: '  Classify each ticket as urgent or routine.  ',
     }))).toEqual({
-      v: 1,
+      v: 2,
       datasetId: 'tickets',
       task: 'classify each ticket as urgent or routine.',
     })

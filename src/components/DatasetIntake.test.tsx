@@ -5,6 +5,7 @@ import {
   DatasetIntake,
   isFileUploadBlocked,
   isPublicUrlBlocked,
+  LOCAL_ONLY_COPY,
   UPLOAD_CSV_COPY,
   USE_PUBLIC_CSV_URL_COPY,
 } from './DatasetIntake'
@@ -14,18 +15,20 @@ const uploadThingDown: DatasetIntakeStatus = { convex: true, uploadThing: false,
 const storageDown: DatasetIntakeStatus = { convex: false, uploadThing: false, sampleAvailable: true }
 
 describe('DatasetIntake gates', () => {
-  it('blocks intake when either storage service is unavailable', () => {
+  it('always accepts a file, and blocks links when either storage service is unavailable', () => {
     expect(isFileUploadBlocked(ready)).toBe(false)
     expect(isPublicUrlBlocked(ready)).toBe(false)
-    expect(isFileUploadBlocked(uploadThingDown)).toBe(true)
+    // A file is charted in the browser, so it needs no service.
+    expect(isFileUploadBlocked(uploadThingDown)).toBe(false)
+    expect(isFileUploadBlocked(storageDown)).toBe(false)
+    // A link is fetched by the server.
     expect(isPublicUrlBlocked(uploadThingDown)).toBe(true)
-    expect(isFileUploadBlocked(storageDown)).toBe(true)
     expect(isPublicUrlBlocked(storageDown)).toBe(true)
     expect(isFileUploadBlocked(uploadThingDown, true)).toBe(true)
     expect(isPublicUrlBlocked(uploadThingDown, true)).toBe(true)
   })
 
-  it('does not wash out the intake card when only file upload is unavailable', () => {
+  it('keeps file upload open and explains local reading when storage is unavailable', () => {
     const onSubmitUrl = vi.fn()
     render(
       <DatasetIntake
@@ -35,8 +38,8 @@ describe('DatasetIntake gates', () => {
       />,
     )
     expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
-    expect(screen.getByLabelText(UPLOAD_CSV_COPY)).toBeDisabled()
-    expect(screen.getByRole('button', { name: UPLOAD_CSV_COPY })).toBeDisabled()
+    expect(screen.getByLabelText(UPLOAD_CSV_COPY)).toBeEnabled()
+    expect(screen.getByRole('button', { name: UPLOAD_CSV_COPY })).toBeEnabled()
     expect(screen.getByLabelText(/public https csv url/i)).toBeDisabled()
     expect(screen.getByRole('button', { name: USE_PUBLIC_CSV_URL_COPY })).toBeDisabled()
     fireEvent.change(screen.getByLabelText(/public https csv url/i), {
@@ -44,7 +47,16 @@ describe('DatasetIntake gates', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: USE_PUBLIC_CSV_URL_COPY }))
     expect(onSubmitUrl).not.toHaveBeenCalled()
-    expect(screen.getByText(/uploads are unavailable/i)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(LOCAL_ONLY_COPY)
+    expect(screen.queryByText(/datasets and results are public/i)).not.toBeInTheDocument()
+  })
+
+  it('accepts a dropped file', () => {
+    const onUploadFile = vi.fn()
+    render(<DatasetIntake status={storageDown} onUploadFile={onUploadFile} onSubmitUrl={vi.fn()} />)
+    const file = new File(['a,b\n1,2\n'], 'drop.csv', { type: 'text/csv' })
+    fireEvent.drop(document.querySelector('.byod-file')!, { dataTransfer: { files: [file] } })
+    expect(onUploadFile).toHaveBeenCalledWith(file)
   })
 
   it('disables the URL field when durable storage is down', () => {
@@ -56,7 +68,7 @@ describe('DatasetIntake gates', () => {
       />,
     )
     expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
-    expect(screen.getByRole('button', { name: UPLOAD_CSV_COPY })).toBeDisabled()
+    expect(screen.getByRole('button', { name: UPLOAD_CSV_COPY })).toBeEnabled()
     expect(screen.getByRole('button', { name: USE_PUBLIC_CSV_URL_COPY })).toBeDisabled()
   })
 })
