@@ -162,9 +162,7 @@ export const DatasetIntake = ({
               {urlHint ? <p id="csv-url-hint" className="field-hint" role="alert">{urlHint}</p> : null}
               <Button variant="secondary" type="submit" disabled={urlBlocked}>{USE_PUBLIC_CSV_URL_COPY} <ArrowUpRight /></Button>
             </form>
-            {isServiceOff(status)
-              ? <p className="intake-unavailable" role="status">{LOCAL_ONLY_COPY}</p>
-              : <p className="public-data-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18"/></svg>Datasets and results are public. Upload only data you can share.</p>}
+            {isServiceOff(status) ? <p className="intake-unavailable" role="status">{LOCAL_ONLY_COPY}</p> : null}
           </CardContent>
         </Card>
       </div>

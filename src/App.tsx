@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { DemoPicker, HeroPreview } from './components/LandingDemos'
+import { DemoPicker } from './components/LandingDemos'
 import { demoReplayDisclosure, isDemoAnalysisId, loadDemoDashboard, loadDemoSnapshot, type DemoDashboard } from './demo'
 import { copyText } from './browser/clipboard'
 import { AnalysisRunView } from './components/AnalysisRunView'
@@ -786,19 +786,20 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   return (
     <main className="analysis-shell" data-stage={stage} data-mode={engineerMode ? 'engineer' : 'product'}>
       <header className="site-header">
-        <a className="brand" href="/" aria-label="Jev home" onClick={(event) => { event.preventDefault(); navigate('/'); setDataset(undefined); resetRunState() }}><span className="brand-mark" aria-hidden="true">j.</span><span>Jev<span className="brand-subtitle">Data, in perspective.</span></span></a>
+        {landing ? null : <a className="brand" href="/" aria-label="Jev home" onClick={(event) => { event.preventDefault(); navigate('/'); setDataset(undefined); resetRunState() }}><span className="brand-mark" aria-hidden="true">j.</span><span>Jev<span className="brand-subtitle">Data, in perspective.</span></span></a>}
         <div className="site-header-actions">
           <ThemeToggle />
         </div>
       </header>
-      <section className={`hero${landing ? ' landing-hero' : ''}`} aria-labelledby="page-title">
-        <div className="hero-text">
-          {landing ? <p className="hero-kicker"><span aria-hidden="true" /> A fresh perspective on your CSV</p> : <p className="eyebrow">{demo ? 'Built-in example' : isShareView ? 'Shared analysis' : 'Your dashboard'}</p>}
-          <h1 id="page-title">{demo ? (route.kind === 'demo' && route.demoId === 'squirrels' ? 'Small creatures. Big picture.' : 'Every play tells a story.') : isShareView ? 'Inspect a saved run.' : PRODUCT_TITLE}</h1>
-          <p className="hero-copy">{demo ? 'This dashboard was built from the table below with no setup: the charts and headlines are chosen from the columns.' : isShareView ? 'Explore a saved analysis, replayed from stored results.' : landing ? 'Drop in a CSV and get a dashboard worth presenting. The charts are chosen to fit your columns, and each one states what it found.' : 'Charts chosen to fit your columns, each stating what it found.'}</p>
-        </div>
-        {landing ? <HeroPreview /> : null}
-      </section>
+      {landing ? <h1 id="page-title" className="sr-only">{PRODUCT_TITLE}</h1> : (
+        <section className="hero" aria-labelledby="page-title">
+          <div className="hero-text">
+            <p className="eyebrow">{demo ? 'Built-in example' : isShareView ? 'Shared analysis' : 'Your dashboard'}</p>
+            <h1 id="page-title">{demo ? (route.kind === 'demo' && route.demoId === 'squirrels' ? 'Small creatures. Big picture.' : 'Every play tells a story.') : isShareView ? 'Inspect a saved run.' : PRODUCT_TITLE}</h1>
+            <p className="hero-copy">{demo ? 'This dashboard was built from the table below with no setup: the charts and headlines are chosen from the columns.' : isShareView ? 'Explore a saved analysis, replayed from stored results.' : 'Charts chosen to fit your columns, each stating what it found.'}</p>
+          </div>
+        </section>
+      )}
       <div className="workspace">
         <StageFold open={showIntake} animate={foldAnimate}>
           <DatasetIntake
@@ -963,7 +964,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
           ) : null}
         </StageFold>
       </div>
-      {!isShareView ? (
+      {!isShareView && !landing ? (
         <footer className="site-footer">
           <span>A little data. A clearer picture.</span>
           <a

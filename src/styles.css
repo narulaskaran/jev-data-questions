@@ -604,29 +604,12 @@ h3 {
 .brand-subtitle { display: block; margin-top: 1px; color: var(--muted-foreground); font-size: 10px; font-weight: 400; letter-spacing: 0; }
 .brand { gap: 10px; }
 .site-header { padding-bottom: 20px; }
-.hero:not(.landing-hero) { max-width: none; padding: 36px 0 24px; }
+.analysis-shell .hero { max-width: none; padding: 36px 0 24px; }
 .hero-text { display: grid; gap: 12px; }
 .hero-text > .eyebrow { margin: 0; }
-.landing-hero {
-  display: grid; grid-template-columns: 1.05fr 1fr; align-items: center; gap: 56px;
-  max-width: none; padding: 58px 0 44px;
-}
-.landing-hero h1 { max-width: 540px; font-size: clamp(2.6rem, 4.4vw, 3.85rem); font-weight: 600; line-height: 1.07; letter-spacing: -0.055em; text-wrap: balance; }
-.landing-hero .hero-copy { max-width: 390px; font-size: 15px; line-height: 1.75; }
-.hero-kicker { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; color: var(--muted-foreground); font-size: 11px; font-weight: 500; }
-.hero-kicker > span { width: 6px; height: 6px; border-radius: 50%; background: var(--foreground); }
-.hero-preview { border: 1px solid var(--border); border-radius: 18px; background: var(--card); box-shadow: 0 12px 40px -22px color-mix(in oklab, var(--foreground) 35%, transparent); overflow: hidden; transform: rotate(-1deg); }
-.preview-window-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); color: var(--muted-foreground); font-size: 10px; }
-.preview-window-dots { color: color-mix(in oklab, var(--foreground) 20%, transparent); font-size: 8px; letter-spacing: 3px; }
-.preview-window-body { padding: 24px 24px 16px; }
-.preview-summary { display: grid; gap: 10px; }
-.hero-preview { position: relative; }
-.preview-summary > strong { font-size: 25px; font-weight: 500; line-height: 1.15; letter-spacing: -0.035em; }
-.preview-pill { position: absolute; right: 24px; top: 85px; border: 1px solid var(--border); border-radius: 20px; padding: 6px 9px; color: var(--muted-foreground); font-size: 9px; }
-.hero-graph { display: block; width: 100%; height: 116px; margin-top: 12px; color: var(--run); overflow: visible; }
-.hero-grid { fill: none; stroke: var(--border); stroke-dasharray: 3 5; }
-.hero-line { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.preview-window-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; color: var(--muted-foreground); font-size: 9px; }
+.site-header-actions { margin-left: auto; }
+.analysis-shell[data-stage='intake'] .site-header { border-bottom: 0; padding-bottom: 0; }
+.analysis-shell[data-stage='intake'] .workspace { padding-top: 24px; }
 .analysis-shell[data-stage='intake'] .stage-fold-body { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 32px; }
 .intake-card { box-shadow: none; }
 .intake-description { margin: 5px 0 0; color: var(--muted-foreground); font-size: 12px; }
@@ -643,12 +626,10 @@ h3 {
 .byod-url label, .byod-url .field-hint { grid-column: 1 / -1; }
 .byod-url input { min-width: 0; }
 .byod-url > button { font-size: 11px; }
-.public-data-note { display: flex; align-items: flex-start; gap: 7px; margin: 16px 0 0; color: var(--muted-foreground); font-size: 10px; line-height: 1.6; }
-.public-data-note > svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; }
 .intake-unavailable { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--muted); color: var(--foreground); font-size: 11px; line-height: 1.6; }
 .demo-picker { display: grid; align-content: start; gap: 12px; min-width: 0; padding: 6px 0; }
 .demo-picker-heading { margin-bottom: 8px; }
-.demo-picker-heading h2 { margin-top: 8px; font-size: 24px; letter-spacing: -0.035em; }
+.demo-picker-heading h2 { font-size: 24px; letter-spacing: -0.035em; }
 .demo-picker-heading > p:last-child { margin: 8px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.6; }
 .demo-card { display: flex; align-items: center; gap: 16px; min-width: 0; padding: 17px 14px; border: 1px solid var(--border); border-radius: 14px; color: var(--foreground); background: var(--card); text-decoration: none; transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
 .demo-card:hover { transform: translateY(-2px); border-color: color-mix(in oklab, var(--foreground) 35%, transparent); box-shadow: 0 5px 16px -8px color-mix(in oklab, var(--foreground) 20%, transparent); }
@@ -665,7 +646,6 @@ h3 {
 .demo-card-copy > span:last-child { color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
 .demo-arrow { align-self: flex-start; margin-left: auto; color: var(--muted-foreground); }
 .arrow-icon { display: inline-block; width: 14px; height: 14px; flex-shrink: 0; vertical-align: middle; }
-.demo-note { margin: 7px 0 0; color: var(--muted-foreground); font-size: 10px; }
 .site-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .site-footer > span { font-size: 10px; }
 .dataset-overview { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -691,21 +671,11 @@ h3 {
 .dataset-overview-actions > span { color: var(--muted-foreground); font-size: 12px; }
 a:focus-visible, summary:focus-visible, [tabindex='0']:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; border-radius: 4px; }
 @media (max-width: 850px) {
-  .landing-hero { gap: 28px; padding: 40px 0 32px; }
-  .preview-pill { display: none; }
   .analysis-shell[data-stage='intake'] .stage-fold-body { gap: 22px; }
   .demo-art { width: 70px; }
   .byod-url { grid-template-columns: 1fr; }
-  .preview-window-foot { font-size: 8px; }
 }
 @media (max-width: 650px) {
-  .landing-hero { grid-template-columns: 1fr; gap: 26px; padding: 34px 0 26px; }
-  .landing-hero h1 { max-width: 470px; font-size: 2.75rem; }
-  .landing-hero .hero-copy { font-size: 14px; }
-  .hero-preview { transform: none; }
-  .preview-window-body { padding: 18px 20px 12px; }
-  .preview-summary > strong { font-size: 21px; }
-  .hero-graph { height: 90px; }
   .analysis-shell[data-stage='intake'] .stage-fold-body { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .byod-url { grid-template-columns: minmax(0, 1fr) auto; }
   .demo-art { width: 86px; }
