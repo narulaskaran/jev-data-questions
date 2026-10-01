@@ -35,9 +35,13 @@ class UnconfiguredDatasetStore implements DatasetStorage {
 }
 
 const convex = readConvexRuntimeConfig()
-const convexConfigured = isConvexWriteConfigured()
+const convexConfigured = process.env.DEMO_ONLY !== '1' && isConvexWriteConfigured()
+const dailyCallBudgetValue = process.env.ANALYSIS_DAILY_CALL_BUDGET?.trim() ?? ''
+const dailyCallBudget = /^\d+$/.test(dailyCallBudgetValue) ? Number(dailyCallBudgetValue) : undefined
+const dailyDraftBudgetValue = process.env.ANALYSIS_DAILY_DRAFT_BUDGET?.trim() ?? ''
+const dailyDraftBudget = /^\d+$/.test(dailyDraftBudgetValue) ? Number(dailyDraftBudgetValue) : undefined
 const storage: AnalysisStorage = convexConfigured && convex
-  ? new ConvexAnalysisStore(convex.convexUrl, convex.writeSecret)
+  ? new ConvexAnalysisStore(convex.convexUrl, convex.writeSecret, undefined, dailyCallBudget, dailyDraftBudget)
   : new UnconfiguredAnalysisStore()
 const datasetStore: DatasetStorage = convexConfigured && convex
   ? new ConvexDatasetStore(convex.convexUrl, convex.writeSecret)
@@ -62,4 +66,7 @@ export const analysisService = new AnalysisService({
   draftProvider: new OpenRouterDraftProvider(),
   classifier: new TypeSafeClassifierProvider(),
   datasets: analysisSourceFromDatasetStore(datasetStore),
+  requireCallBudget: true,
+  requireDraftBudget: true,
+  allowForceNew: process.env.ANALYSIS_ALLOW_FORCE_NEW?.trim().toLowerCase() === 'true',
 })

@@ -4,6 +4,7 @@ import { STILL_WORKING_COPY } from '../runView/format'
 import { plainDatasetError } from '../dataset/csvTypes'
 import type { DatasetIntakeStatus } from '../shared/dataset'
 import { Button } from './ui/button'
+import { ArrowUpRight } from './ui/arrow'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -16,10 +17,10 @@ export const USE_PUBLIC_CSV_URL_COPY = 'Use public CSV URL'
 export const LOADING_DATASET_COPY = 'Loading dataset…'
 
 export const isFileUploadBlocked = (status?: DatasetIntakeStatus, busy = false): boolean => (
-  busy || status?.uploadThing === false
+  busy || status?.uploadThing === false || status?.convex === false
 )
 
-export const isPublicUrlBlocked = (_status?: DatasetIntakeStatus, busy = false): boolean => busy
+export const isPublicUrlBlocked = (status?: DatasetIntakeStatus, busy = false): boolean => isFileUploadBlocked(status, busy)
 
 export const DatasetIntake = ({
   status,
@@ -63,16 +64,18 @@ export const DatasetIntake = ({
 
   return (
     <section className="intake-panel" aria-labelledby="intake-heading" aria-busy={disabled || undefined}>
-      <h2 id="intake-heading">Choose a dataset</h2>
+      <h2 id="intake-heading" className="sr-only">Choose a dataset</h2>
       <div className="intake-cards">
         <Card className={`intake-card${disabled ? ' is-disabled' : ''}`}>
           <CardHeader>
             <p className="eyebrow">Bring your own</p>
-            <CardTitle>Upload CSV or public HTTPS CSV URL</CardTitle>
+            <CardTitle>Bring your own data.</CardTitle>
+            <p className="intake-description">Upload CSV or public HTTPS CSV URL</p>
           </CardHeader>
           <CardContent>
             <div className="byod-file">
-              <Label htmlFor="csv-file">{UPLOAD_CSV_COPY}</Label>
+              <svg className="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/></svg>
+              <p>One file. A new perspective.</p>
               <input
                 ref={fileInputRef}
                 id="csv-file"
@@ -95,7 +98,9 @@ export const DatasetIntake = ({
               >
                 {UPLOAD_CSV_COPY}
               </Button>
+              <span className="intake-limits">CSV · Up to 5 MB · 5,000 rows</span>
             </div>
+            <div className="intake-divider"><span>or start with a link</span></div>
             <form
               className="byod-url"
               onSubmit={(event) => {
@@ -103,6 +108,16 @@ export const DatasetIntake = ({
                 const url = csvUrl.trim()
                 if (!url) {
                   setUrlHint(EMPTY_URL_MESSAGE)
+                  return
+                }
+                try {
+                  const parsed = new URL(url)
+                  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+                    setUrlHint('Use a public HTTPS link directly to a CSV file.')
+                    return
+                  }
+                } catch {
+                  setUrlHint('Enter a valid public HTTPS CSV URL.')
                   return
                 }
                 setUrlHint(undefined)
@@ -125,8 +140,10 @@ export const DatasetIntake = ({
                 }}
               />
               {urlHint ? <p id="csv-url-hint" className="field-hint" role="alert">{urlHint}</p> : null}
-              <Button variant="secondary" type="submit" disabled={urlBlocked}>{USE_PUBLIC_CSV_URL_COPY}</Button>
+              <Button variant="secondary" type="submit" disabled={urlBlocked}>{USE_PUBLIC_CSV_URL_COPY} <ArrowUpRight /></Button>
             </form>
+            <p className="public-data-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18"/></svg>Datasets and results are public. Upload only data you can share.</p>
+            {status && (!status.convex || !status.uploadThing) ? <p className="intake-unavailable" role="status">Uploads are unavailable on this deployment. Explore a built-in example to get started.</p> : null}
           </CardContent>
         </Card>
       </div>

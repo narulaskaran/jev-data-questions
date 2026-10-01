@@ -70,6 +70,14 @@ describe('Convex env:write permission detection', () => {
 })
 
 describe('runVercelBuild', () => {
+  it('builds a production demo without deploying or provisioning live services', () => {
+    const spawnSync = vi.fn(() => ({ status: 0 }))
+    const io = captureIo(spawnSync)
+    expect(runVercelBuild({ VERCEL: '1', VERCEL_ENV: 'production', DEMO_ONLY: '1' }, io)).toBe(0)
+    expect(spawnSync).toHaveBeenCalledTimes(1)
+    expect(spawnSync.mock.calls[0].slice(0, 2)).toEqual(['npm', ['run', 'build']])
+    expect(shouldDeployConvex({ VERCEL_ENV: 'production', DEMO_ONLY: '1' })).toBe(false)
+  })
   it('fails closed on production without CONVEX_DEPLOY_KEY or CONVEX_WRITE_SECRET', () => {
     const missingKey = captureIo(vi.fn())
     expect(runVercelBuild({ VERCEL_ENV: 'production', CONVEX_WRITE_SECRET: 'write-secret' }, missingKey)).toBe(1)

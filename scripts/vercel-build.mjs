@@ -16,7 +16,7 @@ const defaultIo = {
   warn: (...args) => console.warn(...args),
 }
 
-export const shouldDeployConvex = (env = process.env) => env.VERCEL_ENV === 'production'
+export const shouldDeployConvex = (env = process.env) => env.VERCEL_ENV === 'production' && env.DEMO_ONLY !== '1'
 
 export const shouldSkipConvexEnvSync = (env = process.env) => {
   const flag = env.SKIP_CONVEX_ENV_SYNC?.trim().toLowerCase()
@@ -102,7 +102,7 @@ export const runVercelBuild = (env = process.env, io = {}) => {
   }
 
   if (env.VERCEL) {
-    resolved.log(`Skipping Convex deploy (VERCEL_ENV=${env.VERCEL_ENV ?? 'unset'}). Production builds require CONVEX_DEPLOY_KEY.`)
+    resolved.log(env.DEMO_ONLY === '1' ? 'Building the standalone demo. Live intake and analysis are disabled.' : `Skipping Convex deploy (VERCEL_ENV=${env.VERCEL_ENV ?? 'unset'}). Production builds require CONVEX_DEPLOY_KEY.`)
   }
   return run('npm', ['run', 'build'], env, resolved)
 }

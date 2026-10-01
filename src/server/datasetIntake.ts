@@ -68,16 +68,19 @@ export class DatasetIntakeService {
 
   async fromPublicUrl(input: { url: string; displayName?: string }): Promise<DatasetPreview> {
     requireConvex(this.options)
+    requireBlobs(this.options)
     const fetched = await fetchPublicCsv(input.url, { fetch: this.options.fetch, lookup: this.options.lookup })
     const validated = validateCsvBytes(fetched.bytes)
-    const sanitizedUrl = fetched.finalUrl
+    const sourceUrl = new URL(fetched.finalUrl)
+    sourceUrl.search = ''
+    sourceUrl.hash = ''
     return this.persist({
       bytes: fetched.bytes,
       validated,
       sourceType: 'public_url',
-      displayName: input.displayName || displayNameFrom(sanitizedUrl, 'Public CSV'),
-      filename: displayNameFrom(sanitizedUrl, 'dataset.csv'),
-      sourceUrl: sanitizedUrl,
+      displayName: input.displayName || displayNameFrom(sourceUrl.toString(), 'Public CSV'),
+      filename: displayNameFrom(sourceUrl.toString(), 'dataset.csv'),
+      sourceUrl: sourceUrl.toString(),
     })
   }
 
@@ -104,17 +107,14 @@ export class DatasetIntakeService {
     sourceUrl?: string
   }): Promise<DatasetPreview> {
     let blobKey: string | undefined
-    if (this.options.blobs.isConfigured()) {
-      try {
-        const blob = await this.options.blobs.putCsv({ bytes: input.bytes, filename: input.filename, contentType: 'text/csv' })
-        blobKey = blob.blobKey
-      } catch (error) {
-        if (error instanceof DatasetError || error instanceof AnalysisError) throw error
-        const name = error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,40}$/.test(error.name) ? error.name : 'Error'
-        throw new DatasetError('UPLOADTHING_FAILED', `UploadThing ingest failed (${name}).`, 503, 'INGEST_RUNTIME')
-      }
-    } else if (input.sourceType !== 'public_url' || !input.sourceUrl) {
-      requireBlobs(this.options)
+    requireBlobs(this.options)
+    try {
+      const blob = await this.options.blobs.putCsv({ bytes: input.bytes, filename: input.filename, contentType: 'text/csv' })
+      blobKey = blob.blobKey
+    } catch (error) {
+      if (error instanceof DatasetError || error instanceof AnalysisError) throw error
+      const name = error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,40}$/.test(error.name) ? error.name : 'Error'
+      throw new DatasetError('UPLOADTHING_FAILED', `UploadThing ingest failed (${name}).`, 503, 'INGEST_RUNTIME')
     }
     const record = toDatasetRecord({
       sourceType: input.sourceType,

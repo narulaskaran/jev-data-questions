@@ -3,6 +3,23 @@ import { sameStringList } from '../runView/chartProps'
 import { cell, percent } from '../runView/format'
 import type { AnalysisResultRow } from '../shared/analysis'
 
+const sameVisibleResults = (
+  left: readonly AnalysisResultRow[],
+  right: readonly AnalysisResultRow[],
+): boolean => left === right || (
+  left.length === right.length
+  && left.every((row, index) => {
+    const other = right[index]
+    if (!other) return false
+    return row.rowIndex === other.rowIndex
+      && row.input === other.input
+      && row.selectedClass === other.selectedClass
+      && row.value === other.value
+      && row.confidence === other.confidence
+      && row.error?.code === other.error?.code
+  })
+)
+
 export const ResultsTable = memo(function ResultsTable({
   rows,
   columns,
@@ -49,9 +66,6 @@ export const ResultsTable = memo(function ResultsTable({
     </section>
   )
 }, (prev, next) => (
-  prev.rows.length === next.rows.length
+  sameVisibleResults(prev.rows, next.rows)
   && sameStringList(prev.columns, next.columns)
-  && prev.rows[prev.rows.length - 1]?.rowIndex === next.rows[next.rows.length - 1]?.rowIndex
-  && prev.rows[prev.rows.length - 1]?.selectedClass === next.rows[next.rows.length - 1]?.selectedClass
-  && prev.rows[prev.rows.length - 1]?.value === next.rows[next.rows.length - 1]?.value
 ))

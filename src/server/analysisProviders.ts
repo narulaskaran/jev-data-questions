@@ -378,6 +378,9 @@ export class TypeSafeClassifierProvider implements AnalysisClassifier {
       apiKey: this.options.apiKey,
       baseURL: this.options.baseURL,
       timeoutMs: this.options.timeoutMs,
+      // Every outbound attempt must reserve its own durable budget permit.
+      // The explicit malformed-response retry below already does this.
+      maxRetries: 0,
       fetch: this.options.fetch,
     }))))
     const questionKind = inferQuestionKind(input.query, input.classes, input.questionKind)
@@ -391,6 +394,7 @@ export class TypeSafeClassifierProvider implements AnalysisClassifier {
     let lastError: unknown
     for (let attempt = 0; attempt < attemptKeys.length; attempt += 1) {
       try {
+        await input.reserveCall?.()
         const response = await client.systemOne(request, { headers: { 'Idempotency-Key': attemptKeys[attempt] } })
         return parseClassifierResponse(response, input.classes ?? [], questionKind)
       } catch (error) {

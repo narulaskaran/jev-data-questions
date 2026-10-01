@@ -1186,6 +1186,103 @@ describe('analysis domain contract', () => {
     expect(forced.analysisId).not.toBe(started.analysisId)
   })
 
+  it('requires a durable daily budget in production mode and denies forceNew unless opted in', async () => {
+    const store = new InMemoryAnalysisStore()
+    const service = new AnalysisService({
+      store,
+      classifier: makeClassifier([]),
+      draftProvider: makeDraftProvider([]),
+      requireCallBudget: true,
+      allowForceNew: false,
+    })
+    await expect(service.start({ fixtureId: FOOTBALL_FIXTURE_ID, query: SAMPLE_WIN_NOUL_QUERY, forceNew: true })).rejects.toMatchObject({ code: 'FORCE_NEW_DISABLED', statusCode: 403 })
+    await expect(service.start({ fixtureId: FOOTBALL_FIXTURE_ID, query: SAMPLE_WIN_NOUL_QUERY })).rejects.toMatchObject({ code: 'ANALYSIS_BUDGET_NOT_CONFIGURED', statusCode: 503 })
+    expect(store.get('analysis-test-1')).toBeUndefined()
+  })
+
+  it('reserves each provider attempt durably after winning the run lease', async () => {
+    const store = new InMemoryAnalysisStore() as InMemoryAnalysisStore & { hasCallBudget: () => boolean; reserveCall: () => Promise<void> }
+    let reservations = 0
+    store.hasCallBudget = () => true
+    store.reserveCall = async () => { reservations += 1 }
+    const attempts: number[] = []
+    const service = new AnalysisService({
+      store,
+      classifier: {
+        async classify(input) {
+          await input.reserveCall?.()
+          attempts.push(input.rowIndex)
+          return { model: 'jev-test', questionKind: 'noul', value: 0.5 }
+        },
+      },
+      draftProvider: makeDraftProvider([]),
+      datasets: new InMemoryDatasetSource([{
+        datasetId: 'budget-dataset', fixtureId: 'budget-dataset', sourceType: 'upload', displayName: 'Budget test',
+        columns: ['value'], rows: [{ value: 1 }, { value: 2 }, { value: 3 }],
+      }]),
+      requireCallBudget: true,
+      now: () => 1_800_000_000_000,
+      idFactory: () => 'budgeted-run',
+    })
+    const started = await service.start({ datasetId: 'budget-dataset', query: JSON.stringify({ type: 'noul', instructions: 'Estimate this row.' }) })
+    await expect(service.run(started.analysisId)).resolves.toMatchObject({ status: 'complete' })
+    expect(reservations).toBe(3)
+    expect(attempts).toHaveLength(3)
+  })
+
+  it('does not reserve OpenRouter budget for canned drafts or named heuristic proposals', async () => {
+    const store = new InMemoryAnalysisStore() as InMemoryAnalysisStore & { hasDraftBudget: () => boolean; reserveDraftCall: () => Promise<void> }
+    let reservations = 0
+    let providerCalls = 0
+    store.hasDraftBudget = () => true
+    store.reserveDraftCall = async () => { reservations += 1 }
+    const service = new AnalysisService({
+      store,
+      classifier: makeClassifier([]),
+      draftProvider: {
+        async draft() { providerCalls += 1; return { query: SAMPLE_WIN_NOUL_QUERY, model: 'openrouter/test' } },
+        async propose() { providerCalls += 1; return { insights: [], model: 'openrouter/test' } },
+      },
+      requireDraftBudget: true,
+    })
+    await service.draft({ fixtureId: FOOTBALL_FIXTURE_ID, task: SAMPLE_WIN_LIKELIHOOD_TASK })
+    const proposed = await service.propose({ fixtureId: SQUIRREL_FIXTURE_ID })
+    expect(proposed.source).toBe('heuristic')
+    expect(reservations).toBe(0)
+    expect(providerCalls).toBe(0)
+  })
+
+  it('caps distinct uncached OpenRouter prompts after durable draft reservations', async () => {
+    const store = new InMemoryAnalysisStore() as InMemoryAnalysisStore & { hasDraftBudget: () => boolean; reserveDraftCall: () => Promise<void> }
+    let reservations = 0
+    let providerCalls = 0
+    store.hasDraftBudget = () => true
+    store.reserveDraftCall = async () => {
+      if (reservations >= 2) throw new AnalysisError('ANALYSIS_DAILY_DRAFT_BUDGET_EXHAUSTED', 'daily cap', 429, true)
+      reservations += 1
+    }
+    const service = new AnalysisService({
+      store,
+      classifier: makeClassifier([]),
+      datasets: new InMemoryDatasetSource([{
+        datasetId: 'draft-budget', fixtureId: 'draft-budget', sourceType: 'upload', displayName: 'draft-budget.csv',
+        columns: ['value'], rows: [{ value: 1 }, { value: 2 }],
+      }]),
+      draftProvider: {
+        async draft() {
+          providerCalls += 1
+          return { query: JSON.stringify({ type: 'noul', instructions: 'Estimate the row value.' }), model: 'openrouter/test' }
+        },
+      },
+      requireDraftBudget: true,
+    })
+    await service.draft({ datasetId: 'draft-budget', task: 'Estimate value for prompt one.' })
+    await service.draft({ datasetId: 'draft-budget', task: 'Estimate value for prompt two.' })
+    await expect(service.draft({ datasetId: 'draft-budget', task: 'Estimate value for prompt three.' })).rejects.toMatchObject({ code: 'ANALYSIS_DAILY_DRAFT_BUDGET_EXHAUSTED', statusCode: 429 })
+    expect(reservations).toBe(2)
+    expect(providerCalls).toBe(2)
+  })
+
   it('resumes a non-retryable mid-run Jev failure from the last good row when asked', async () => {
     let calls = 0
     const classifier: AnalysisClassifier = {

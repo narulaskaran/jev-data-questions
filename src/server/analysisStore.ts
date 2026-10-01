@@ -4,6 +4,7 @@ import { DatasetError } from '../dataset/csvTypes.js'
 import {
   cloneAnalysisSnapshot,
   normalizeSnapshot,
+  ANALYSIS_MAX_DAILY_DRAFT_BUDGET,
   type AnalysisDraftResult,
   type AnalysisRowInput,
   type AnalysisSnapshot,
@@ -13,6 +14,8 @@ import type { DatasetRecord } from '../shared/dataset.js'
 import { toConvexDatasetPutArgs, wrapConvexPutError } from './convexDatasetPut.js'
 import { analysisContentKeyFromSnapshot } from './analysisContentKey.js'
 import { type DatasetStorage } from './datasetStore.js'
+import { AnalysisError } from './analysis.js'
+import { ANALYSIS_MAX_DAILY_CALL_BUDGET } from '../shared/analysis.js'
 
 /**
  * Server-only durable analysis boundary. Authenticated actions are used for
@@ -22,15 +25,52 @@ import { type DatasetStorage } from './datasetStore.js'
 export class ConvexAnalysisStore implements AnalysisStorage {
   readonly client: ConvexHttpClient
   private readonly writeSecret?: string
+  private readonly dailyCallBudget?: number
+  private readonly dailyDraftBudget?: number
 
-  constructor(convexUrl: string, writeSecret?: string, client = new ConvexHttpClient(convexUrl)) {
+  constructor(convexUrl: string, writeSecret?: string, client = new ConvexHttpClient(convexUrl), dailyCallBudget?: number, dailyDraftBudget?: number) {
     this.client = client
     this.writeSecret = writeSecret?.trim() || undefined
+    this.dailyCallBudget = Number.isInteger(dailyCallBudget) && dailyCallBudget! >= 1 && dailyCallBudget! <= ANALYSIS_MAX_DAILY_CALL_BUDGET
+      ? dailyCallBudget
+      : undefined
+    this.dailyDraftBudget = Number.isInteger(dailyDraftBudget) && dailyDraftBudget! >= 1 && dailyDraftBudget! <= ANALYSIS_MAX_DAILY_DRAFT_BUDGET
+      ? dailyDraftBudget
+      : undefined
   }
 
   private authToken(): string {
     if (!this.writeSecret) throw new Error('Convex write authorization is not configured')
     return this.writeSecret
+  }
+
+  hasCallBudget(): boolean {
+    return !!this.writeSecret && this.dailyCallBudget !== undefined
+  }
+
+  async reserveCall(): Promise<void> {
+    if (!this.hasCallBudget()) throw new AnalysisError('ANALYSIS_BUDGET_NOT_CONFIGURED', 'Paid analysis is unavailable until the daily Jev call budget is configured.', 503, false)
+    await this.reserveDailyProviderCall('jev', this.dailyCallBudget!, 'ANALYSIS_DAILY_BUDGET_EXHAUSTED', 'The daily Jev call budget has been reached. Try again after the budget resets.')
+  }
+
+  hasDraftBudget(): boolean {
+    return !!this.writeSecret && this.dailyDraftBudget !== undefined
+  }
+
+  async reserveDraftCall(): Promise<void> {
+    if (!this.hasDraftBudget()) throw new AnalysisError('ANALYSIS_DRAFT_BUDGET_NOT_CONFIGURED', 'OpenRouter generation is unavailable until the daily draft budget is configured.', 503, false)
+    await this.reserveDailyProviderCall('openrouter', this.dailyDraftBudget!, 'ANALYSIS_DAILY_DRAFT_BUDGET_EXHAUSTED', 'The daily OpenRouter generation budget has been reached. Try again after the budget resets.')
+  }
+
+  private async reserveDailyProviderCall(provider: 'jev' | 'openrouter', dailyLimit: number, code: string, message: string): Promise<void> {
+    const result = await this.client.action(api.analyses.authorizedReserveAnalysisCall, {
+      authToken: this.authToken(),
+      provider,
+      dailyLimit,
+    }) as { allowed?: boolean }
+    if (result?.allowed !== true) {
+      throw new AnalysisError(code, message, 429, true)
+    }
   }
 
   async get(analysisId: string): Promise<AnalysisSnapshot | undefined> {

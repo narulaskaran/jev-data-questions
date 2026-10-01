@@ -182,4 +182,18 @@ describe('durable Convex analysis functions', () => {
     })).resolves.toMatchObject({ query: '{"type":"noul","instructions":"updated"}' })
     await expect(t.action(api.analyses.authorizedGetDraftByContentKey, { authToken: 'wrong', contentKey })).rejects.toThrow(/unauthorized/i)
   })
+
+  it('atomically caps paid analysis attempts against the UTC daily call budget', async () => {
+    const t = convexTest(schema, modules)
+    await expect(t.action(api.analyses.authorizedReserveAnalysisCall, { authToken: 'wrong', provider: 'jev', dailyLimit: 2 })).rejects.toThrow(/unauthorized/i)
+    const reservations = await Promise.all(Array.from({ length: 3 }, () => t.action(api.analyses.authorizedReserveAnalysisCall, {
+      authToken: writeSecret,
+      provider: 'jev',
+      dailyLimit: 2,
+    })))
+    expect(reservations.filter((result) => result.allowed)).toHaveLength(2)
+    expect(reservations.filter((result) => !result.allowed)).toHaveLength(1)
+    await expect(t.action(api.analyses.authorizedReserveAnalysisCall, { authToken: writeSecret, provider: 'openrouter', dailyLimit: 2 })).resolves.toMatchObject({ allowed: true, callsReserved: 1 })
+    await expect(t.action(api.analyses.authorizedReserveAnalysisCall, { authToken: writeSecret, provider: 'openrouter', dailyLimit: 1_001 })).rejects.toThrow(/invalid analysis daily budget/i)
+  })
 })

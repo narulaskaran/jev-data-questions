@@ -34,6 +34,25 @@ describe('places projection', () => {
     expect(projected.ranks[1]).toEqual(expect.objectContaining({ name: 'In the trees', count: 1, eating: 0 }))
   })
 
+  it('uses explicit eating data and never substitutes a Jev score for missing values', () => {
+    const projected = projectPlaces([
+      { rowIndex: 0, input: { latitude: 40, longitude: -73, location: 'Park', eating: false }, value: 0.99 },
+      { rowIndex: 1, input: { latitude: 40, longitude: -73, location: 'Park' }, value: 1 },
+      { rowIndex: 2, input: { latitude: 40, longitude: -73, location: 'Park', eating: 'yes' }, value: 0 },
+    ])
+    expect(projected.ranks[0]).toEqual(expect.objectContaining({ count: 3, eating: 1, unknown: 1 }))
+    expect(projected.points.map((point) => point.eating)).toEqual([false, undefined, true])
+  })
+
+  it('ignores out-of-range named geographic coordinates but accepts finite local x/y', () => {
+    const projected = projectPlaces([
+      { rowIndex: 0, input: { latitude: 120, longitude: -73, location: 'Invalid' } },
+      { rowIndex: 1, input: { y: 120, x: 220, location: 'Local grid' } },
+    ])
+    expect(projected.hasMap).toBe(true)
+    expect(projected.points.map((point) => point.rowIndex)).toEqual([1])
+  })
+
   it('renames census jargon to plain place names', () => {
     expect(humanPlaceLabel('Ground Plane')).toBe('On the ground')
     expect(humanPlaceLabel('Above Ground')).toBe('In the trees')

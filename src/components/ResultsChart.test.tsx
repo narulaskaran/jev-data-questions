@@ -107,7 +107,7 @@ describe('ResultsChart motion', () => {
     const { rerender } = render(
       <ResultsChart rows={noulRows} playheadIndex={1} totalRows={10} questionKind="noul" onSeek={vi.fn()} />,
     )
-    expect(screen.getByRole('img', { name: /win probability over play index/i })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /probability over play index/i })).toBeInTheDocument()
     expect(document.querySelector('[data-chart-kind="series"]')).toBeTruthy()
     expect(document.querySelector('[data-series-points="2"]')).toBeTruthy()
     expect(document.querySelector('[data-series-extent]')).toBeTruthy()
@@ -394,6 +394,9 @@ describe('AnalysisRunView tick isolation', () => {
     const buttons = within(rail).getAllByRole('button')
     expect(buttons[0]).toHaveAccessibleName(/row 2 of 10/i)
     expect(buttons[1]).toHaveAccessibleName(/row 5 of 10/i)
+    expect(within(rail).getByRole('heading', { name: 'Row 5 of 10' })).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: /chart playhead/i })).toHaveValue('4')
+    expect(screen.getByRole('slider', { name: /chart playhead/i })).toHaveAttribute('aria-valuetext', 'Row 5 of 10')
   })
 
   it('plays a completed run from the transport beside the scrubber and stays synced with Row X of Y', () => {

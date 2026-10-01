@@ -1,11 +1,11 @@
 import type { AnalysisResultRow, AnalysisRowInput } from '../shared/analysis'
-import { clamp01 } from '../shared/questionKind'
 
 export interface GeoPoint {
   rowIndex: number
   x: number
   y: number
   weight: number
+  eating?: boolean
   label: string
 }
 
@@ -13,6 +13,7 @@ export interface PlaceRank {
   name: string
   count: number
   eating: number
+  unknown: number
   weight: number
 }
 
@@ -47,10 +48,15 @@ export const findLatLngColumns = (input: Record<string, unknown>): { lat: string
   const keys = Object.keys(input)
   const lat = keys.find((name) => LAT_NAME_RE.test(name))
   const lng = keys.find((name) => LNG_NAME_RE.test(name))
-  if (lat && lng && asNumber(input[lat]) !== undefined && asNumber(input[lng]) !== undefined) {
-    return { lat, lng }
-  }
-  return undefined
+  if (!lat || !lng) return undefined
+  const latitude = asNumber(input[lat])
+  const longitude = asNumber(input[lng])
+  if (latitude === undefined || longitude === undefined) return undefined
+  // Named latitude/longitude are geographic coordinates. Generic x/y columns
+  // may be local projected coordinates, so retain those when finite.
+  if (/^(lat|latitude)$/i.test(lat) && (latitude < -90 || latitude > 90)) return undefined
+  if (/^(lng|lon|long|longitude)$/i.test(lng) && (longitude < -180 || longitude > 180)) return undefined
+  return { lat, lng }
 }
 
 export const findPlaceColumn = (input: Record<string, unknown>, preferred?: readonly string[]): string | undefined => {
@@ -62,15 +68,13 @@ export const findPlaceColumn = (input: Record<string, unknown>, preferred?: read
   return Object.keys(input).find((name) => PLACE_NAME_RE.test(name) && input[name] !== undefined && input[name] !== null && input[name] !== '')
 }
 
-const rowWeight = (row: { value?: number; input: AnalysisRowInput }): number => {
-  if (finite(row.value)) return clamp01(row.value)
-  for (const [key, value] of Object.entries(row.input)) {
+const eatingStatus = (input: AnalysisRowInput): boolean | undefined => {
+  for (const [key, value] of Object.entries(input)) {
     if (!EATING_NAME_RE.test(key)) continue
     const flag = asBool(value)
-    if (flag === true) return 1
-    if (flag === false) return 0
+    if (flag !== undefined) return flag
   }
-  return 0.35
+  return undefined
 }
 
 const PLACE_ALIASES: Record<string, string> = {
@@ -102,20 +106,25 @@ export const projectPlaces = (
   let hasMap = false
   for (const row of rows) {
     const geo = findLatLngColumns(row.input)
-    const weight = rowWeight(row)
+    const eating = eatingStatus(row.input)
+    // Unknown eating values remain visually neutral and never become an
+    // invented eating/not-eating count. Jev scores are unrelated to this
+    // dataset attribute and must not override it.
+    const weight = eating === true ? 1 : eating === false ? 0 : 0.35
     const label = placeLabel(row.input)
     if (geo) {
       const x = asNumber(row.input[geo.lng])
       const y = asNumber(row.input[geo.lat])
       if (x !== undefined && y !== undefined) {
         hasMap = true
-        points.push({ rowIndex: row.rowIndex, x, y, weight, label })
+        points.push({ rowIndex: row.rowIndex, x, y, weight, eating, label })
       }
     }
     if (label) {
-      const current = ranks.get(label) ?? { name: label, count: 0, eating: 0, weight: 0 }
+      const current = ranks.get(label) ?? { name: label, count: 0, eating: 0, unknown: 0, weight: 0 }
       current.count += 1
-      current.eating += weight >= 0.5 ? 1 : 0
+      if (eating === true) current.eating += 1
+      else if (eating === undefined) current.unknown += 1
       current.weight += weight
       ranks.set(label, current)
     }
