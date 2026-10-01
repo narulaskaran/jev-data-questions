@@ -172,7 +172,6 @@ button, a { cursor: pointer; }
   outline-offset: 2px;
 }
 
-
 .eyebrow {
   margin: 0;
   color: var(--muted-foreground);
@@ -214,7 +213,6 @@ h3 {
   letter-spacing: 0;
   line-height: 1.35;
 }
-
 
 .workspace {
   display: grid;
@@ -279,62 +277,6 @@ h3 {
   white-space: nowrap;
 }
 
-.form-footer, .share-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.form-footer > button {
-  margin-left: auto;
-}
-
-.query-meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 8px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-
-.query-summary {
-  margin: 0 0 10px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.query-card,
-.query-card textarea,
-.query-json {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.query-editor-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-
-.query-json {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
 .error-banner {
   display: flex;
   align-items: baseline;
@@ -355,13 +297,6 @@ h3 {
   gap: 10px;
   min-width: 0;
   flex: 1;
-}
-
-.query-scope {
-  margin: 0 0 12px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 1.45;
 }
 
 .field-hint {
@@ -532,11 +467,6 @@ h3 {
   font-weight: 500;
 }
 
-.share-footer a {
-  color: var(--foreground);
-  text-underline-offset: 3px;
-}
-
 .boundary-card ul {
   display: grid;
   gap: 10px;
@@ -558,14 +488,6 @@ h3 {
   font-size: 1.05rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-
-.site-footer {
-  margin-top: 20px;
-  padding: 14px 0 0;
-  border-top: 1px solid var(--border);
-  color: var(--muted-foreground);
-  font-size: 12px;
 }
 
 /* The public studio: a clear first step, with a preview of the result. */
@@ -618,7 +540,6 @@ h3 {
 html.dark .demo-card, html[data-theme='dark'] .demo-card { --thumb: #8b93ff; }
 @media (prefers-color-scheme: dark) { html:not([data-theme='light']) .demo-card { --thumb: #8b93ff; } }
 .arrow-icon { display: inline-block; width: 14px; height: 14px; flex-shrink: 0; vertical-align: middle; }
-.site-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
 .dataset-title { margin: 5px 0 0; font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
 .demo-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 0; background: var(--card); }
 .demo-stat { display: grid; gap: 6px; padding: 0 22px; }
@@ -834,59 +755,6 @@ a:focus-visible, summary:focus-visible, [tabindex='0']:focus-visible { outline: 
   }
 }
 
-.site-footer {
-  margin-top: 28px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-.engineer-link {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  text-decoration: none;
-}
-
-.engineer-link:hover {
-  color: var(--foreground);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.advanced-json {
-  min-width: 0;
-  max-width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--card);
-  padding: 0 4px 4px;
-}
-
-.advanced-json-summary {
-  cursor: pointer;
-  list-style: none;
-  padding: 12px 14px;
-  color: var(--foreground);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.advanced-json-summary::-webkit-details-marker { display: none; }
-
-.advanced-json-body {
-  border: 0;
-  box-shadow: none;
-  background: transparent;
-}
-
-.class-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 0 10px;
-  padding: 0;
-  list-style: none;
-}
-
 .places-svg {
   position: absolute;
   z-index: 1;
@@ -1014,7 +882,6 @@ a:focus-visible, summary:focus-visible, [tabindex='0']:focus-visible { outline: 
 }
 
 .chart-shell[data-motion='seek'] .rank-track span { transition: none; }
-
 
 .intake-card.is-disabled { opacity: 0.62; }
 
@@ -1392,7 +1259,7 @@ a:focus-visible, summary:focus-visible, [tabindex='0']:focus-visible { outline: 
 
 @media (max-width: 900px) {
   .run-view { grid-template-columns: minmax(0, 1fr); }
-  .run-view-main, .run-rail, .chart-hero, .chart-shell, .chart-transport, .stage-fold, .workspace, .schema-strip, .advanced-json, .dashboard-grid, .dashboard-tile {
+  .run-view-main, .run-rail, .chart-hero, .chart-shell, .chart-transport, .stage-fold, .workspace, .schema-strip, .dashboard-grid, .dashboard-tile {
     min-width: 0;
     max-width: 100%;
   }
@@ -1405,11 +1272,6 @@ a:focus-visible, summary:focus-visible, [tabindex='0']:focus-visible { outline: 
   }
   .page-head { padding: 22px 0 16px; }
   .workspace { gap: 12px; }
-  .form-footer, .share-footer {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .form-footer button, .share-footer a { width: 100%; }
   .analysis-head { align-items: start; }
   .analysis-actions { flex-direction: column; align-items: end; }
   .intake-cards { grid-template-columns: 1fr; }
@@ -1431,11 +1293,11 @@ a:focus-visible, summary:focus-visible, [tabindex='0']:focus-visible { outline: 
     word-break: break-word;
   }
   h1 { font-size: 1.5rem; }
-  .run-view, .run-view-main, .run-rail, .chart-hero, .chart-shell, .chart-plot, .series-svg, .places-svg, .chart-transport, .table-scroll:not(.preview-table), .query-card, .query-json, .task-card, .stage-fold, .workspace, .dataset-preview, .schema-strip, .dashboard-grid, .dashboard-tile, .dashboard-empty, .advanced-json {
+  .run-view, .run-view-main, .run-rail, .chart-hero, .chart-shell, .chart-plot, .series-svg, .places-svg, .chart-transport, .table-scroll:not(.preview-table), .task-card, .stage-fold, .workspace, .dataset-preview, .schema-strip, .dashboard-grid, .dashboard-tile, .dashboard-empty {
     min-width: 0;
     max-width: 100%;
   }
-  .run-view, .run-view-main, .run-rail, .chart-hero, .chart-shell, .chart-plot, .series-svg, .places-svg, .chart-transport, .table-scroll:not(.preview-table), .query-card, .query-json, .task-card, .stage-fold, .workspace, .schema-strip, .dashboard-grid, .dashboard-tile, .dashboard-empty, .advanced-json {
+  .run-view, .run-view-main, .run-rail, .chart-hero, .chart-shell, .chart-plot, .series-svg, .places-svg, .chart-transport, .table-scroll:not(.preview-table), .task-card, .stage-fold, .workspace, .schema-strip, .dashboard-grid, .dashboard-tile, .dashboard-empty {
     overflow-x: hidden;
   }
   .chart-shell[data-rank-places='true'] .chart-plot,
