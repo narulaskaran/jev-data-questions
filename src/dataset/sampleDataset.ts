@@ -1,35 +1,53 @@
-import {
-  FOOTBALL_FIXTURE_ID,
-  footballFixtureDisclosure,
-  footballFixtureModelInputFields,
-  footballFixtureSourceLinks,
-  getHalftimeModelInput,
-} from '../fixtures/footballTimeline'
-import { CSV_PREVIEW_ROWS } from './csvTypes'
-import { asAnalysisRow, type DatasetPreview } from '../shared/dataset'
-import { inferSampleColumns } from './sampleColumns'
+import sample from '../fixtures/data/sample-run-pass.json' with { type: 'json' }
+import { CSV_PREVIEW_ROWS, type DatasetColumn, type DatasetRowValues } from './csvTypes.js'
+import type { DatasetPreview, DatasetRecord } from '../shared/dataset.js'
 
-const rows = getHalftimeModelInput().map((row) => asAnalysisRow(row))
+export const SAMPLE_DATASET_ID = 'sample-super-bowl-lx-run-pass'
+export const SAMPLE_DATASET_NAME = 'Super Bowl LX — every Seattle play'
+export const SAMPLE_LABEL_COLUMN = 'play_call'
 
-export const SAMPLE_DATASET_ID = FOOTBALL_FIXTURE_ID
-export const SAMPLE_DATASET_NAME = 'Super Bowl Seahawks demo'
+const columnNames = sample.columns as string[]
+const rows = sample.rows as DatasetRowValues[]
 
-export const getSampleDatasetPreview = (): DatasetPreview => ({
+const columns: DatasetColumn[] = columnNames.map((name, index) => ({
+  name,
+  inferredType: typeof rows[0][index] === 'number' ? 'number' : 'string',
+}))
+
+export const sampleRows = (): DatasetRowValues[] => rows.map((row) => [...row])
+
+export const sampleRecord = (): DatasetRecord => ({
   datasetId: SAMPLE_DATASET_ID,
-  sourceType: 'fixture',
+  sourceType: 'sample',
   displayName: SAMPLE_DATASET_NAME,
   byteSize: 0,
-  contentHash: 'fixture',
-  encoding: 'utf-8',
+  contentHash: 'sample',
   delimiter: ',',
-  columns: inferSampleColumns(rows, [...footballFixtureModelInputFields]),
+  columns: columns.map((column) => ({ ...column })),
   acceptedRowCount: rows.length,
-  previewRows: rows.slice(0, CSV_PREVIEW_ROWS),
+  previewRows: sampleRows().slice(0, CSV_PREVIEW_ROWS),
   validationWarnings: [],
-  publicDataWarning: 'Sample rows are a checked-in demo fixture. They are public.',
-  attribution: {
-    disclosure: footballFixtureDisclosure,
-    sourceUrl: footballFixtureSourceLinks.csvFallback,
-    licenseUrl: footballFixtureSourceLinks.license,
-  },
+  createdAt: Date.UTC(2026, 1, 8),
 })
+
+export const samplePreview = (): DatasetPreview => {
+  const { contentHash: _contentHash, createdAt: _createdAt, ...record } = sampleRecord()
+  return {
+    ...record,
+    attribution: {
+      label: 'Play-by-play from nflverse',
+      sourceUrl: 'https://github.com/nflverse/nflverse-data/releases/tag/pbp',
+      licenseLabel: 'CC BY 4.0',
+      licenseUrl: 'https://raw.githubusercontent.com/nflverse/nflverse-data/main/LICENSE.md',
+    },
+    suggestion: {
+      task: 'Before each snap, predict whether Seattle runs or passes.',
+      query: 'Given only the situation before the snap, will the offense call a run or a pass on this play?',
+      classes: [
+        { name: 'Run', description: 'A designed rushing play.' },
+        { name: 'Pass', description: 'A called pass play, including sacks and scrambles.' },
+      ],
+      labelColumn: SAMPLE_LABEL_COLUMN,
+    },
+  }
+}

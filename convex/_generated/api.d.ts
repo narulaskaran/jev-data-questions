@@ -9,9 +9,9 @@
  */
 
 import type * as analyses from "../analyses.js";
+import type * as auth from "../auth.js";
 import type * as datasets from "../datasets.js";
-import type * as forecasts from "../forecasts.js";
-import type * as runtime from "../runtime.js";
+import type * as limits from "../limits.js";
 
 import type {
   ApiFromModules,
@@ -21,9 +21,9 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   analyses: typeof analyses;
+  auth: typeof auth;
   datasets: typeof datasets;
-  forecasts: typeof forecasts;
-  runtime: typeof runtime;
+  limits: typeof limits;
 }>;
 
 /**

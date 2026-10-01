@@ -1,226 +1,171 @@
-import { action, internalMutation, internalQuery, query } from './_generated/server'
-import { internal } from './_generated/api'
 import { v } from 'convex/values'
+import { mutation, query } from './_generated/server'
+import type { Doc } from './_generated/dataModel'
+import { assertAuthorized } from './auth'
+import { datasetRecordFields, rowValuesValidator } from './schema'
 
+// Mirrors src/dataset/csvTypes.ts: Convex functions cannot import from src/.
 const MAX_ROWS = 5_000
-const MAX_ID_LENGTH = 200
-const MAX_METADATA_JSON = 400_000
-const ROW_WRITE_BATCH = 200
+const MAX_COLUMNS = 100
+const MAX_BYTES = 4 * 1024 * 1024
+const MAX_PREVIEW_ROWS = 8
+const MAX_ID_LENGTH = 64
+const MAX_NAME_LENGTH = 200
+const MAX_CHUNK_ROWS = 200
+const MAX_CHUNKS_PER_CALL = 32
+const MAX_READ_ROWS = 500
+const MAX_LIST = 50
 
-const datasetRowValidator = v.object({
-  rowIndex: v.number(),
-  rowHash: v.string(),
-  values: v.any(),
-})
+const recordValidator = v.object(datasetRecordFields)
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+const compact = <T extends Record<string, unknown>>(value: T): T =>
+  Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T
 
-const authorizeWrite = (authToken: string): void => {
-  const expected = process.env.CONVEX_WRITE_SECRET?.trim()
-  if (!expected || authToken !== expected) throw new Error('Unauthorized dataset mutation')
+const check = (condition: boolean, message: string): void => {
+  if (!condition) throw new Error(message)
 }
 
-type DurableDataset = {
-  datasetId: string
-  sourceType: 'fixture' | 'upload' | 'public_url'
-  displayName: string
-  fixtureKey?: string
-  blobKey?: string
-  sourceUrl?: string
-  byteSize: number
-  contentHash: string
-  encoding: string
-  delimiter: string
-  columns: Array<{ name: string; normalizedName: string; inferredType: string }>
-  acceptedRowCount: number
-  previewRows: unknown[]
-  validationWarnings: string[]
-  visibility: 'published'
-  createdAt: number
-  publishedAt?: number
-  rows: Array<{ rowIndex: number; rowHash: string; values: unknown }>
-}
-
-function validateDatasetMeta(value: unknown): asserts value is Omit<DurableDataset, 'rows'> {
-  if (!isRecord(value) || typeof value.datasetId !== 'string' || value.datasetId.length < 1 || value.datasetId.length > MAX_ID_LENGTH) throw new Error('Invalid dataset')
-  if (!['fixture', 'upload', 'public_url'].includes(value.sourceType as string)) throw new Error('Invalid dataset source')
-  if (typeof value.displayName !== 'string' || value.displayName.length < 1 || value.displayName.length > 200) throw new Error('Invalid dataset name')
-  if (typeof value.byteSize !== 'number' || value.byteSize < 0 || typeof value.contentHash !== 'string' || !value.contentHash) throw new Error('Invalid dataset hash')
-  if (typeof value.encoding !== 'string' || typeof value.delimiter !== 'string') throw new Error('Invalid dataset encoding')
-  if (!Array.isArray(value.columns) || value.columns.length < 1 || value.columns.length > 100) throw new Error('Invalid dataset columns')
-  if (typeof value.acceptedRowCount !== 'number' || !Number.isInteger(value.acceptedRowCount) || value.acceptedRowCount < 1 || value.acceptedRowCount > MAX_ROWS) throw new Error('Invalid dataset row count')
-  if (!Array.isArray(value.previewRows) || value.previewRows.length > 16) throw new Error('Invalid dataset preview')
-  if (!Array.isArray(value.validationWarnings)) throw new Error('Invalid dataset warnings')
-  if (value.visibility !== 'published' || typeof value.createdAt !== 'number') throw new Error('Invalid dataset visibility')
-  const { rows: _ignoredRows, publicDataWarning: _ignoredWarning, attribution: _ignoredAttribution, ...meta } = value
-  if (JSON.stringify(meta).length > MAX_METADATA_JSON) throw new Error('Dataset metadata is too large')
-}
-
-function validateDataset(value: unknown): asserts value is DurableDataset {
-  if (!isRecord(value)) throw new Error('Invalid dataset')
-  const rows = value.rows
-  validateDatasetMeta(value)
-  if (!Array.isArray(rows) || rows.length !== value.acceptedRowCount || rows.length > MAX_ROWS) throw new Error('Invalid dataset rows')
-}
-
-const datasetDocument = (dataset: Omit<DurableDataset, 'rows'>) => ({
-  datasetId: dataset.datasetId,
-  sourceType: dataset.sourceType,
-  displayName: dataset.displayName,
-  ...(dataset.fixtureKey === undefined ? {} : { fixtureKey: dataset.fixtureKey }),
-  ...(dataset.blobKey === undefined ? {} : { blobKey: dataset.blobKey }),
-  ...(dataset.sourceUrl === undefined ? {} : { sourceUrl: dataset.sourceUrl }),
-  byteSize: dataset.byteSize,
-  contentHash: dataset.contentHash,
-  encoding: dataset.encoding,
-  delimiter: dataset.delimiter,
-  columns: dataset.columns,
-  acceptedRowCount: dataset.acceptedRowCount,
-  previewRows: dataset.previewRows,
-  validationWarnings: dataset.validationWarnings,
-  visibility: 'published' as const,
-  createdAt: dataset.createdAt,
-  ...(dataset.publishedAt === undefined ? {} : { publishedAt: dataset.publishedAt }),
+const toRecord = (doc: Doc<'datasets'>) => compact({
+  datasetId: doc.datasetId,
+  sourceType: doc.sourceType,
+  displayName: doc.displayName,
+  byteSize: doc.byteSize,
+  contentHash: doc.contentHash,
+  delimiter: doc.delimiter,
+  columns: doc.columns,
+  acceptedRowCount: doc.acceptedRowCount,
+  previewRows: doc.previewRows,
+  validationWarnings: doc.validationWarnings,
+  sourceUrl: doc.sourceUrl,
+  createdAt: doc.createdAt,
 })
 
-const optionalField = (key: string, value: unknown): Record<string, unknown> => (
-  value === undefined ? {} : { [key]: value }
-)
+const findDataset = (ctx: { db: { query: (table: 'datasets') => any } }, datasetId: string): Promise<Doc<'datasets'> | null> =>
+  ctx.db.query('datasets').withIndex('by_dataset_id', (q: any) => q.eq('datasetId', datasetId)).unique()
 
-const publicDataset = (document: Record<string, unknown>) => ({
-  datasetId: document.datasetId,
-  sourceType: document.sourceType,
-  displayName: document.displayName,
-  ...optionalField('fixtureKey', document.fixtureKey),
-  ...optionalField('blobKey', document.blobKey),
-  ...optionalField('sourceUrl', document.sourceUrl),
-  byteSize: document.byteSize,
-  contentHash: document.contentHash,
-  encoding: document.encoding,
-  delimiter: document.delimiter,
-  columns: document.columns,
-  acceptedRowCount: document.acceptedRowCount,
-  previewRows: document.previewRows,
-  validationWarnings: document.validationWarnings,
-  visibility: document.visibility,
-  createdAt: document.createdAt,
-  ...optionalField('publishedAt', document.publishedAt),
-  publicDataWarning: 'This playground publishes datasets and results. Do not upload secrets or personal data.',
-})
-
-const findDataset = async (ctx: { db: any }, datasetId: string) => await ctx.db.query('datasets').withIndex('by_dataset_id', (q: any) => q.eq('datasetId', datasetId)).unique()
-
-export const getDatasetInternal = internalQuery({
-  args: { datasetId: v.string() },
-  handler: async (ctx, { datasetId }) => {
-    const document = await findDataset(ctx, datasetId)
-    if (!document) return null
-    const { _id: _ignoredId, _creationTime: _ignoredCreationTime, ...safe } = document
-    return publicDataset(safe)
-  },
-})
-
-export const getDatasetRowsInternal = internalQuery({
-  args: { datasetId: v.string() },
-  handler: async (ctx, { datasetId }) => {
-    const rows = await ctx.db.query('datasetRows').withIndex('by_dataset_row', (q: any) => q.eq('datasetId', datasetId)).order('asc').take(MAX_ROWS)
-    return rows.map((row: Record<string, unknown>) => row.values)
-  },
-})
-
-export const listPublicDatasets = query({
-  args: {},
-  handler: async (ctx) => {
-    const documents = await ctx.db.query('datasets').take(48)
-    return documents.map((document) => ({
-      datasetId: document.datasetId,
-      displayName: document.displayName,
-      sourceType: document.sourceType,
-      acceptedRowCount: document.acceptedRowCount,
-      createdAt: document.createdAt,
-    }))
-  },
-})
-
-export const getDatasetSharePreview = query({
-  args: { datasetId: v.string() },
-  handler: async (ctx, { datasetId }) => {
-    const document = await findDataset(ctx, datasetId)
-    if (!document) return null
-    const { _id: _ignoredId, _creationTime: _ignoredCreationTime, blobKey: _blob, ...safe } = document
-    return publicDataset(safe)
-  },
-})
-
-export const putDatasetMetaInternal = internalMutation({
-  args: { dataset: v.any() },
-  handler: async (ctx, { dataset }) => {
-    validateDatasetMeta(dataset)
-    const existing = await findDataset(ctx, dataset.datasetId)
-    const document = datasetDocument(dataset)
-    if (existing) await ctx.db.replace(existing._id, document)
-    else await ctx.db.insert('datasets', document)
-    return publicDataset(document)
-  },
-})
-
-export const replaceDatasetRowsInternal = internalMutation({
-  args: { datasetId: v.string(), rows: v.array(datasetRowValidator) },
-  handler: async (ctx, { datasetId, rows }) => {
-    const currentRows = await ctx.db.query('datasetRows').withIndex('by_dataset_row', (q: any) => q.eq('datasetId', datasetId)).take(MAX_ROWS)
-    for (const row of currentRows) await ctx.db.delete(row._id)
-    for (const row of rows) {
-      await ctx.db.insert('datasetRows', { datasetId, rowIndex: row.rowIndex, rowHash: row.rowHash, values: row.values })
+/**
+ * Step 1 of an upload. Returns `exists` when a ready dataset already has this
+ * ID (datasets are immutable). An unfinished earlier attempt is reset.
+ */
+export const createDataset = mutation({
+  args: { authToken: v.string(), record: recordValidator },
+  handler: async (ctx, { authToken, record }): Promise<'created' | 'exists'> => {
+    assertAuthorized(authToken)
+    check(record.datasetId.length > 0 && record.datasetId.length <= MAX_ID_LENGTH, 'Invalid datasetId')
+    check(record.displayName.length <= MAX_NAME_LENGTH, 'displayName too long')
+    check(record.columns.length <= MAX_COLUMNS && record.columns.every((column) => column.name.length <= MAX_NAME_LENGTH), 'Invalid columns')
+    check(Number.isInteger(record.acceptedRowCount) && record.acceptedRowCount >= 0 && record.acceptedRowCount <= MAX_ROWS, 'Invalid acceptedRowCount')
+    check(Number.isFinite(record.byteSize) && record.byteSize >= 0 && record.byteSize <= MAX_BYTES, 'Invalid byteSize')
+    check(record.previewRows.length <= MAX_PREVIEW_ROWS && record.previewRows.every((row) => row.length <= MAX_COLUMNS), 'Invalid previewRows')
+    const existing = await findDataset(ctx, record.datasetId)
+    if (existing?.ready) return 'exists'
+    const now = Date.now()
+    if (existing) {
+      const stale = await ctx.db.query('datasetChunks').withIndex('by_dataset_start', (q) => q.eq('datasetId', record.datasetId)).collect()
+      for (const chunk of stale) await ctx.db.delete(chunk._id)
+      await ctx.db.replace(existing._id, compact({ ...record, createdAt: now, ready: false }))
+    } else {
+      await ctx.db.insert('datasets', compact({ ...record, createdAt: now, ready: false }))
     }
+    return 'created'
   },
 })
 
-export const appendDatasetRowsInternal = internalMutation({
-  args: { datasetId: v.string(), rows: v.array(datasetRowValidator) },
-  handler: async (ctx, { datasetId, rows }) => {
-    for (const row of rows) {
-      await ctx.db.insert('datasetRows', { datasetId, rowIndex: row.rowIndex, rowHash: row.rowHash, values: row.values })
-    }
-  },
-})
-
-export const authorizedGetDataset = action({
-  args: { authToken: v.string(), datasetId: v.string() },
-  handler: async (ctx: any, { authToken, datasetId }: { authToken: string; datasetId: string }): Promise<unknown> => {
-    authorizeWrite(authToken)
-    return await ctx.runQuery(internal.datasets.getDatasetInternal, { datasetId })
-  },
-})
-
-export const authorizedGetDatasetRows = action({
-  args: { authToken: v.string(), datasetId: v.string() },
-  handler: async (ctx: any, { authToken, datasetId }: { authToken: string; datasetId: string }): Promise<unknown> => {
-    authorizeWrite(authToken)
-    return await ctx.runQuery(internal.datasets.getDatasetRowsInternal, { datasetId })
-  },
-})
-
-export const authorizedPutDataset = action({
+/** Step 2, repeatable. Chunks already stored at a `startIndex` are skipped, so retries are safe. */
+export const appendDatasetChunk = mutation({
   args: {
     authToken: v.string(),
-    dataset: v.any(),
-    rows: v.array(datasetRowValidator),
+    datasetId: v.string(),
+    chunks: v.array(v.object({ startIndex: v.number(), rows: v.array(rowValuesValidator) })),
   },
-  handler: async (ctx: any, { authToken, dataset, rows }: { authToken: string; dataset: unknown; rows: Array<{ rowIndex: number; rowHash: string; values: unknown }> }): Promise<unknown> => {
-    authorizeWrite(authToken)
-    if (!isRecord(dataset)) throw new Error('Invalid dataset')
-    validateDataset({ ...dataset, rows })
-    const datasetId = dataset.datasetId
-    if (typeof datasetId !== 'string') throw new Error('Invalid dataset')
-    const stored = await ctx.runMutation(internal.datasets.putDatasetMetaInternal, { dataset })
-    for (let offset = 0; offset < rows.length; offset += ROW_WRITE_BATCH) {
-      const batch = rows.slice(offset, offset + ROW_WRITE_BATCH)
-      if (offset === 0) {
-        await ctx.runMutation(internal.datasets.replaceDatasetRowsInternal, { datasetId, rows: batch })
-      } else {
-        await ctx.runMutation(internal.datasets.appendDatasetRowsInternal, { datasetId, rows: batch })
-      }
+  handler: async (ctx, { authToken, datasetId, chunks }): Promise<number> => {
+    assertAuthorized(authToken)
+    check(chunks.length <= MAX_CHUNKS_PER_CALL, 'Too many chunks in one call')
+    const dataset = await findDataset(ctx, datasetId)
+    check(dataset !== null && !dataset.ready, 'Dataset is not accepting rows')
+    let stored = 0
+    for (const chunk of chunks) {
+      check(Number.isInteger(chunk.startIndex) && chunk.startIndex >= 0, 'Invalid startIndex')
+      check(chunk.rows.length > 0 && chunk.rows.length <= MAX_CHUNK_ROWS, 'Invalid chunk size')
+      check(chunk.startIndex + chunk.rows.length <= MAX_ROWS, 'Too many rows')
+      check(chunk.rows.every((row) => row.length <= MAX_COLUMNS), 'Row has too many columns')
+      const existing = await ctx.db
+        .query('datasetChunks')
+        .withIndex('by_dataset_start', (q) => q.eq('datasetId', datasetId).eq('startIndex', chunk.startIndex))
+        .first()
+      if (existing) continue
+      await ctx.db.insert('datasetChunks', { datasetId, startIndex: chunk.startIndex, rows: chunk.rows })
+      stored += chunk.rows.length
     }
     return stored
+  },
+})
+
+/** Step 3. Makes the dataset readable once the stored rows are exactly `0..acceptedRowCount-1`. */
+export const finalizeDataset = mutation({
+  args: { authToken: v.string(), datasetId: v.string() },
+  handler: async (ctx, { authToken, datasetId }): Promise<void> => {
+    assertAuthorized(authToken)
+    const dataset = await findDataset(ctx, datasetId)
+    check(dataset !== null, 'Dataset not found')
+    if (!dataset || dataset.ready) return
+    const chunks = await ctx.db.query('datasetChunks').withIndex('by_dataset_start', (q) => q.eq('datasetId', datasetId)).collect()
+    let next = 0
+    for (const chunk of chunks) {
+      check(chunk.startIndex === next, 'Dataset chunks are not contiguous')
+      next += chunk.rows.length
+    }
+    check(next === dataset.acceptedRowCount, `Dataset has ${next} rows, expected ${dataset.acceptedRowCount}`)
+    await ctx.db.patch(dataset._id, { ready: true })
+  },
+})
+
+export const get = query({
+  args: { datasetId: v.string() },
+  handler: async (ctx, { datasetId }) => {
+    const dataset = await findDataset(ctx, datasetId)
+    return dataset?.ready ? toRecord(dataset) : null
+  },
+})
+
+export const getRows = query({
+  args: { datasetId: v.string(), offset: v.number(), limit: v.number() },
+  handler: async (ctx, { datasetId, offset, limit }) => {
+    const start = Math.floor(offset)
+    const count = Math.min(MAX_READ_ROWS, Math.floor(limit))
+    const dataset = await findDataset(ctx, datasetId)
+    if (!dataset?.ready || !(start >= 0) || !(count > 0) || start >= dataset.acceptedRowCount) return []
+    const end = start + count
+    // The chunk containing `start` begins at or before it; later chunks are read only up to `end`.
+    const first = await ctx.db
+      .query('datasetChunks')
+      .withIndex('by_dataset_start', (q) => q.eq('datasetId', datasetId).lte('startIndex', start))
+      .order('desc')
+      .first()
+    const chunks = await ctx.db
+      .query('datasetChunks')
+      .withIndex('by_dataset_start', (q) => q.eq('datasetId', datasetId).gte('startIndex', first?.startIndex ?? start).lt('startIndex', end))
+      .collect()
+    const rows: Doc<'datasetChunks'>['rows'] = []
+    for (const chunk of chunks) {
+      const from = Math.max(start, chunk.startIndex) - chunk.startIndex
+      const to = Math.min(end, chunk.startIndex + chunk.rows.length) - chunk.startIndex
+      if (to > from) rows.push(...chunk.rows.slice(from, to))
+    }
+    return rows
+  },
+})
+
+export const listRecent = query({
+  args: { limit: v.number() },
+  handler: async (ctx, { limit }) => {
+    const take = Math.min(MAX_LIST, Math.floor(limit))
+    if (!(take > 0)) return []
+    const docs = await ctx.db
+      .query('datasets')
+      .withIndex('by_ready_created_at', (q) => q.eq('ready', true))
+      .order('desc')
+      .take(take)
+    return docs.map(toRecord)
   },
 })

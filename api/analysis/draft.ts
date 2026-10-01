@@ -1,4 +1,3 @@
-import { createAnalysisDraftHandler } from '../../src/server/analysisApi.js'
-import { analysisService } from '../../src/server/analysisRuntime.js'
+import { api } from '../../src/server/runtime.js'
 
-export default createAnalysisDraftHandler(analysisService)
+export default api.draft

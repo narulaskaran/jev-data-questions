@@ -1,53 +1,116 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { convexTest } from 'convex-test'
 import { api } from './_generated/api'
 import schema from './schema'
 
 const modules = (import.meta as ImportMeta & { glob: (pattern: string) => Record<string, () => Promise<unknown>> }).glob('./**/*.ts')
-const writeSecret = ['analysis', 'convex', 'test', 'auth'].join('-')
-const baseSnapshot = {
-  analysisId: 'analysis-convex-1',
-  fixtureId: 'football-fixture-2026',
-  query: 'Classify H1 rows.',
+const secret = ['analysis', 'convex', 'test', 'auth'].join('-')
+const record = {
+  analysisId: 'a1',
+  datasetId: 'd1',
+  datasetName: 'Tickets',
+  sourceType: 'upload' as const,
+  query: 'Classify',
+  classes: [{ name: 'yes', description: 'y' }, { name: 'no', description: 'n' }],
+  columns: ['a', 'b'],
   status: 'queued' as const,
-  createdAt: '2026-09-17T18:00:00.000Z',
-  updatedAt: '2026-09-17T18:00:00.000Z',
-  progress: { completedRows: 0, totalRows: 2, completedCalls: 0, totalCalls: 2 },
-  resultRows: [],
+  mode: 'mock' as const,
+  createdAt: 1,
+  updatedAt: 1,
+  progress: { totalRows: 3, completedRows: 0, failedRows: 0 },
+  controlTokenHash: 'private-hash',
 }
-const resultRow = (rowIndex: number) => ({
-  rowIndex,
-  input: { playId: `play-${rowIndex}`, source: 'H1' },
-  model: 'jev-test',
-  selectedClass: 'K.Walker',
-  probabilities: { 'K.Walker': 0.7, 'C.Kupp': 0.1, 'J.Smith-Njigba': 0.1, 'Other/Tie': 0.1 },
-  confidence: 0.7,
-})
+const row = { rowIndex: 0, model: 'm', selectedClass: 'yes', probabilities: [0.9, 0.1] }
 
 beforeEach(() => {
-  process.env.CONVEX_WRITE_SECRET = writeSecret
+  process.env.CONVEX_WRITE_SECRET = secret
+})
+afterEach(() => {
+  process.env.CONVEX_WRITE_SECRET = secret
 })
 
-describe('durable Convex analysis functions', () => {
-  it('requires authenticated writes, supports incremental readback, public share snapshots, and idempotent updates', async () => {
-    const t = convexTest(schema, modules)
-    await expect(t.action(api.analyses.authorizedPutAnalysisSnapshot, { authToken: 'wrong', snapshot: baseSnapshot })).rejects.toThrow(/unauthorized/i)
-
-    await expect(t.action(api.analyses.authorizedPutAnalysisSnapshot, { authToken: writeSecret, snapshot: baseSnapshot })).resolves.toMatchObject({ analysisId: baseSnapshot.analysisId, resultRows: [] })
-    const partial = { ...baseSnapshot, status: 'running' as const, updatedAt: '2026-09-17T18:01:00.000Z', progress: { completedRows: 1, totalRows: 2, completedCalls: 1, totalCalls: 2 }, currentFixtureRow: { rowIndex: 1, input: { playId: 'play-1', source: 'H1' } }, resultRows: [resultRow(0)] }
-    await t.action(api.analyses.authorizedPutAnalysisSnapshot, { authToken: writeSecret, snapshot: partial })
-
-    await expect(t.action(api.analyses.authorizedGetAnalysis, { authToken: writeSecret, analysisId: baseSnapshot.analysisId })).resolves.toMatchObject({ status: 'running', progress: partial.progress, resultRows: [expect.objectContaining({ rowIndex: 0 })] })
-    await expect(t.query(api.analyses.getAnalysisShareSnapshot, { analysisId: baseSnapshot.analysisId })).resolves.toMatchObject({ analysisId: baseSnapshot.analysisId, resultRows: [expect.objectContaining({ rowIndex: 0 })] })
-    await expect(t.query(api.analyses.getAnalysisShareSnapshot, { analysisId: 'missing' })).resolves.toBeNull()
+describe('analyses authorization', () => {
+  const calls = (t: ReturnType<typeof convexTest>, authToken: string) => ({
+    create: () => t.mutation(api.analyses.create, { authToken, record }),
+    claim: () => t.mutation(api.analyses.claim, { authToken, analysisId: 'a1', ownerToken: 'o', leaseMs: 1000 }),
+    append: () => t.mutation(api.analyses.append, { authToken, analysisId: 'a1', ownerToken: 'o', rows: [row], leaseMs: 1000 }),
+    finish: () => t.mutation(api.analyses.finish, { authToken, analysisId: 'a1', ownerToken: 'o', outcome: { status: 'complete' } }),
+    cancel: () => t.mutation(api.analyses.cancel, { authToken, analysisId: 'a1' }),
+    getRecord: () => t.query(api.analyses.getRecord, { authToken, analysisId: 'a1' }),
   })
 
-  it('claims one execution, rejects a live duplicate, and permits stale recovery', async () => {
+  it.each(['create', 'claim', 'append', 'finish', 'cancel', 'getRecord'] as const)('rejects wrong and empty tokens on %s', async (name) => {
     const t = convexTest(schema, modules)
-    await t.action(api.analyses.authorizedPutAnalysisSnapshot, { authToken: writeSecret, snapshot: baseSnapshot })
-    await expect(t.action(api.analyses.authorizedClaimAnalysis, { authToken: writeSecret, analysisId: baseSnapshot.analysisId, ownerToken: 'owner-a', nowMs: 1_000, leaseMs: 300_000 })).resolves.toBe('claimed')
-    await expect(t.action(api.analyses.authorizedClaimAnalysis, { authToken: writeSecret, analysisId: baseSnapshot.analysisId, ownerToken: 'owner-b', nowMs: 2_000, leaseMs: 300_000 })).resolves.toBe('busy')
-    await expect(t.action(api.analyses.authorizedClaimAnalysis, { authToken: writeSecret, analysisId: baseSnapshot.analysisId, ownerToken: 'owner-b', nowMs: 301_001, leaseMs: 300_000 })).resolves.toBe('claimed')
-    await expect(t.action(api.analyses.authorizedReleaseAnalysis, { authToken: writeSecret, analysisId: baseSnapshot.analysisId, ownerToken: 'owner-b' })).resolves.toBeNull()
+    await expect(calls(t, 'wrong')[name]()).rejects.toThrow(/Unauthorized/)
+    await expect(calls(t, '')[name]()).rejects.toThrow(/Unauthorized/)
+    await expect(calls(t, `${secret}x`)[name]()).rejects.toThrow(/Unauthorized/)
+  })
+
+  it.each(['create', 'claim', 'append', 'finish', 'cancel', 'getRecord'] as const)('fails closed on %s when CONVEX_WRITE_SECRET is unset or empty', async (name) => {
+    const t = convexTest(schema, modules)
+    delete process.env.CONVEX_WRITE_SECRET
+    await expect(calls(t, '')[name]()).rejects.toThrow(/Unauthorized/)
+    await expect(calls(t, 'anything')[name]()).rejects.toThrow(/Unauthorized/)
+    process.env.CONVEX_WRITE_SECRET = ''
+    await expect(calls(t, '')[name]()).rejects.toThrow(/Unauthorized/)
+  })
+
+  it('changes nothing when a write is rejected', async () => {
+    const t = convexTest(schema, modules)
+    await expect(calls(t, 'wrong').create()).rejects.toThrow()
+    expect(await t.query(api.analyses.readPage, { analysisId: 'a1', after: -1, limit: 10 })).toBeNull()
+  })
+})
+
+describe('analyses public reads', () => {
+  it('never return the control token hash or lease fields, including in stored documents', async () => {
+    const t = convexTest(schema, modules)
+    await t.mutation(api.analyses.create, { authToken: secret, record })
+    await t.mutation(api.analyses.claim, { authToken: secret, analysisId: 'a1', ownerToken: 'owner-secret', leaseMs: 1000 })
+    await t.mutation(api.analyses.append, { authToken: secret, analysisId: 'a1', ownerToken: 'owner-secret', rows: [row], leaseMs: 1000 })
+    const page = await t.query(api.analyses.readPage, { analysisId: 'a1', after: -1, limit: 10 })
+    const list = await t.query(api.analyses.listRecent, { limit: 10 })
+    const text = JSON.stringify([page, list])
+    expect(text).not.toContain('private-hash')
+    expect(text).not.toContain('owner-secret')
+    expect(text).not.toMatch(/controlTokenHash|runOwnerToken|runLeaseExpiresAt|_id|_creationTime/)
+    expect(page?.rows[0]).toEqual(row)
+    const stored = await t.run((ctx) => ctx.db.query('analyses').first())
+    expect(stored).toMatchObject({ runOwnerToken: 'owner-secret' })
+  })
+})
+
+describe('analyses validation', () => {
+  const create = (t: ReturnType<typeof convexTest>, overrides: Record<string, unknown>) =>
+    t.mutation(api.analyses.create, { authToken: secret, record: { ...record, ...overrides } })
+
+  it('enforces the shared bounds on create', async () => {
+    const t = convexTest(schema, modules)
+    await expect(create(t, { analysisId: 'x'.repeat(65) })).rejects.toThrow()
+    await expect(create(t, { analysisId: '' })).rejects.toThrow()
+    await expect(create(t, { query: 'q'.repeat(4_001) })).rejects.toThrow()
+    await expect(create(t, { classes: [{ name: 'only', description: '' }] })).rejects.toThrow()
+    await expect(create(t, { classes: Array.from({ length: 33 }, (_, index) => ({ name: `c${index}`, description: '' })) })).rejects.toThrow()
+    await expect(create(t, { classes: [{ name: 'n'.repeat(81), description: '' }, { name: 'b', description: '' }] })).rejects.toThrow()
+    await expect(create(t, { progress: { totalRows: 5_001, completedRows: 0, failedRows: 0 } })).rejects.toThrow()
+    expect(await create(t, { analysisId: 'x'.repeat(64), query: 'q'.repeat(4_000) })).toBe('created')
+  })
+
+  it('rejects malformed append rows and oversize batches, and bad leases', async () => {
+    const t = convexTest(schema, modules)
+    await create(t, {})
+    await t.mutation(api.analyses.claim, { authToken: secret, analysisId: 'a1', ownerToken: 'o', leaseMs: 1000 })
+    const append = (rows: unknown[], leaseMs = 1000) =>
+      t.mutation(api.analyses.append, { authToken: secret, analysisId: 'a1', ownerToken: 'o', rows: rows as never, leaseMs })
+    await expect(append([{ ...row, rowIndex: 5_000 }])).rejects.toThrow()
+    await expect(append([{ ...row, rowIndex: -1 }])).rejects.toThrow()
+    await expect(append([{ ...row, rowIndex: 1.5 }])).rejects.toThrow()
+    await expect(append([{ ...row, probabilities: { yes: 1 } }])).rejects.toThrow()
+    await expect(append([{ ...row, probabilities: new Array(33).fill(0) }])).rejects.toThrow()
+    await expect(append(Array.from({ length: 65 }, (_, index) => ({ ...row, rowIndex: index })))).rejects.toThrow()
+    await expect(append([row], 0)).rejects.toThrow()
+    await expect(append([row], Number.POSITIVE_INFINITY)).rejects.toThrow()
+    const page = await t.query(api.analyses.readPage, { analysisId: 'a1', after: -1, limit: 10 })
+    expect(page?.rows).toEqual([])
   })
 })

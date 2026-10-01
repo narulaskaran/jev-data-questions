@@ -4,63 +4,126 @@ import { api } from './_generated/api'
 import schema from './schema'
 
 const modules = (import.meta as ImportMeta & { glob: (pattern: string) => Record<string, () => Promise<unknown>> }).glob('./**/*.ts')
-const writeSecret = ['analysis', 'convex', 'test', 'auth'].join('-')
-const dataset = {
-  datasetId: 'dataset-convex-1',
+const secret = ['dataset', 'convex', 'test', 'auth'].join('-')
+const record = {
+  datasetId: 'd1',
   sourceType: 'upload' as const,
-  displayName: 'tickets.csv',
-  byteSize: 24,
-  contentHash: 'hash',
-  encoding: 'utf-8',
+  displayName: 'd1.csv',
+  byteSize: 100,
+  contentHash: 'h',
   delimiter: ',',
-  columns: [{ name: 'label', normalizedName: 'label', inferredType: 'string' }],
-  acceptedRowCount: 1,
-  previewRows: [{ label: 'urgent' }],
+  columns: [{ name: 'a', inferredType: 'string' as const }],
+  acceptedRowCount: 3,
+  previewRows: [['x']],
   validationWarnings: [],
-  visibility: 'published' as const,
-  createdAt: 1_800_000_000_000,
+  createdAt: 1,
 }
-const rows = [{ rowIndex: 0, rowHash: 'row-0', values: { label: 'urgent' } }]
+const rows = [['r0'], ['r1'], ['r2']]
 
 beforeEach(() => {
-  process.env.CONVEX_WRITE_SECRET = writeSecret
+  process.env.CONVEX_WRITE_SECRET = secret
 })
 
-describe('durable Convex dataset functions', () => {
-  it('requires authenticated writes and exposes only public preview metadata', async () => {
-    const t = convexTest(schema, modules)
-    await expect(t.action(api.datasets.authorizedPutDataset, { authToken: 'wrong', dataset, rows })).rejects.toThrow(/unauthorized/i)
-    await expect(t.action(api.datasets.authorizedPutDataset, { authToken: writeSecret, dataset, rows })).resolves.toMatchObject({ datasetId: dataset.datasetId, previewRows: [{ label: 'urgent' }] })
-    const storedMeta = await t.action(api.datasets.authorizedPutDataset, { authToken: writeSecret, dataset, rows }) as Record<string, unknown>
-    expect(Object.values(storedMeta).every((value) => value !== undefined)).toBe(true)
-    expect(storedMeta).not.toHaveProperty('fixtureKey')
-    expect(storedMeta).not.toHaveProperty('sourceUrl')
-    await expect(t.action(api.datasets.authorizedGetDatasetRows, { authToken: writeSecret, datasetId: dataset.datasetId })).resolves.toEqual([{ label: 'urgent' }])
-    await expect(t.query(api.datasets.listPublicDatasets, {})).resolves.toEqual([expect.objectContaining({ datasetId: dataset.datasetId, displayName: 'tickets.csv', acceptedRowCount: 1 })])
-    const preview = await t.query(api.datasets.getDatasetSharePreview, { datasetId: dataset.datasetId })
-    expect(JSON.stringify(preview)).not.toContain(writeSecret)
+describe('dataset authorization', () => {
+  const calls = (t: ReturnType<typeof convexTest>, authToken: string) => ({
+    createDataset: () => t.mutation(api.datasets.createDataset, { authToken, record }),
+    appendDatasetChunk: () => t.mutation(api.datasets.appendDatasetChunk, { authToken, datasetId: 'd1', chunks: [{ startIndex: 0, rows }] }),
+    finalizeDataset: () => t.mutation(api.datasets.finalizeDataset, { authToken, datasetId: 'd1' }),
   })
 
-  it('persists BYOD metadata without fixtureKey and batches more than 200 rows', async () => {
+  it.each(['createDataset', 'appendDatasetChunk', 'finalizeDataset'] as const)('rejects wrong and empty tokens on %s', async (name) => {
     const t = convexTest(schema, modules)
-    const many = Array.from({ length: 201 }, (_, rowIndex) => ({
-      rowIndex,
-      rowHash: `row-${rowIndex}`,
-      values: { label: `row-${rowIndex}` },
-    }))
-    const payload = {
-      ...dataset,
-      datasetId: 'dataset-convex-batch',
-      acceptedRowCount: many.length,
-      publicDataWarning: 'This playground publishes datasets and results. Do not upload secrets or personal data.',
-    }
-    await expect(t.action(api.datasets.authorizedPutDataset, { authToken: writeSecret, dataset: payload, rows: many })).resolves.toMatchObject({
-      datasetId: 'dataset-convex-batch',
-      acceptedRowCount: 201,
-    })
-    const stored = await t.action(api.datasets.authorizedGetDatasetRows, { authToken: writeSecret, datasetId: 'dataset-convex-batch' }) as unknown[]
-    expect(stored).toHaveLength(201)
-    expect(stored[0]).toEqual({ label: 'row-0' })
-    expect(stored[200]).toEqual({ label: 'row-200' })
+    await expect(calls(t, 'wrong')[name]()).rejects.toThrow(/Unauthorized/)
+    await expect(calls(t, '')[name]()).rejects.toThrow(/Unauthorized/)
+  })
+
+  it.each(['createDataset', 'appendDatasetChunk', 'finalizeDataset'] as const)('fails closed on %s when CONVEX_WRITE_SECRET is unset', async (name) => {
+    const t = convexTest(schema, modules)
+    delete process.env.CONVEX_WRITE_SECRET
+    await expect(calls(t, '')[name]()).rejects.toThrow(/Unauthorized/)
+    await expect(calls(t, 'anything')[name]()).rejects.toThrow(/Unauthorized/)
+  })
+})
+
+describe('dataset upload protocol', () => {
+  const create = (t: ReturnType<typeof convexTest>, overrides: Record<string, unknown> = {}) =>
+    t.mutation(api.datasets.createDataset, { authToken: secret, record: { ...record, ...overrides } })
+  const append = (t: ReturnType<typeof convexTest>, chunks: { startIndex: number; rows: (string | number | boolean | null)[][] }[]) =>
+    t.mutation(api.datasets.appendDatasetChunk, { authToken: secret, datasetId: 'd1', chunks })
+  const finalize = (t: ReturnType<typeof convexTest>) => t.mutation(api.datasets.finalizeDataset, { authToken: secret, datasetId: 'd1' })
+
+  it('hides a dataset until it is finalized', async () => {
+    const t = convexTest(schema, modules)
+    await create(t)
+    await append(t, [{ startIndex: 0, rows }])
+    expect(await t.query(api.datasets.get, { datasetId: 'd1' })).toBeNull()
+    expect(await t.query(api.datasets.getRows, { datasetId: 'd1', offset: 0, limit: 10 })).toEqual([])
+    expect(await t.query(api.datasets.listRecent, { limit: 10 })).toEqual([])
+    await finalize(t)
+    expect((await t.query(api.datasets.get, { datasetId: 'd1' }))?.datasetId).toBe('d1')
+    expect(await t.query(api.datasets.getRows, { datasetId: 'd1', offset: 1, limit: 10 })).toEqual(rows.slice(1))
+    expect(await t.query(api.datasets.listRecent, { limit: 10 })).toHaveLength(1)
+  })
+
+  it('refuses to finalize with missing, short or non-contiguous rows', async () => {
+    const t = convexTest(schema, modules)
+    await create(t)
+    await expect(finalize(t)).rejects.toThrow(/expected 3/)
+    await append(t, [{ startIndex: 0, rows: rows.slice(0, 2) }])
+    await expect(finalize(t)).rejects.toThrow(/expected 3/)
+    await append(t, [{ startIndex: 3, rows: rows.slice(2) }])
+    await expect(finalize(t)).rejects.toThrow(/contiguous/)
+    expect(await t.query(api.datasets.get, { datasetId: 'd1' })).toBeNull()
+  })
+
+  it('refuses to finalize an unknown dataset or append to one', async () => {
+    const t = convexTest(schema, modules)
+    await expect(finalize(t)).rejects.toThrow()
+    await expect(append(t, [{ startIndex: 0, rows }])).rejects.toThrow()
+  })
+
+  it('skips chunks that were already stored, so retries do not duplicate rows', async () => {
+    const t = convexTest(schema, modules)
+    await create(t)
+    expect(await append(t, [{ startIndex: 0, rows: rows.slice(0, 2) }])).toBe(2)
+    expect(await append(t, [{ startIndex: 0, rows: rows.slice(0, 2) }, { startIndex: 2, rows: rows.slice(2) }])).toBe(1)
+    await finalize(t)
+    expect(await t.query(api.datasets.getRows, { datasetId: 'd1', offset: 0, limit: 10 })).toEqual(rows)
+  })
+
+  it('is immutable once ready and resets an unfinished attempt', async () => {
+    const t = convexTest(schema, modules)
+    expect(await create(t)).toBe('created')
+    await append(t, [{ startIndex: 0, rows: [['stale']] }])
+    expect(await create(t, { displayName: 'second.csv' })).toBe('created')
+    await append(t, [{ startIndex: 0, rows }])
+    await finalize(t)
+    expect(await create(t, { displayName: 'third.csv' })).toBe('exists')
+    await expect(append(t, [{ startIndex: 3, rows: [['late']] }])).rejects.toThrow()
+    expect((await t.query(api.datasets.get, { datasetId: 'd1' }))?.displayName).toBe('second.csv')
+    expect(await t.query(api.datasets.getRows, { datasetId: 'd1', offset: 0, limit: 10 })).toEqual(rows)
+  })
+
+  it('enforces bounds', async () => {
+    const t = convexTest(schema, modules)
+    await expect(create(t, { datasetId: 'x'.repeat(65) })).rejects.toThrow()
+    await expect(create(t, { acceptedRowCount: 5_001 })).rejects.toThrow()
+    await expect(create(t, { byteSize: 4 * 1024 * 1024 + 1 })).rejects.toThrow()
+    await expect(create(t, { previewRows: new Array(9).fill(['x']) })).rejects.toThrow()
+    await create(t)
+    await expect(append(t, [{ startIndex: 0, rows: new Array(201).fill(['x']) }])).rejects.toThrow()
+    await expect(append(t, [{ startIndex: 4_900, rows: new Array(101).fill(['x']) }])).rejects.toThrow()
+    await expect(append(t, [{ startIndex: 0, rows: [{ a: 1 } as never] }])).rejects.toThrow()
+  })
+
+  it('reads only the chunks that overlap the requested range', async () => {
+    const t = convexTest(schema, modules)
+    const all = Array.from({ length: 450 }, (_, index) => [index])
+    await create(t, { acceptedRowCount: 450 })
+    await append(t, [0, 100, 200, 300, 400].map((startIndex) => ({ startIndex, rows: all.slice(startIndex, startIndex + 100) })))
+    await finalize(t)
+    expect(await t.query(api.datasets.getRows, { datasetId: 'd1', offset: 250, limit: 100 })).toEqual(all.slice(250, 350))
+    expect(await t.query(api.datasets.getRows, { datasetId: 'd1', offset: 100, limit: 100 })).toEqual(all.slice(100, 200))
+    expect(await t.query(api.datasets.getRows, { datasetId: 'd1', offset: 449, limit: 100 })).toEqual(all.slice(449))
   })
 })

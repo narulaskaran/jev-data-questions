@@ -1,49 +1,54 @@
-import type {
-  AnalysisRowInput,
-  DatasetColumn,
-  DatasetSourceType,
-} from '../dataset/csvTypes.js'
+import type { DatasetColumn, DatasetRowValues, DatasetSourceType } from '../dataset/csvTypes.js'
+import type { AnalysisClass } from './analysis.js'
 
-export type { AnalysisRowInput, DatasetColumn, DatasetSourceType } from '../dataset/csvTypes.js'
-export {
-  CSV_MAX_BYTES,
-  CSV_MAX_COLUMNS,
-  CSV_MAX_ROWS,
-  CSV_PREVIEW_ROWS,
-  DATASET_ERROR_COPY,
-  PUBLIC_DATA_WARNING,
-  plainDatasetError,
-} from '../dataset/csvTypes.js'
+export type { AnalysisRowInput, AnalysisRowValue, DatasetColumn, DatasetRowValues, DatasetSourceType } from '../dataset/csvTypes.js'
+export { CSV_MAX_BYTES, CSV_MAX_COLUMNS, CSV_MAX_ROWS, CSV_PREVIEW_ROWS, rowToInput } from '../dataset/csvTypes.js'
 
 export interface DatasetAttribution {
-  disclosure: string
+  label: string
   sourceUrl: string
+  licenseLabel: string
   licenseUrl: string
 }
 
-export interface DatasetPreview {
+/** A ready-to-run starting point shipped with a dataset (only the sample has one). */
+export interface DatasetSuggestion {
+  task: string
+  query: string
+  classes: AnalysisClass[]
+  labelColumn?: string
+}
+
+/** Durable dataset metadata. Rows live beside it in storage, never inside it. */
+export interface DatasetRecord {
   datasetId: string
   sourceType: DatasetSourceType
   displayName: string
   byteSize: number
   contentHash: string
-  encoding: 'utf-8'
   delimiter: string
   columns: DatasetColumn[]
   acceptedRowCount: number
-  previewRows: AnalysisRowInput[]
+  previewRows: DatasetRowValues[]
   validationWarnings: string[]
-  publicDataWarning: string
-  attribution?: DatasetAttribution
+  /** Final public URL for `public_url` datasets. Never contains credentials. */
+  sourceUrl?: string
+  createdAt: number
 }
 
-export interface DatasetRecord extends DatasetPreview {
-  blobKey?: string
-  sourceUrl?: string
-  fixtureKey?: string
-  visibility: 'published'
-  createdAt: number
-  publishedAt?: number
+/** What the browser receives for a dataset. */
+export interface DatasetPreview {
+  datasetId: string
+  sourceType: DatasetSourceType
+  displayName: string
+  byteSize: number
+  delimiter: string
+  columns: DatasetColumn[]
+  acceptedRowCount: number
+  previewRows: DatasetRowValues[]
+  validationWarnings: string[]
+  attribution?: DatasetAttribution
+  suggestion?: DatasetSuggestion
 }
 
 export interface DatasetBrowseItem {
@@ -54,29 +59,29 @@ export interface DatasetBrowseItem {
   createdAt: number
 }
 
-export interface AnalysisBrowseItem {
-  analysisId: string
-  datasetId: string
-  title: string
-  status: string
-  completedRows: number
-  totalRows: number
-  createdAt: string
+/** Durable dataset storage. Rows are immutable once `put` resolves. */
+export interface DatasetStorage {
+  /** Store metadata and every row. A dataset is not readable until this resolves. */
+  put(record: DatasetRecord, rows: readonly DatasetRowValues[]): Promise<void>
+  get(datasetId: string): Promise<DatasetRecord | undefined>
+  /** Rows `offset .. offset+limit-1` in order. Shorter (or empty) past the end. */
+  getRows(datasetId: string, offset: number, limit: number): Promise<DatasetRowValues[]>
+  /** Newest first. */
+  listRecent(limit: number): Promise<DatasetRecord[]>
 }
 
-export interface DatasetIntakeStatus {
-  convex: boolean
-  uploadThing: boolean
-  sampleAvailable: true
-  /** Present when durable storage env is incomplete. Names only, never values. */
-  missingEnv?: readonly string[]
-}
+export type ProviderMode ='live' | 'mock' | 'off'
 
-export const asAnalysisRow = (row: object): AnalysisRowInput => {
-  const result: AnalysisRowInput = {}
-  for (const [key, value] of Object.entries(row)) {
-    if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') result[key] = value
-    else if (value !== undefined) result[key] = String(value)
+/** `GET /api/status` — what this deployment can do. Names only, never secrets. */
+export interface PlaygroundStatus {
+  /** Durable storage is available, so uploads, runs and share links work. */
+  storage: boolean
+  drafting: ProviderMode
+  classifier: ProviderMode
+  runsEnabled: boolean
+  limits: {
+    maxRows: number
+    maxBytes: number
+    maxColumns: number
   }
-  return result
 }

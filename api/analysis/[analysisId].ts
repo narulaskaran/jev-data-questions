@@ -1,4 +1,3 @@
-import { createAnalysisReadHandler } from '../../src/server/analysisApi.js'
-import { analysisService } from '../../src/server/analysisRuntime.js'
+import { api } from '../../src/server/runtime.js'
 
-export default createAnalysisReadHandler(analysisService)
+export default api.read

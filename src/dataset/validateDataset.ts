@@ -1,70 +1,78 @@
 import {
   CSV_PREVIEW_ROWS,
   DatasetError,
-  type AnalysisRowInput,
+  type AnalysisRowValue,
   type DatasetColumn,
   type DatasetColumnType,
+  type DatasetRowValues,
   type ParsedCsv,
   type ValidatedDataset,
 } from './csvTypes.js'
 import { parseCsvBytes, parseCsvText } from './parseCsv.js'
 
-const normalizeName = (name: string): string => name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'column'
+const LOOSE_NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
+const PLAIN_NUMBER = /^-?(?:(?:0|[1-9]\d*)(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/
+const PLAIN_INTEGER = /^-?\d+$/
+const MAX_SIGNIFICANT_DIGITS = 15
 
-const inferType = (values: string[]): DatasetColumnType => {
+/** True only when converting to a JS number cannot corrupt the value (leading zeros, long IDs, precision). */
+const isSafeNumber = (value: string): boolean => {
+  if (!PLAIN_NUMBER.test(value)) return false
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return false
+  if (PLAIN_INTEGER.test(value)) return Number.isSafeInteger(parsed)
+  const mantissa = value.replace(/[eE].*$/, '').replace(/^-/, '').replace('.', '').replace(/^0+/, '')
+  return mantissa.length <= MAX_SIGNIFICANT_DIGITS
+}
+
+const isBoolean = (value: string): boolean => /^(?:true|false)$/i.test(value)
+
+interface Inference {
+  type: DatasetColumnType
+  keptAsText: boolean
+}
+
+const inferType = (values: string[][], index: number): Inference => {
   let sawValue = false
-  let numberCount = 0
-  let booleanCount = 0
-  for (const value of values) {
-    const trimmed = value.trim()
+  let allNumbers = true
+  let allLooseNumbers = true
+  let allBooleans = true
+  for (const cells of values) {
+    const trimmed = (cells[index] ?? '').trim()
     if (!trimmed) continue
     sawValue = true
-    if (/^(true|false|yes|no)$/i.test(trimmed)) {
-      booleanCount += 1
-      continue
+    if (allBooleans && !isBoolean(trimmed)) allBooleans = false
+    if (allLooseNumbers) {
+      if (!LOOSE_NUMBER.test(trimmed)) allLooseNumbers = false
+      else if (allNumbers && !isSafeNumber(trimmed)) allNumbers = false
     }
-    if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(trimmed)) {
-      numberCount += 1
-      continue
-    }
-    return 'string'
+    if (!allBooleans && !allLooseNumbers) break
   }
-  if (!sawValue) return 'empty'
-  if (booleanCount && !numberCount) return 'boolean'
-  if (numberCount && !booleanCount) return 'number'
-  return 'string'
+  if (!sawValue) return { type: 'empty', keptAsText: false }
+  if (allBooleans) return { type: 'boolean', keptAsText: false }
+  if (allLooseNumbers && allNumbers) return { type: 'number', keptAsText: false }
+  return { type: 'string', keptAsText: allLooseNumbers }
 }
 
-const coerceValue = (value: string, type: DatasetColumnType): string | number | boolean | null => {
-  const trimmed = value.trim()
+const coerceValue = (value: string | undefined, type: DatasetColumnType): AnalysisRowValue => {
+  const raw = value ?? ''
+  const trimmed = raw.trim()
   if (!trimmed) return null
-  if (type === 'number') {
-    const parsed = Number(trimmed)
-    return Number.isFinite(parsed) ? parsed : trimmed
-  }
-  if (type === 'boolean') {
-    if (/^(true|yes)$/i.test(trimmed)) return true
-    if (/^(false|no)$/i.test(trimmed)) return false
-  }
-  return value
+  if (type === 'number') return Number(trimmed) + 0
+  if (type === 'boolean') return trimmed.toLowerCase() === 'true'
+  return raw
 }
 
-export const toValidatedDataset = (parsed: ParsedCsv, warnings: string[] = []): ValidatedDataset => {
-  const columns: DatasetColumn[] = parsed.header.map((name, index) => ({
-    name,
-    normalizedName: normalizeName(name),
-    inferredType: inferType(parsed.rows.map((row) => row[index] ?? '')),
-  }))
-  const rows: AnalysisRowInput[] = parsed.rows.map((cells) => {
-    const row: AnalysisRowInput = {}
-    for (let index = 0; index < columns.length; index += 1) {
-      row[columns[index].name] = coerceValue(cells[index] ?? '', columns[index].inferredType)
-    }
-    return row
+export const toValidatedDataset = (parsed: ParsedCsv): ValidatedDataset => {
+  const warnings = [...parsed.warnings]
+  const columns: DatasetColumn[] = parsed.header.map((name, index) => {
+    const { type, keptAsText } = inferType(parsed.rows, index)
+    if (keptAsText) warnings.push(`Column “${name}” kept as text to preserve leading zeros or long IDs.`)
+    return { name, inferredType: type }
   })
+  const rows: DatasetRowValues[] = parsed.rows.map((cells) => columns.map((column, index) => coerceValue(cells[index], column.inferredType)))
   return {
     delimiter: parsed.delimiter,
-    encoding: 'utf-8',
     byteSize: parsed.byteSize,
     columns,
     acceptedRowCount: rows.length,
@@ -77,10 +85,19 @@ export const toValidatedDataset = (parsed: ParsedCsv, warnings: string[] = []): 
 export const validateCsvBytes = (bytes: Uint8Array): ValidatedDataset => toValidatedDataset(parseCsvBytes(bytes))
 export const validateCsvText = (text: string): ValidatedDataset => toValidatedDataset(parseCsvText(text))
 
+const ALLOWED_CONTENT_TYPES = new Set([
+  'text/csv',
+  'text/plain',
+  'text/tab-separated-values',
+  'text/x-csv',
+  'application/csv',
+  'application/vnd.ms-excel',
+  'application/octet-stream',
+])
+
 export const sniffCsvContentType = (contentType: string | undefined, bytes: Uint8Array): void => {
   const normalized = contentType?.split(';')[0]?.trim().toLowerCase()
   if (!normalized) return
-  const allowed = new Set(['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel', 'application/octet-stream'])
-  if (!allowed.has(normalized)) throw new DatasetError('NOT_CSV', 'That does not look like a CSV.')
+  if (!ALLOWED_CONTENT_TYPES.has(normalized)) throw new DatasetError('NOT_CSV', 'That does not look like a CSV.')
   void bytes
 }

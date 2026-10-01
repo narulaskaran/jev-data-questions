@@ -1,140 +1,104 @@
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
-const probabilityValidator = v.object({
-  home: v.number(),
-  away: v.number(),
-  tie: v.number(),
-})
-
-const errorValidator = v.object({
-  code: v.string(),
-  retryable: v.boolean(),
-  providerStatus: v.optional(v.number()),
-})
-
-const limitsValidator = v.object({
-  cadenceMs: v.number(),
-  rateWindowMs: v.number(),
-  maxRequestsPerWindow: v.number(),
-  maxRequests: v.number(),
-  maxSpendCents: v.number(),
-  estimatedCostCentsPerRequest: v.number(),
-})
-
-const analysisProgressValidator = v.object({
-  completedRows: v.number(),
+// User-controlled strings (CSV headers, class names) are only ever stored as values, never as field names.
+export const rowValueValidator = v.union(v.string(), v.number(), v.boolean(), v.null())
+export const rowValuesValidator = v.array(rowValueValidator)
+export const rowErrorValidator = v.object({ code: v.string(), retryable: v.boolean() })
+export const sourceTypeValidator = v.union(v.literal('sample'), v.literal('upload'), v.literal('public_url'))
+export const analysisStatusValidator = v.union(
+  v.literal('queued'),
+  v.literal('running'),
+  v.literal('complete'),
+  v.literal('error'),
+  v.literal('cancelled'),
+)
+export const analysisClassValidator = v.object({ name: v.string(), description: v.string() })
+export const analysisProgressValidator = v.object({
   totalRows: v.number(),
-  completedCalls: v.number(),
-  totalCalls: v.number(),
+  completedRows: v.number(),
+  failedRows: v.number(),
+})
+export const datasetColumnValidator = v.object({
+  name: v.string(),
+  inferredType: v.union(v.literal('string'), v.literal('number'), v.literal('boolean'), v.literal('empty')),
 })
 
-const analysisErrorValidator = v.object({
-  code: v.string(),
-  retryable: v.boolean(),
-})
+export const analysisMetaFields = {
+  analysisId: v.string(),
+  datasetId: v.string(),
+  datasetName: v.string(),
+  sourceType: sourceTypeValidator,
+  query: v.string(),
+  classes: v.array(analysisClassValidator),
+  columns: v.array(v.string()),
+  labelColumn: v.optional(v.string()),
+  status: analysisStatusValidator,
+  mode: v.union(v.literal('live'), v.literal('mock')),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+  startedAt: v.optional(v.number()),
+  completedAt: v.optional(v.number()),
+  progress: analysisProgressValidator,
+  error: v.optional(rowErrorValidator),
+}
+
+export const analysisRowFields = {
+  rowIndex: v.number(),
+  model: v.string(),
+  selectedClass: v.optional(v.string()),
+  probabilities: v.optional(v.array(v.number())),
+  confidence: v.optional(v.number()),
+  latencyMs: v.optional(v.number()),
+  error: v.optional(rowErrorValidator),
+}
+
+export const datasetRecordFields = {
+  datasetId: v.string(),
+  sourceType: sourceTypeValidator,
+  displayName: v.string(),
+  byteSize: v.number(),
+  contentHash: v.string(),
+  delimiter: v.string(),
+  columns: v.array(datasetColumnValidator),
+  acceptedRowCount: v.number(),
+  previewRows: v.array(rowValuesValidator),
+  validationWarnings: v.array(v.string()),
+  sourceUrl: v.optional(v.string()),
+  createdAt: v.number(),
+}
 
 export default defineSchema({
-  forecastRecords: defineTable({
-    idempotencyKey: v.string(),
-    gameId: v.string(),
-    providerEventId: v.string(),
-    providerPlayId: v.optional(v.string()),
-    stateHash: v.string(),
-    rawNormalizedState: v.any(),
-    model: v.string(),
-    status: v.union(v.literal('success'), v.literal('error'), v.literal('limited')),
-    source: v.union(v.literal('live'), v.literal('mock'), v.literal('replay'), v.literal('stale')),
-    requestedAt: v.string(),
-    completedAt: v.string(),
-    latencyMs: v.number(),
-    choice: v.optional(v.union(v.literal('home'), v.literal('away'), v.literal('tie'))),
-    probabilities: v.optional(probabilityValidator),
-    confidence: v.optional(v.number()),
-    error: v.optional(errorValidator),
-  })
-    .index('by_idempotency_key', ['idempotencyKey'])
-    .index('by_game_requested_at', ['gameId', 'requestedAt']),
-  forecastClaims: defineTable({
-    idempotencyKey: v.string(),
-    ownerToken: v.string(),
-    leaseExpiresAt: v.number(),
-  }).index('by_idempotency_key', ['idempotencyKey']),
-  forecastBudgets: defineTable({
-    budgetScope: v.string(),
-    limits: limitsValidator,
-    totalRequests: v.number(),
-    totalSpendCents: v.number(),
-    lastAttemptAtMs: v.optional(v.number()),
-    activeReservationCount: v.number(),
-    activeReservedCents: v.number(),
-    recentAttempts: v.array(v.object({ atMs: v.number(), costCents: v.number() })),
-    updatedAtMs: v.number(),
-  }).index('by_scope', ['budgetScope']),
-  forecastBudgetReservations: defineTable({
-    budgetScope: v.string(),
-    reservationId: v.string(),
-    ownerToken: v.string(),
-    reservedAtMs: v.number(),
-    estimatedCostCents: v.number(),
-    outcome: v.union(v.literal('pending'), v.literal('consumed'), v.literal('released')),
-  })
-    .index('by_reservation_id', ['reservationId'])
-    .index('by_scope', ['budgetScope']),
   analyses: defineTable({
-    analysisId: v.string(),
-    fixtureId: v.string(),
-    datasetId: v.optional(v.string()),
-    sourceType: v.optional(v.union(v.literal('fixture'), v.literal('upload'), v.literal('public_url'))),
-    query: v.string(),
-    status: v.union(v.literal('queued'), v.literal('running'), v.literal('complete'), v.literal('error')),
-    createdAt: v.string(),
-    updatedAt: v.string(),
-    progress: analysisProgressValidator,
-    classes: v.optional(v.array(v.string())),
-    columns: v.optional(v.array(v.string())),
-    currentFixtureRow: v.optional(v.any()),
-    error: v.optional(analysisErrorValidator),
+    ...analysisMetaFields,
+    controlTokenHash: v.string(),
     runOwnerToken: v.optional(v.string()),
     runLeaseExpiresAt: v.optional(v.number()),
-  }).index('by_analysis_id', ['analysisId']),
+  })
+    .index('by_analysis_id', ['analysisId'])
+    .index('by_created_at', ['createdAt']),
   analysisRows: defineTable({
     analysisId: v.string(),
-    rowIndex: v.number(),
-    input: v.any(),
-    model: v.string(),
-    selectedClass: v.optional(v.string()),
-    probabilities: v.optional(v.any()),
-    confidence: v.optional(v.number()),
-    error: v.optional(analysisErrorValidator),
+    ...analysisRowFields,
   }).index('by_analysis_row', ['analysisId', 'rowIndex']),
   datasets: defineTable({
+    ...datasetRecordFields,
+    ready: v.boolean(),
+  })
+    .index('by_dataset_id', ['datasetId'])
+    .index('by_ready_created_at', ['ready', 'createdAt']),
+  datasetChunks: defineTable({
     datasetId: v.string(),
-    sourceType: v.union(v.literal('fixture'), v.literal('upload'), v.literal('public_url')),
-    displayName: v.string(),
-    fixtureKey: v.optional(v.string()),
-    blobKey: v.optional(v.string()),
-    sourceUrl: v.optional(v.string()),
-    byteSize: v.number(),
-    contentHash: v.string(),
-    encoding: v.string(),
-    delimiter: v.string(),
-    columns: v.array(v.object({
-      name: v.string(),
-      normalizedName: v.string(),
-      inferredType: v.string(),
-    })),
-    acceptedRowCount: v.number(),
-    previewRows: v.array(v.any()),
-    validationWarnings: v.array(v.string()),
-    visibility: v.literal('published'),
-    createdAt: v.number(),
-    publishedAt: v.optional(v.number()),
-  }).index('by_dataset_id', ['datasetId']),
-  datasetRows: defineTable({
-    datasetId: v.string(),
-    rowIndex: v.number(),
-    rowHash: v.string(),
-    values: v.any(),
-  }).index('by_dataset_row', ['datasetId', 'rowIndex']),
+    startIndex: v.number(),
+    rows: v.array(rowValuesValidator),
+  }).index('by_dataset_start', ['datasetId', 'startIndex']),
+  rateLimits: defineTable({
+    key: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index('by_key', ['key']),
+  budgets: defineTable({
+    scope: v.string(),
+    total: v.number(),
+  }).index('by_scope', ['scope']),
 })

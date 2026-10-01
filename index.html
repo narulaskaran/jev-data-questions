@@ -3,15 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f4f0e8" />
-    <title>Jev playground — Run Jev on a CSV</title>
-    <meta name="description" content="This is an engineer playground for TypeSafe Jev. Try the sample run, or bring your own CSV — the chart updates as each row is classified." />
-    <meta property="og:title" content="Run Jev on a CSV." />
-    <meta property="og:description" content="Engineer playground for TypeSafe Jev. Try the sample run or bring your own CSV. Demo playground." />
-    <meta name="twitter:card" content="summary" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f5f0" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1311" media="(prefers-color-scheme: dark)" />
+    <title>Jev Playground: ask one question of every row</title>
+    <meta name="description" content="Bring a CSV, write one question, and watch Jev answer it for every row. Replay the run, download the results, or share the link." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Jev Playground" />
+    <meta property="og:title" content="Ask one question of every row" />
+    <meta property="og:description" content="Bring a CSV, write one question, and watch Jev answer it for every row. Replay the run, download the results, or share the link." />
+    <meta property="og:image" content="/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>Jev Playground needs JavaScript to run.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

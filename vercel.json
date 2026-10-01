@@ -1,5 +1,27 @@
 {
+  "functions": {
+    "api/analysis/run.ts": { "maxDuration": 60 },
+    "api/analysis/resume.ts": { "maxDuration": 60 },
+    "api/analysis/continue.ts": { "maxDuration": 60 },
+    "api/datasets/upload.ts": { "maxDuration": 30 },
+    "api/datasets/from-url.ts": { "maxDuration": 30 }
+  },
   "rewrites": [
+    { "source": "/run/:analysisId", "destination": "/index.html" },
     { "source": "/share/:analysisId", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
   ]
 }

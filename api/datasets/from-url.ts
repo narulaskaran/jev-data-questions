@@ -1,8 +1,3 @@
-import { createDatasetFromUrlHandler } from '../../src/server/datasetApi.js'
-import { datasetIntake } from '../../src/server/analysisRuntime.js'
+import { api } from '../../src/server/runtime.js'
 
-export const config = {
-  runtime: 'nodejs',
-}
-
-export default createDatasetFromUrlHandler(datasetIntake)
+export default api.fromUrl

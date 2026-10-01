@@ -1,4 +1,3 @@
-import { createDatasetBrowseHandler } from '../src/server/datasetApi.js'
-import { datasetIntake } from '../src/server/analysisRuntime.js'
+import { api } from '../src/server/runtime.js'
 
-export default createDatasetBrowseHandler(datasetIntake)
+export default api.browse

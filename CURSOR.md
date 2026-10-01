@@ -1,32 +1,31 @@
-# Jev Data Analysis
+# Jev Playground
 
-This repository is the **Jev playground** (Jev Data Analysis). It was originally Jev Gamecast. Live ESPN gamecast is historical implementation material only.
+This repository is the **Jev Playground**: bring a dataset, ask one question of every row, watch Jev answer live. It began as "Jev Gamecast"; that product and its code are gone. The directory may still be called `jev-gamecast`.
 
 ## Read first
 
-- `PLAN.md` — product pivot, MVP scope, contracts, stages, and remaining gates
-- `docs/analysis-api.md` — analysis + BYOD dataset API contract
-- `README.md` — install, test, and Convex/Vercel/UploadThing notes for the playground
+- `PLAN.md` — decisions, architecture, limits, and the gates that remain before the site is shared
+- `docs/analysis-api.md` — the HTTP contract
+- `README.md` — run, verify, deploy
 
-## Product
+## Layout
 
-Bring a dataset. Ask a question. See Jev classify every row.
+- `src/` — React app. `src/shared` and `src/dataset` are imported by both browser and server: keep them free of `node:*` imports and secrets.
+- `src/server/` — the only place that reads secrets or calls a provider.
+- `api/` — one thin file per Vercel function. `vite.config.ts` serves the same files during `npm run dev`.
+- `convex/` — schema and functions, tested with `convex-test`.
 
-Audience: engineers playing with Jev. This is a technical demo / playground, not production analytics or a sports product.
+## Rules that are easy to break
 
-## Current slice
+- The browser never imports from `src/server`, `convex`, or the Jev SDK. `npm run build` fails if a server-only marker reaches a browser chunk, and `src/server/browser-boundary.test.ts` walks the import graph.
+- Storage writes are append-only. Do not add a call that rewrites a run's rows or sends them all again.
+- Never use user-supplied text (column headers, label names) as an object key in anything stored in Convex.
+- The held-out answer column must never be sent to Jev or to the drafting model.
+- Only `POST /api/analysis/run` and an owner's `resume` may cause Jev calls. Reading or sharing a page never does.
+- Errors shown to users are written by us. Never forward provider or storage error text.
+- Simulated providers exist for local development. They are opt-in (`JEV_PLAYGROUND_MOCK=1`) and every result they produce is labelled; do not make them a silent fallback.
+- Tests must not call a paid provider.
 
-- Landing: two equal cards — Try sample (Seahawks fixture stays) and Bring your own (CSV upload + public HTTPS CSV URL). Same draft → edit query → run flow and live per-row class chart for every source. Football is the sample, not the product.
-- Live class-distribution chart is the run-view hero: it ticks on every persisted row (sample and BYOD share the same shell), is scrubbable, and is paired with a `Row X of Y` rail rather than a CSV inspector.
-- Server routes under `api/analysis/*`, `api/datasets/*`, `api/share/*`, and `api/browse`. Drafting uses OpenRouter; only run may call Jev.
-- UploadThing stores original CSV blobs; Convex stores dataset metadata, immutable row refs, run progress, and incremental predictions.
-- Production fails closed without `CONVEX_URL` (or the Convex Vite alias `VITE_CONVEX_URL`) + `CONVEX_WRITE_SECRET`. BYOD upload/URL also fails closed without `UPLOADTHING_TOKEN` (or `UPLOADTHING_SECRET`). Use the UploadThing dashboard **API Keys → V7** token (base64 JSON `{ apiKey, appId, regions }`). A raw `sk_…` key is not enough to upload: v6 `uploadFiles` is retired (`Unsupported operation`). Missing app id/region returns `UPLOADTHING_FAILED` with `failure: "TOKEN_MISSING_APP_REGION"`. Convex dataset persist (`datasets.put`) omits undefined optional fields and client-only keys before `authorizedPutDataset`; Convex failures return `DATASET_INTAKE_UNAVAILABLE` with `failure: "CONVEX_PUT_FAILED"` and a secret-free reason — not `UNCAUGHT`. Sample on-ramp does not need UploadThing.
-- Historical Gamecast forecast/ESPN cron code still exists under `historical/api` and `src/server` forecast/ESPN modules. Those routes are not shipped as Vercel functions. Do not treat them as the active product surface.
+## Verify
 
-## Boundaries
-
-The browser must never import or call Jev, OpenRouter, ESPN, TypeSafe SDK internals, UploadThing server tokens, or privileged Convex writes. Secrets stay in server runtime env (`JEV_API_KEY`, `OPENROUTER_KEY`, `CONVEX_WRITE_SECRET`, `UPLOADTHING_TOKEN`, `CRON_SECRET`). Tests and replay must not make paid provider calls. Visiting or sharing a page must never start a Jev run.
-
-## How to continue
-
-Implement against `PLAN.md` from the existing workbench. Remaining work is pause/cancel, browse/share completeness, abuse/cost controls, provider-contract confirmation, and Stage 6 operator provisioning. Do not restart from the old live-ESPN plan.
+`npm run check` — typechecks, tests, production build, sample-data check.
