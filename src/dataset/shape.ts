@@ -1,3 +1,4 @@
+import { profileTable, type FieldProfile } from '../insights/profile.js'
 import type { AnalysisRowInput, DatasetColumn, DatasetColumnType } from './csvTypes.js'
 
 export type ColumnRole = 'id' | 'numeric' | 'categorical' | 'boolean' | 'time' | 'geo' | 'place' | 'empty'
@@ -29,101 +30,32 @@ export interface DatasetShape {
   hasPlayState: boolean
 }
 
-const LAT_NAME_RE = /^(y|lat|latitude)$/i
-const LNG_NAME_RE = /^(x|lng|lon|long|longitude)$/i
-const TIME_NAME_RE = /(date|time|timestamp|seconds_remaining|play_id|qtr|week)$/i
 const PLACE_NAME_RE = /^(location|specific_location|hectare|place|park|neighborhood|venue|city|area)$/i
-const ID_NAME_RE = /(^id$|_id$|uuid|unique_)/i
 const EATING_NAME_RE = /^(eating|foraging)$/i
 const ACTIVITY_NAME_RE = /^(activity|activities|behavior|behaviours?|action)$/i
 const EATING_VALUE_RE = /^(eating|foraging|eat)$/i
 
-const finiteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
-
-const asNumber = (value: unknown): number | undefined => {
-  if (finiteNumber(value)) return value
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : undefined
-  }
-  return undefined
-}
-
-const uniqueCount = (rows: readonly AnalysisRowInput[], name: string): number => {
-  const seen = new Set<string>()
-  for (const row of rows) {
-    const value = row[name]
-    if (value === null || value === undefined || value === '') continue
-    seen.add(String(value))
-  }
-  return seen.size
-}
-
-const hasFractional = (values: readonly number[]): boolean => (
-  values.some((value) => Math.abs(value - Math.round(value)) > 1e-6)
-)
-
-const looksLikeLat = (name: string, values: readonly number[]): boolean => {
-  if (LNG_NAME_RE.test(name)) return false
-  if (values.length === 0) return false
-  if (!values.every((value) => value >= -90 && value <= 90)) return false
-  if (LAT_NAME_RE.test(name)) return true
-  return hasFractional(values) && values.some((value) => Math.abs(value) > 1 && Math.abs(value) < 90)
-}
-
-const looksLikeLng = (name: string, values: readonly number[]): boolean => {
-  if (LAT_NAME_RE.test(name)) return false
-  if (values.length === 0) return false
-  if (!values.every((value) => value >= -180 && value <= 180)) return false
-  if (LNG_NAME_RE.test(name)) return true
-  return hasFractional(values) && values.some((value) => Math.abs(value) > 90 || Math.abs(value) > 20)
-}
-
-const findGeoPair = (columns: readonly ColumnShape[], rows: readonly AnalysisRowInput[]): GeoPair | undefined => {
-  const namedLat = columns.find((column) => LAT_NAME_RE.test(column.name) || LAT_NAME_RE.test(column.normalizedName))
-  const namedLng = columns.find((column) => LNG_NAME_RE.test(column.name) || LNG_NAME_RE.test(column.normalizedName))
-  if (namedLat && namedLng && namedLat.name !== namedLng.name) return { lat: namedLat.name, lng: namedLng.name }
-  const lat = columns.find((column) => column.role === 'geo' && LAT_NAME_RE.test(column.name))
-  const lng = columns.find((column) => column.role === 'geo' && LNG_NAME_RE.test(column.name))
-  if (lat && lng && lat.name !== lng.name) return { lat: lat.name, lng: lng.name }
-  const numeric = columns.filter((column) => column.inferredType === 'number' || column.role === 'geo')
-  const latGuess = numeric.find((column) => looksLikeLat(column.name, numericValues(rows, column.name)))
-  const lngGuess = numeric.find((column) => column.name !== latGuess?.name && looksLikeLng(column.name, numericValues(rows, column.name)))
-  if (latGuess && lngGuess) return { lat: latGuess.name, lng: lngGuess.name }
-  return undefined
+/** Column roles come from the dashboard profiler, so both views agree on what each column is. */
+const roleFor = (column: DatasetColumn, field: FieldProfile): ColumnRole => {
+  if (field.kind === 'empty') return 'empty'
+  if (field.kind === 'latitude' || field.kind === 'longitude') return 'geo'
+  if (PLACE_NAME_RE.test(column.name) || PLACE_NAME_RE.test(column.normalizedName)) return 'place'
+  if (field.kind === 'flag' || EATING_NAME_RE.test(column.name)) return 'boolean'
+  if (field.kind === 'time' || field.kind === 'sequence') return 'time'
+  if (field.kind === 'id') return 'id'
+  if (field.kind === 'measure' || field.kind === 'ordinal') return 'numeric'
+  if (field.kind === 'constant') return column.inferredType === 'number' ? 'numeric' : 'categorical'
+  return 'categorical'
 }
 
 const numericValues = (rows: readonly AnalysisRowInput[], name: string): number[] => {
   const values: number[] = []
   for (const row of rows) {
-    const value = asNumber(row[name])
-    if (value !== undefined) values.push(value)
+    const value = row[name]
+    const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : Number.NaN
+    if (Number.isFinite(parsed)) values.push(parsed)
   }
   return values
-}
-
-const roleFor = (
-  column: DatasetColumn,
-  cardinality: number,
-  uniqueRatio: number,
-  numeric: readonly number[],
-  rowCount: number,
-): ColumnRole => {
-  if (column.inferredType === 'empty') return 'empty'
-  if (LAT_NAME_RE.test(column.name) || LNG_NAME_RE.test(column.name) || LAT_NAME_RE.test(column.normalizedName) || LNG_NAME_RE.test(column.normalizedName)) {
-    return 'geo'
-  }
-  if (column.inferredType === 'number' && (looksLikeLat(column.name, numeric) || looksLikeLng(column.name, numeric))) {
-    if (Math.abs(numeric[0] ?? 0) > 1) return 'geo'
-  }
-  if (PLACE_NAME_RE.test(column.name) || PLACE_NAME_RE.test(column.normalizedName)) return 'place'
-  if (column.inferredType === 'boolean' || EATING_NAME_RE.test(column.name)) return 'boolean'
-  if (TIME_NAME_RE.test(column.name) || TIME_NAME_RE.test(column.normalizedName)) return 'time'
-  if (ID_NAME_RE.test(column.name) || (uniqueRatio > 0.95 && rowCount > 8)) return 'id'
-  if (column.inferredType === 'number') return 'numeric'
-  if (cardinality >= 1 && cardinality <= 24 && uniqueRatio <= 0.5) return 'categorical'
-  if (column.inferredType === 'string') return 'categorical'
-  return 'numeric'
 }
 
 const isMonotonic = (values: readonly number[]): boolean => {
@@ -159,20 +91,21 @@ export const inspectDatasetShape = (
   rows: readonly AnalysisRowInput[],
 ): DatasetShape => {
   const rowCount = rows.length
-  const shaped: ColumnShape[] = columns.map((column) => {
-    const cardinality = uniqueCount(rows, column.name)
-    const uniqueRatio = rowCount === 0 ? 0 : cardinality / rowCount
-    const numeric = numericValues(rows, column.name)
+  const { fields } = profileTable(columns.map((column) => column.name), rows)
+  const shaped: ColumnShape[] = columns.map((column, index) => {
+    const field = fields[index]!
     return {
       name: column.name,
       normalizedName: column.normalizedName,
       inferredType: column.inferredType,
-      role: roleFor(column, cardinality, uniqueRatio, numeric, rowCount),
-      cardinality,
-      uniqueRatio,
+      role: roleFor(column, field),
+      cardinality: field.distinct,
+      uniqueRatio: rowCount === 0 ? 0 : field.distinct / rowCount,
     }
   })
-  const geo = findGeoPair(shaped, rows)
+  const lat = fields.find((field) => field.kind === 'latitude')
+  const lng = fields.find((field) => field.kind === 'longitude')
+  const geo = lat && lng ? { lat: lat.name, lng: lng.name } : undefined
   const placeColumns = shaped.filter((column) => column.role === 'place').map((column) => column.name)
   const timeColumns = shaped.filter((column) => column.role === 'time').map((column) => column.name)
   const booleanColumns = shaped.filter((column) => column.role === 'boolean').map((column) => column.name)

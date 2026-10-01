@@ -5,11 +5,7 @@ import {
   footballFixtureWinLikelihoodInputFields,
   getWinLikelihoodModelInput,
 } from '../fixtures/footballTimeline'
-import {
-  SQUIRREL_DATASET_NAME,
-  SQUIRREL_FIXTURE_ID,
-  getSquirrelDatasetPreview,
-} from '../fixtures/squirrelCensus'
+import { SQUIRREL_DATASET_NAME, SQUIRREL_FIXTURE_ID } from '../fixtures/squirrelCensusMeta'
 import { asAnalysisRow, type DatasetPreview } from '../shared/dataset'
 import { inferSampleColumns } from './sampleColumns'
 import { SAMPLE_DATASET_NAME } from '../shared/sampleDatasetName'
@@ -41,8 +37,13 @@ export const getFootballDatasetPreview = (): DatasetPreview => ({
 
 export const getSampleDatasetPreview = getFootballDatasetPreview
 
-export const getFixtureDatasetPreview = (datasetId: string): DatasetPreview | undefined => {
-  if (datasetId === SQUIRREL_FIXTURE_ID) return getSquirrelDatasetPreview()
+/** The squirrel rows are a separate chunk, fetched only when that fixture is opened. */
+export const loadSquirrelDatasetPreview = async (): Promise<DatasetPreview> => (
+  (await import('../fixtures/squirrelCensus')).getSquirrelDatasetPreview()
+)
+
+export const loadFixtureDatasetPreview = async (datasetId: string): Promise<DatasetPreview | undefined> => {
+  if (datasetId === SQUIRREL_FIXTURE_ID) return loadSquirrelDatasetPreview()
   if (datasetId === SAMPLE_DATASET_ID || datasetId === FOOTBALL_FIXTURE_ID) return getFootballDatasetPreview()
   return undefined
 }

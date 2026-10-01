@@ -3,6 +3,7 @@ import { Button } from '../ui/button'
 import { Card } from '../ui/card'
 import { ChartView } from './charts'
 import { isWideView, type StoryDashboard as StoryDashboardModel } from '../../insights/dashboard'
+import { formatCount } from '../../insights/format'
 import type { StoryView } from '../../insights/views'
 import { downloadTextFile, escapeCsvCell } from '../../runView/resultsCsv'
 
@@ -39,12 +40,12 @@ const DataTable = ({ view }: { view: StoryView }) => {
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={index}>{row.map((value, cell) => <td key={cell}>{typeof value === 'number' ? value.toLocaleString('en-US') : value}</td>)}</tr>
+            <tr key={index}>{row.map((value, cell) => <td key={cell}>{typeof value === 'number' ? formatCount(value) : value}</td>)}</tr>
           ))}
         </tbody>
       </table>
       {view.table.rows.length > rows.length ? (
-        <p className="story-footnote">First {rows.length} of {view.table.rows.length.toLocaleString('en-US')} rows. Download the CSV for all of them.</p>
+        <p className="story-footnote">First {rows.length} of {formatCount(view.table.rows.length)} rows. Download the CSV for all of them.</p>
       ) : null}
     </div>
   )
