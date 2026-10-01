@@ -90,7 +90,6 @@ export const RowRail = memo(function RowRail({
     <aside className="run-rail" aria-label="Processed rows">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Rows</p>
           <h3>{rows.length ? `Row ${selectedRowNumber} of ${totalRows}` : 'Waiting'}</h3>
         </div>
       </div>

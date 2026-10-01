@@ -1,11 +1,14 @@
 import { observedEatingInsight, proposeInsights, queryFromInsight, type InsightProposal } from '../dataset/insight.js'
 import { inferSampleColumns } from '../dataset/sampleColumns.js'
 import { getFootballDatasetPreview, loadSquirrelDatasetPreview } from '../dataset/sampleDataset.js'
+import { SQUIRREL_DATASET_NAME } from '../fixtures/squirrelCensusMeta.js'
 import { footballFixture, footballFixtureSourceLinks } from '../fixtures/footballTimeline.js'
 import type { RowNoun } from '../insights/views.js'
 import type { AnalysisResultRow, AnalysisSnapshot } from '../shared/analysis.js'
 import { asAnalysisRow, type DatasetPreview } from '../shared/dataset.js'
 import { parseJevQueryJson } from '../shared/jevQuery.js'
+
+const FOOTBALL_DEMO_NAME = 'Super Bowl LX: Seattle on offense'
 
 export type DemoDatasetId = 'squirrels' | 'football'
 export type DemoAnalysisId = 'demo-squirrels' | 'demo-football'
@@ -21,13 +24,13 @@ export interface DemoDatasetListItem {
 export const demoDatasets: readonly DemoDatasetListItem[] = Object.freeze([
   {
     id: 'squirrels',
-    name: 'Central Park squirrels',
+    name: SQUIRREL_DATASET_NAME,
     description: 'Every sighting from the 2018 census: where, when, and what the squirrels were doing.',
     analysisId: 'demo-squirrels',
   },
   {
     id: 'football',
-    name: 'Super Bowl play stream',
+    name: FOOTBALL_DEMO_NAME,
     description: 'Seattle’s 71 offensive plays: the lead, the yardage, and who gained it.',
     analysisId: 'demo-football',
   },
@@ -83,7 +86,7 @@ const footballDemoPreview = (): DatasetPreview => {
   return {
     ...base,
     datasetId: 'demo-football-plays',
-    displayName: 'Super Bowl LX: Seattle on offense',
+    displayName: FOOTBALL_DEMO_NAME,
     contentHash: 'fixture-football-demo',
     columns: inferSampleColumns(rows, [...FOOTBALL_DEMO_COLUMNS]),
     acceptedRowCount: rows.length,

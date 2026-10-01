@@ -1,14 +1,14 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { App, canConfirmJevRun, defaultAnalysisApi, hasRunnableQuery, PRODUCT_TITLE, queryRunFooter, type AnalysisApiClient } from './App'
+import { App, defaultAnalysisApi, hasRunnableQuery, PRODUCT_TITLE, type AnalysisApiClient } from './App'
 import { getFootballDatasetPreview, loadFixtureDatasetPreview } from './dataset/sampleDataset'
 import { footballSampleCsv } from './dataset/sampleCsv'
 import { FOOTBALL_FIXTURE_ID, getHalftimeModelInput } from './fixtures/footballTimeline'
 import { asAnalysisRow } from './shared/dataset'
 import type { AnalysisDraftResult, AnalysisSnapshot } from './shared/analysis'
-import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_PLAY_QUALITY_TASK, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY, SQUIRREL_EATING_NOUL_QUERY, SQUIRREL_EATING_TASK, INVALID_CLASSES_COPY } from './shared/questionKind'
+import { SAMPLE_PLAY_QUALITY_LEVELS, SAMPLE_PLAY_QUALITY_QUERY, SAMPLE_WIN_LIKELIHOOD_TASK, SAMPLE_WIN_NOUL_QUERY } from './shared/questionKind'
 import { SQUIRREL_FIXTURE_ID } from './fixtures/squirrelCensus'
-import { formatDraftQueryForEditor, parseJevQueryJson } from './shared/jevQuery'
+import { formatDraftQueryForEditor } from './shared/jevQuery'
 import type { DatasetIntakeStatus, DatasetPreview } from './shared/dataset'
 
 const input = asAnalysisRow(getHalftimeModelInput()[0])
@@ -141,24 +141,14 @@ const startSampleRun = async (api: AnalysisApiClient) => {
   await enterSample(api)
 }
 
-const openEngineer = () => {
-  fireEvent.click(screen.getByRole('link', { name: /^engineer$/i }))
-}
-
-const startEngineerRun = async (api: AnalysisApiClient) => {
-  await openFixture(api)
-  openEngineer()
-  fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-  await screen.findByLabelText(/^Jev query JSON$/i)
-  fireEvent.click(screen.getByRole('button', { name: /run jev/i }))
-  await waitFor(() => expect(document.querySelector('.analysis-card')).toBeTruthy())
+/** A saved run is the one place the run view is shown; it is read through the share API. */
+const openSharedRun = async (api: AnalysisApiClient) => {
+  window.history.pushState({}, '', '/share/analysis-fixture-choice')
+  return render(<App api={api} />)
 }
 
 const analysisCard = (): HTMLElement => document.querySelector('.analysis-card') as HTMLElement
 
-const isPlayerChoiceStart = (request: { questionKind?: string; classes?: readonly string[] }) => (
-  request.questionKind === 'choice' && (request.classes ?? []).includes('K.Walker')
-)
 
 const expectNamedDashboard = () => {
   expect(Number(document.querySelector('.dashboard-grid')?.getAttribute('data-insight-count'))).toBeGreaterThanOrEqual(2)
@@ -184,18 +174,18 @@ describe('Jev insight product flow', () => {
     expect(screen.getByRole('heading', { level: 1, name: PRODUCT_TITLE })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Example dashboards' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /a city park, mapped/i })).toHaveAttribute('href', '/demo/squirrels')
-    expect(screen.getByRole('link', { name: /every play, in perspective/i })).toHaveAttribute('href', '/demo/football')
+    expect(screen.getByRole('link', { name: /seattle.s super bowl, play by play/i })).toHaveAttribute('href', '/demo/football')
     expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /run jev on a csv/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/bring a dataset\. ask a question\. see jev classify every row/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /choose a dataset/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /^your data$/i })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /2026 super bowl demo/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /squirrel census/i })).not.toBeInTheDocument()
     expect(screen.queryByText('Places where they eat.')).not.toBeInTheDocument()
     expect(screen.queryByText(/location vs activity/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/football is the sample, not the product/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/same live chart as the sample/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /bring your own data/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /^your data$/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/^upload csv$/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^upload csv$/i })).toBeInTheDocument()
     expect(screen.queryByText(/choose file/i)).not.toBeInTheDocument()
@@ -210,11 +200,8 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByRole('button', { name: /run jev/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/review the json/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /^engineer$/i })).not.toBeInTheDocument()
     expect(screen.getByText(/up to 5 mb/i)).toBeInTheDocument()
     expect(screen.queryByText(/datasets and results are public/i)).not.toBeInTheDocument()
-    expect(document.querySelector('[data-mode="product"]')).toBeTruthy()
-    expect(window.location.search).not.toMatch(/mode=engineer/)
     expect(screen.queryByText(/espn|gamecast|ask a football question|analyze your business/i)).not.toBeInTheDocument()
     expect(api.draft).not.toHaveBeenCalled()
     expect(api.start).not.toHaveBeenCalled()
@@ -240,32 +227,23 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeInTheDocument()
   })
 
-  it('unlocks Run Jev from existing Edit query text without another Draft or forced edit', () => {
+  it('treats only Jev query JSON as a runnable query', () => {
     expect(hasRunnableQuery('')).toBe(false)
     expect(hasRunnableQuery('   ')).toBe(false)
+    expect(hasRunnableQuery('{not-json')).toBe(false)
+    expect(hasRunnableQuery(SAMPLE_WIN_LIKELIHOOD_TASK)).toBe(false)
     expect(hasRunnableQuery(draft.query)).toBe(true)
-    expect(canConfirmJevRun({ query: draft.query, starting: false })).toBe(true)
-    expect(canConfirmJevRun({ query: draft.query, starting: true })).toBe(false)
-    expect(canConfirmJevRun({ query: '  ', starting: false })).toBe(false)
-    expect(canConfirmJevRun({ query: '{not-json', starting: false })).toBe(false)
-    expect(canConfirmJevRun({ query: SAMPLE_WIN_LIKELIHOOD_TASK, starting: false })).toBe(false)
-    expect(queryRunFooter({ query: draft.query, starting: false, hasSnapshot: false })).toBeUndefined()
-    expect(queryRunFooter({ query: draft.query, starting: true, hasSnapshot: false })).toBe('Starting…')
-    expect(queryRunFooter({ query: draft.query, starting: false, hasSnapshot: true })).toBeUndefined()
-    expect(queryRunFooter({ query: '{not-json', starting: false, hasSnapshot: false })).toBe('Valid Jev JSON required.')
-    expect(queryRunFooter({ query: '', starting: false, hasSnapshot: false })).toBe('Enter Jev query JSON before running.')
-    expect(queryRunFooter({ query: '', starting: true, hasSnapshot: false })).toBe('Starting…')
   })
 
-  it('does not fetch on sample task editing, and enables Run Jev after draft without a query edit', async () => {
+  it('opens a fixture dataset as the dashboard without drafting or running anything', async () => {
     const api = makeApi()
     await openFixture(api)
     expect(document.querySelector('[data-stage="dataset"]')).toBeTruthy()
     expect(window.location.pathname).toBe(`/dataset/${FOOTBALL_FIXTURE_ID}`)
-    expect(screen.queryByRole('heading', { name: /choose a dataset/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /^your data$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /run jev on a csv/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/bring a dataset\. ask a question\. see jev classify every row/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: PRODUCT_TITLE })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
     expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /draft task/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
@@ -277,14 +255,13 @@ describe('Jev insight product flow', () => {
     expect(document.querySelector('[data-insight-id="series-win"]')).toHaveAttribute('data-visual', 'series')
     expect(document.querySelector('[data-insight-id="series-play-quality"]')).toHaveAttribute('data-visual', 'series')
     expect(document.querySelector('[data-insight-id="bars-success"]')).toBeNull()
-    expect(screen.getByText('71 rows')).toBeInTheDocument()
-    expect(screen.getByText(/^26 columns$/)).toBeInTheDocument()
+    expect(document.querySelector('.page-meta')).toHaveTextContent('71 rows · 26 columns')
     expect(screen.queryByText(/showing first/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/delimiter/i)).not.toBeInTheDocument()
     expect(screen.getByText(/not evidence of model quality/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /source/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /license/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: /2026 super bowl demo/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: /2026 super bowl demo/i })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'posteam_score' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'defteam_score' })).toBeInTheDocument()
     const previewTable = screen.getByRole('table', { name: /dataset preview/i })
@@ -295,174 +272,24 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/showing first/i)).not.toBeInTheDocument()
     expect(api.draft).not.toHaveBeenCalled()
     await waitFor(() => expect(api.start).toHaveBeenCalled())
-    openEngineer()
-    expect(screen.getByLabelText(/^Analysis task$/i)).toHaveValue(SAMPLE_WIN_LIKELIHOOD_TASK)
-    fireEvent.change(screen.getByLabelText(/^Analysis task$/i), { target: { value: 'Find a first-half signal.' } })
     expect(api.draft).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-    const editor = await screen.findByLabelText(/^Jev query JSON$/i)
-    expect(document.querySelector('[data-stage="dataset"]')).toBeTruthy()
-    expect((editor as HTMLTextAreaElement).value).not.toBe(SAMPLE_WIN_LIKELIHOOD_TASK)
-    expect(screen.queryByLabelText(/^Generated query$/i)).not.toBeInTheDocument()
-    expect(api.draft).toHaveBeenCalledTimes(1)
-    const dashboardStarts = vi.mocked(api.start).mock.calls.length
-    expect(dashboardStarts).toBeGreaterThanOrEqual(2)
-    const runButton = screen.getByRole('button', { name: /run jev/i })
-    expect(runButton).toBeEnabled()
-    expect(screen.getByText('Classifying 39 of 71 rows (H1 plays).')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^copy$/i })).toBeInTheDocument()
-    expect(document.querySelector('[data-stage="dataset"]')).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
-    fireEvent.click(runButton)
-    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(dashboardStarts + 1))
-    expect(document.querySelector('[data-stage="run"]')).toBeTruthy()
-    expect(api.start).toHaveBeenCalledWith({ datasetId: FOOTBALL_FIXTURE_ID, fixtureId: FOOTBALL_FIXTURE_ID, query: draftQueryJson, classes: draft.metadata.classes, questionKind: 'choice' })
-    expect(api.draft).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps Draft/JSON off the product URL and only on Engineer', async () => {
-    const api = makeApi()
-    await openFixture(api)
-    expect(document.querySelector('[data-mode="product"]')).toBeTruthy()
-    expect(window.location.search).not.toMatch(/mode=engineer/)
-    expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /analysis task/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /jev query json/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /draft task/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /run jev/i })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('link', { name: /^engineer$/i }))
-    expect(document.querySelector('[data-mode="engineer"]')).toBeTruthy()
-    expect(window.location.search).toMatch(/mode=engineer/)
-    expect(screen.getByText(/edit jev json/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/^Analysis task$/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/^Jev query JSON$/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /draft task/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /^product$/i })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('link', { name: /^product$/i }))
-    expect(document.querySelector('[data-mode="product"]')).toBeTruthy()
-    expect(window.location.pathname).toBe(`/dataset/${FOOTBALL_FIXTURE_ID}`)
-    expect(window.location.search).not.toMatch(/mode=engineer/)
-    expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /jev query json/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /draft task/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Will SEA win?' })).toBeInTheDocument()
-  })
 
-  it('opens the JSON editor from ?mode=engineer without leaking onto /', async () => {
-    window.history.pushState({}, '', '/?mode=engineer')
-    const api = makeApi()
-    render(<App api={api} />)
-    expect(document.querySelector('[data-mode="engineer"]')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /^2026 super bowl demo$/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /bring your own data/i })).toBeInTheDocument()
-    window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}?mode=engineer`)
-    window.dispatchEvent(new PopStateEvent('popstate'))
-    expect(await screen.findByRole('button', { name: /analyze dataset/i })).toBeInTheDocument()
-    expect(screen.getByLabelText(/^Jev query JSON$/i)).toBeInTheDocument()
-    expect(document.querySelector('details.advanced-json')).toHaveAttribute('open')
-    fireEvent.click(screen.getByRole('link', { name: /^product$/i }))
-    expect(window.location.search).not.toMatch(/mode=engineer/)
-    expect(screen.queryByLabelText(/^Jev query JSON$/i)).not.toBeInTheDocument()
-  })
 
-  it('keeps Starting… in the query footer while Run is in flight', async () => {
-    let finish: ((value: AnalysisSnapshot) => void) | undefined
-    const pending = new Promise<AnalysisSnapshot>((resolve) => { finish = resolve })
-    const api = makeApi({
-      start: vi.fn(() => pending),
-    })
-    await openFixture(api)
-    openEngineer()
-    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-    await screen.findByLabelText(/^Jev query JSON$/i)
-    expect(screen.queryByText(/review the json, then run jev/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/draft builds the editable/i)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /run jev/i }))
-    expect(await screen.findByRole('button', { name: /starting/i })).toBeDisabled()
-    expect(document.querySelector('.query-card .form-footer span')).toHaveTextContent('Starting…')
-    expect(screen.queryByText(/enter jev query json before running/i)).not.toBeInTheDocument()
-    finish?.(snapshot({ status: 'queued', progress: { completedRows: 0, totalRows: 71, completedCalls: 0, totalCalls: 71 }, resultRows: [], currentFixtureRow: { rowIndex: 0, input } }))
-    await waitFor(() => expect(document.querySelector('[data-stage="run"]')).toBeTruthy())
-    expect(screen.queryByText(/enter jev query json before running/i)).not.toBeInTheDocument()
-    expect(document.querySelector('.query-card .form-footer span')).toBeNull()
-  })
 
-  it('drafts the Jev query JSON into the editor, not a prose paraphrase of the task', async () => {
-    const api = makeApi()
-    await openFixture(api)
-    openEngineer()
-    expect(screen.getByLabelText(/^Analysis task$/i)).toHaveValue(SAMPLE_WIN_LIKELIHOOD_TASK)
-    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-    const editor = await screen.findByLabelText(/^Jev query JSON$/i)
-    const parsed = parseJevQueryJson((editor as HTMLTextAreaElement).value)
-    expect(parsed?.type).toMatch(/^(noul|score|choice)$/)
-    expect((editor as HTMLTextAreaElement).value).toBe(JSON.stringify(parsed, null, 2))
-    expect((editor as HTMLTextAreaElement).value.trim().startsWith('{')).toBe(true)
-    expect((editor as HTMLTextAreaElement).value).toMatch(/"type"\s*:/)
-    expect((editor as HTMLTextAreaElement).value).not.toBe(SAMPLE_WIN_LIKELIHOOD_TASK)
-    expect(screen.queryByLabelText(/^Generated query$/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /^jev query$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /run jev/i })).toBeEnabled()
-    const writeText = vi.fn(async () => undefined)
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-    fireEvent.click(screen.getByRole('button', { name: /^copy$/i }))
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith((editor as HTMLTextAreaElement).value))
-  })
 
-  it('runs after the user edits the Jev query JSON', async () => {
-    const api = makeApi()
-    await openFixture(api)
-    openEngineer()
-    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-    await screen.findByLabelText(/^Jev query JSON$/i)
-    const edited = formatDraftQueryForEditor({
-      query: 'Will SEA cover given this play state?',
-      questionKind: 'noul',
-      classes: [],
-    })
-    fireEvent.change(screen.getByLabelText(/^Jev query JSON$/i), { target: { value: edited } })
-    expect(screen.getByRole('button', { name: /run jev/i })).toBeEnabled()
-    fireEvent.click(screen.getByRole('button', { name: /run jev/i }))
-    await waitFor(() => expect(api.start).toHaveBeenCalledWith(expect.objectContaining({
-      query: edited,
-      questionKind: 'noul',
-      classes: [],
-    })))
-  })
 
-  it('keeps Run Jev disabled when Edit query text is cleared, and still accepts a manual edit', async () => {
-    const api = makeApi()
-    await openFixture(api)
-    openEngineer()
-    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-    await screen.findByLabelText(/^Jev query JSON$/i)
-    fireEvent.change(screen.getByLabelText(/^Jev query JSON$/i), { target: { value: '   ' } })
-    expect(screen.getByRole('button', { name: /run jev/i })).toBeDisabled()
-    expect(screen.getByText(/enter jev query json before running/i)).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText(/^Jev query JSON$/i), { target: { value: '{not-json' } })
-    expect(screen.getByRole('button', { name: /run jev/i })).toBeDisabled()
-    expect(screen.getByText(/valid jev json required/i)).toBeInTheDocument()
-    const edited = formatDraftQueryForEditor({
-      query: 'Use only visible columns.',
-      questionKind: 'choice',
-      classes: draft.metadata.classes,
-    })
-    fireEvent.change(screen.getByLabelText(/^Jev query JSON$/i), { target: { value: edited } })
-    expect(screen.getByRole('button', { name: /run jev/i })).toBeEnabled()
-    fireEvent.click(screen.getByRole('button', { name: /run jev/i }))
-    await waitFor(() => expect(api.start).toHaveBeenCalledWith({ datasetId: FOOTBALL_FIXTURE_ID, fixtureId: FOOTBALL_FIXTURE_ID, query: edited, classes: draft.metadata.classes, questionKind: 'choice' }))
-  })
 
   it('renders progress, live chart, processed-row rail, and share action', async () => {
-    const api = makeApi({ read: vi.fn(async () => snapshot({
+    const api = makeApi({ share: vi.fn(async () => snapshot({
       status: 'running',
       progress: { completedRows: 12, totalRows: 39, completedCalls: 12, totalCalls: 39 },
       resultRows: Array.from({ length: 3 }, (_, rowIndex) => ({ rowIndex, input, model: 'jev-latest', selectedClass: 'K.Walker', probabilities: { 'K.Walker': 0.72, 'C.Kupp': 0.1, 'J.Smith-Njigba': 0.12, 'Other/Tie': 0.06 }, confidence: 0.72 })),
     })) })
-    await startEngineerRun(api)
-    const runView = analysisCard()
+    await openSharedRun(api)
+    const runView = await waitFor(() => { const card = analysisCard(); expect(card).toBeTruthy(); return card })
     expect(await within(runView).findByText('12 / 39 rows')).toBeInTheDocument()
-    expect(within(runView).getAllByText(/classifying 39 of 71 rows \(h1 plays\)/i).length).toBeGreaterThan(0)
     expect(within(runView).getByRole('heading', { level: 2, name: '31%' })).toBeInTheDocument()
     expect(within(runView).getByText('12 / 39')).toBeInTheDocument()
     expect(within(runView).getByRole('heading', { level: 3, name: 'Class distribution' })).toBeInTheDocument()
@@ -495,26 +322,22 @@ describe('Jev insight product flow', () => {
     })
     let reads = 0
     const api = makeApi({
-      start: vi.fn(async (request) => (
-        isPlayerChoiceStart(request)
-          ? running(0, 'queued')
-          : snapshot({ status: 'complete', questionKind: request.questionKind, classes: request.classes ? [...request.classes] : [], resultRows: [], progress: { completedRows: 71, totalRows: 71, completedCalls: 71, totalCalls: 71 } })
-      )),
-      read: vi.fn(async () => {
+      share: vi.fn(async () => {
         reads += 1
-        if (reads === 1) return running(1)
-        if (reads === 2) return running(2)
+        if (reads === 1) return running(0, 'queued')
+        if (reads === 2) return running(1)
+        if (reads === 3) return running(2)
         return running(3, 'complete')
       }),
     })
-    await startEngineerRun(api)
-    const runView = analysisCard()
+    await openSharedRun(api)
+    const runView = await waitFor(() => { const card = analysisCard(); expect(card).toBeTruthy(); return card })
     expect(await within(runView).findByText('Waiting for the first row…')).toBeInTheDocument()
     expect(within(runView).getByRole('complementary', { name: /processed rows/i })).toBeInTheDocument()
     await waitFor(() => expect(within(runView).queryByText('Waiting for the first row…')).not.toBeInTheDocument())
     await waitFor(() => expect(runView.querySelector('[data-class="K.Walker"]')).toHaveAttribute('data-count', '1'))
     await waitFor(() => expect(runView.querySelector('[data-class="C.Kupp"]')).toHaveAttribute('data-count', '1'))
-    expect(api.read).toHaveBeenCalled()
+    expect(api.share).toHaveBeenCalled()
   })
 
   it('charts a Noul win-probability series instead of leftover player-class bars', async () => {
@@ -676,19 +499,6 @@ describe('Jev insight product flow', () => {
     expect(api.start).not.toHaveBeenCalled()
   })
 
-  it('answers a column question from the dashboard when a draft is refused', async () => {
-    const api = makeApi({ draft: vi.fn(async () => { throw new Error('COLUMN_QUESTION') }) })
-    window.history.pushState({}, '', `/dataset/${SQUIRREL_FIXTURE_ID}`)
-    render(<App api={api} />)
-    await screen.findByRole('region', { name: 'Dashboard' })
-    openEngineer()
-    fireEvent.change(screen.getByLabelText(/^Analysis task$/i), { target: { value: 'Where are squirrels eating, by location?' } })
-    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-    expect(await screen.findByText(/your columns already answer this/i)).toBeInTheDocument()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(document.querySelector('.story-card h2')).toHaveTextContent('Eating is 1.5× as common for Ground Plane as for Above Ground')
-    expect(api.start).not.toHaveBeenCalled()
-  })
 
   it('follows the live edge until the user scrubs back, then seeks from the row rail', async () => {
     const running = (count: number): AnalysisSnapshot => snapshot({
@@ -705,19 +515,15 @@ describe('Jev insight product flow', () => {
     })
     let reads = 0
     const api = makeApi({
-      start: vi.fn(async (request) => (
-        isPlayerChoiceStart(request)
-          ? running(0)
-          : snapshot({ status: 'complete', questionKind: request.questionKind, classes: request.classes ? [...request.classes] : [], resultRows: [], progress: { completedRows: 71, totalRows: 71, completedCalls: 71, totalCalls: 71 } })
-      )),
-      read: vi.fn(async () => {
+      share: vi.fn(async () => {
         reads += 1
-        if (reads === 1) return running(1)
-        if (reads === 2) return running(2)
+        if (reads === 1) return running(0)
+        if (reads === 2) return running(1)
+        if (reads === 3) return running(2)
         return running(3)
       }),
     })
-    await startEngineerRun(api)
+    await openSharedRun(api)
     const rail = await screen.findByRole('complementary', { name: /processed rows/i })
     await waitFor(() => expect(within(rail).getByRole('button', { name: /row 2 of 39/i })).toBeInTheDocument(), { timeout: 4000 })
     await waitFor(() => expect(document.querySelector('[data-class="C.Kupp"]')).toHaveAttribute('data-count', '1'))
@@ -739,7 +545,7 @@ describe('Jev insight product flow', () => {
     fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
     expect(await screen.findByRole('heading', { name: 'tickets.csv' })).toBeInTheDocument()
     expect(api.createFromCsv).toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: /change dataset/i }))
+    fireEvent.click(screen.getByRole('link', { name: /back/i }))
     fireEvent.change(screen.getByLabelText(/public https csv url/i), { target: { value: 'https://example.com/data.csv' } })
     fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))
     expect(await screen.findByRole('heading', { name: 'remote.csv' })).toBeInTheDocument()
@@ -792,79 +598,7 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByRole('region', { name: /current row inspector/i })).not.toBeInTheDocument()
   })
 
-  it('shows a fruit/vehicle Choice draft with JSON edit and Run after BYOD upload', async () => {
-    const classify = {
-      ...uploaded,
-      datasetId: 'dataset-classify-1',
-      displayName: 'classify.csv',
-      columns: [
-        { name: 'id', normalizedName: 'id', inferredType: 'number' as const },
-        { name: 'text', normalizedName: 'text', inferredType: 'string' as const },
-        { name: 'label_hint', normalizedName: 'label_hint', inferredType: 'string' as const },
-      ],
-      acceptedRowCount: 10,
-      previewRows: [{ id: 1, text: 'apple', label_hint: 'fruit' }, { id: 2, text: 'truck', label_hint: 'vehicle' }],
-    }
-    const fruitQuery = formatDraftQueryForEditor({
-      query: 'Classify each row as fruit or vehicle using text.',
-      questionKind: 'choice',
-      classes: ['fruit', 'vehicle'],
-    })
-    const api = makeApi({
-      createFromCsv: vi.fn(async () => classify),
-      draft: vi.fn(async () => ({
-        fixtureId: classify.datasetId,
-        datasetId: classify.datasetId,
-        sourceType: 'upload' as const,
-        query: fruitQuery,
-        metadata: {
-          provider: 'openrouter',
-          model: 'openai/gpt-4o-mini',
-          rowCount: 10,
-          questionKind: 'choice' as const,
-          classes: ['fruit', 'vehicle'],
-          columns: ['id', 'text', 'label_hint'],
-          displayName: 'classify.csv',
-        },
-      })),
-    })
-    render(<App api={api} />)
-    const file = new File(['id,text,label_hint\n1,apple,fruit\n'], 'classify.csv', { type: 'text/csv' })
-    fireEvent.change(screen.getByLabelText(/upload csv/i), { target: { files: [file] } })
-    expect(await screen.findByRole('heading', { name: 'classify.csv' })).toBeInTheDocument()
-    expect(screen.queryByText(/classify by /i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: /yes or no|notable rows/i })).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/^Analysis task$/i)).not.toBeInTheDocument()
-    openEngineer()
-    fireEvent.change(screen.getByLabelText(/^Analysis task$/i), {
-      target: { value: 'classify each row as fruit or vehicle using text' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-    const editor = await screen.findByLabelText(/^Jev query JSON$/i)
-    expect(parseJevQueryJson((editor as HTMLTextAreaElement).value)).toEqual({
-      type: 'choice',
-      instructions: 'Classify each row as fruit or vehicle using text.',
-      criteria: { fruit: 'the fruit class', vehicle: 'the vehicle class' },
-    })
-    expect(screen.getByRole('button', { name: /run jev/i })).toBeEnabled()
-    expect(screen.getByRole('list', { name: /choice classes/i })).toHaveTextContent('fruit')
-    expect(screen.getByRole('list', { name: /choice classes/i })).toHaveTextContent('vehicle')
-    expect(screen.queryByText(/INVALID_CLASSES/)).not.toBeInTheDocument()
-  })
 
-  it('shows a plain draft-classes message instead of raw INVALID_CLASSES', async () => {
-    const api = makeApi({
-      draft: vi.fn(async () => { throw new Error('INVALID_CLASSES') }),
-    })
-    await openFixture(api)
-    openEngineer()
-    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(INVALID_CLASSES_COPY)
-    expect(alert).toHaveTextContent(/couldn't draft/i)
-    expect(alert).not.toHaveTextContent('INVALID_CLASSES')
-    expect(vi.mocked(api.start).mock.calls.every((call) => !(call[0]?.classes ?? []).includes('K.Walker'))).toBe(true)
-  })
 
   it('keeps idle intake quiet when durable storage is down, and still opens a fixture route', async () => {
     const api = makeApi({
@@ -901,10 +635,43 @@ describe('Jev insight product flow', () => {
     expect(document.querySelector('.intake-card')).not.toHaveClass('is-disabled')
     expect(screen.getByText(/read in your browser and is not uploaded/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: /a city park, mapped/i }))
-    expect(await screen.findByRole('heading', { name: /small creatures/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /^squirrel census$/i })).toBeInTheDocument()
     expect(api.createFromUrl).not.toHaveBeenCalled()
     expect(api.start).not.toHaveBeenCalled()
     expect(api.createFromCsv).not.toHaveBeenCalled()
+  })
+
+  it('titles an example by its dataset with no tagline, eyebrow, or duplicate header', async () => {
+    window.history.pushState({}, '', '/demo/football')
+    render(<App api={makeApi()} />)
+    expect(await screen.findByRole('heading', { level: 1, name: 'Super Bowl LX: Seattle on offense' })).toBeInTheDocument()
+    expect(screen.getAllByText('Super Bowl LX: Seattle on offense')).toHaveLength(1)
+    expect(document.querySelector('.page-meta')).toHaveTextContent('71 rows · 16 columns')
+    expect(screen.queryByText(/built-in example|in perspective|clearer picture|tells a story/i)).not.toBeInTheDocument()
+    expect(document.querySelector('.eyebrow')).toBeNull()
+    // Same chrome as the landing: no brand link and no footer. The way out is the Back link.
+    expect(screen.queryByRole('link', { name: /jev/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back/i })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('button', { name: /replay timeline/i })).toBeInTheDocument()
+  })
+
+  it('ignores the retired ?mode=engineer parameter', async () => {
+    window.history.pushState({}, '', `/dataset/${FOOTBALL_FIXTURE_ID}?mode=engineer`)
+    render(<App api={makeApi()} />)
+    expect(await screen.findByRole('button', { name: /analyze dataset/i })).toBeInTheDocument()
+    expect(screen.queryByText(/edit jev json/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^product$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
+  })
+
+  it('sends a demo replay back to its dashboard', async () => {
+    window.history.pushState({}, '', '/share/demo-football')
+    render(<App api={makeApi()} />)
+    expect(await screen.findByRole('heading', { level: 1, name: 'Saved analysis' })).toBeInTheDocument()
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: /back/i }))
+    expect(window.location.pathname).toBe('/demo/football')
   })
 
   const salesCsv = 'region,units\nWest,10\nEast,20\nWest,30\nEast,5\nNorth,7\nNorth,9\nWest,12\nEast,3\n'
@@ -936,7 +703,7 @@ describe('Jev insight product flow', () => {
     window.history.pushState({}, '', '/local')
     render(<App api={makeApi()} />)
     await waitFor(() => expect(window.location.pathname).toBe('/'))
-    expect(screen.getByRole('heading', { name: /bring your own data/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /^your data$/i })).toBeInTheDocument()
   })
 
   it('shows a short BYOD error without durable-storage jargon when a live upload fails', async () => {
@@ -1085,13 +852,13 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/couldn't run/i)).not.toBeInTheDocument()
   })
 
-  it('clears the public CSV URL after Change dataset', async () => {
+  it('clears the public CSV URL after going back from a dataset', async () => {
     const api = makeApi()
     render(<App api={api} />)
     fireEvent.change(screen.getByLabelText(/public https csv url/i), { target: { value: 'https://example.com/data.csv' } })
     fireEvent.click(screen.getByRole('button', { name: /use public csv url/i }))
     expect(await screen.findByRole('heading', { name: 'remote.csv' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /change dataset/i }))
+    fireEvent.click(screen.getByRole('link', { name: /back/i }))
     expect(screen.getByLabelText(/public https csv url/i)).toHaveValue('')
   })
 
@@ -1106,34 +873,9 @@ describe('Jev insight product flow', () => {
     expect(alert).toHaveTextContent(/use a public https link/i)
     expect(api.createFromUrl).not.toHaveBeenCalled()
     expect(screen.queryByText(/couldn't run/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /choose a dataset/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /^your data$/i })).toBeInTheDocument()
   })
 
-  it('resets Share Copied when the user drafts again and after a short delay', async () => {
-    const writeText = vi.fn(async () => undefined)
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-    const api = makeApi({
-      start: vi.fn(async () => snapshot()),
-      read: vi.fn(async () => snapshot()),
-    })
-    await startEngineerRun(api)
-    const runView = document.querySelector('.analysis-card') as HTMLElement
-    const share = await within(runView).findByRole('button', { name: /copy shareable public url/i })
-    fireEvent.click(share)
-    await waitFor(() => expect(share).toHaveTextContent(/^copied$/i))
-    fireEvent.click(screen.getByRole('button', { name: /draft task/i }))
-    await waitFor(() => expect(within(runView).getByRole('button', { name: /copy shareable public url/i })).toHaveTextContent(/^share$/i))
-    vi.useFakeTimers()
-    try {
-      fireEvent.click(within(runView).getByRole('button', { name: /copy shareable public url/i }))
-      await act(async () => { await Promise.resolve() })
-      expect(within(runView).getByRole('button', { name: /copy shareable public url/i })).toHaveTextContent(/^copied$/i)
-      await act(async () => { vi.advanceTimersByTime(2500) })
-      expect(within(runView).getByRole('button', { name: /copy shareable public url/i })).toHaveTextContent(/^share$/i)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
 
   it('downloads results CSV from a completed run', async () => {
     const api = makeApi({
@@ -1162,20 +904,6 @@ describe('Jev insight product flow', () => {
     }
   })
 
-  it('shows classified subset copy on a completed run without a saved-share sentence', async () => {
-    const api = makeApi({
-      start: vi.fn(async () => snapshot({ status: 'complete' })),
-      read: vi.fn(async () => snapshot({ status: 'complete' })),
-    })
-    await startEngineerRun(api)
-    const latency = await screen.findByText(/classified 39 of 71 rows \(h1 plays\)/i)
-    expect(latency).not.toHaveTextContent(/using saved run/i)
-    expect(screen.queryByText(/using saved run/i)).not.toBeInTheDocument()
-    expect(within(analysisCard()).getByRole('button', { name: /copy shareable public url/i })).toBeInTheDocument()
-    expect(screen.queryByText(/saved\. share copies a public link/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/^saved run\.$/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/can take a few minutes/i)).not.toBeInTheDocument()
-  })
 
   it('reuses a complete start as a saved run without forceNew or a live climb', async () => {
     const complete = snapshot({
@@ -1199,20 +927,6 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByText(/using saved run/i)).not.toBeInTheDocument()
   })
 
-  it('sets live-run expectations while a run is in flight', async () => {
-    const running = snapshot({
-      status: 'running',
-      createdAt: new Date().toISOString(),
-      progress: { completedRows: 1, totalRows: 39, completedCalls: 1, totalCalls: 39 },
-    })
-    const api = makeApi({
-      start: vi.fn(async () => running),
-      read: vi.fn(async () => running),
-    })
-    await startEngineerRun(api)
-    expect(await screen.findByText(/live run/i)).toHaveTextContent(/classifying 39 of 71 rows \(h1 plays\)/i)
-    expect(screen.getByText(/live run/i)).toHaveTextContent(/can take a few minutes/i)
-  })
 
   it('shows loading feedback while a public CSV URL is in flight', async () => {
     let finish: ((value: DatasetPreview) => void) | undefined
@@ -1255,7 +969,7 @@ describe('Jev insight product flow', () => {
     expect(screen.queryByRole('heading', { name: 'Will SEA win?' })).not.toBeInTheDocument()
     expect(document.querySelector('[data-stage="dataset"]')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^run$/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: /choose a dataset/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /^your data$/i })).not.toBeInTheDocument()
     expect(api.start).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: /analyze dataset/i }))
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2))
@@ -1461,7 +1175,7 @@ describe('audit boundaries and recovery', () => {
     fireEvent.click(screen.getByRole('link', { name: /a city park, mapped/i }))
     await act(async () => { finish?.(uploaded) })
     expect(window.location.pathname).toBe('/demo/squirrels')
-    expect(screen.getByRole('heading', { name: /small creatures/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /^squirrel census$/i })).toBeInTheDocument()
     expect(api.start).not.toHaveBeenCalled()
   })
 

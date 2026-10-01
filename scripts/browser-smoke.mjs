@@ -46,7 +46,8 @@ try {
       for (const demo of ['squirrels', 'football']) {
         apiRequests.length = 0
         await page.goto(`${baseUrl}/demo/${demo}`)
-        await page.getByRole('heading', { name: demo === 'squirrels' ? 'Small creatures. Big picture.' : 'Every play tells a story.' }).waitFor()
+        await page.getByRole('heading', { name: demo === 'squirrels' ? 'Squirrel census' : 'Super Bowl LX: Seattle on offense' }).waitFor()
+        await page.locator('.story-card').first().waitFor()
         const cards = await page.locator('.story-card').count()
         assert.ok(cards >= 4, `${demo}: expected a full dashboard, got ${cards} charts`)
         assert.equal(await page.getByRole('button', { name: /^Download CSV for/ }).count(), cards)

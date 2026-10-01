@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DemoPicker } from './components/LandingDemos'
-import { demoReplayDisclosure, isDemoAnalysisId, loadDemoDashboard, loadDemoSnapshot, type DemoDashboard } from './demo'
+import { demoDatasets, demoReplayDisclosure, isDemoAnalysisId, loadDemoDashboard, loadDemoSnapshot, type DemoDashboard } from './demo'
 import { copyText } from './browser/clipboard'
 import { AnalysisRunView } from './components/AnalysisRunView'
 import type { DashboardTileModel } from './components/DashboardTile'
@@ -11,12 +11,9 @@ import { StoryDashboard } from './components/story/StoryDashboard'
 import { buildStoryDashboard } from './insights/dashboard'
 import { SchemaStrip } from './components/SchemaStrip'
 import { StageFold } from './components/StageFold'
-import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { ArrowUpRight } from './components/ui/arrow'
-import { Card, CardContent, CardFooter, CardHeader } from './components/ui/card'
 import { Label } from './components/ui/label'
-import { Textarea } from './components/ui/textarea'
 import { loadFixtureDatasetPreview } from './dataset/sampleDataset'
 import { formatCount } from './insights/format'
 import { hasNamedHeuristicCuts, proposeInsights, queryFromInsight, sanitizeLlmInsightProposals, mergeDashboardInsights, type InsightProposal } from './dataset/insight'
@@ -28,16 +25,13 @@ import type {
   AnalysisSnapshot,
 } from './shared/analysis'
 import {
-  INVALID_CLASSES_COPY,
-} from './shared/questionKind'
-import {
   classesFromJevQuery,
   formatDraftQueryForEditor,
   looksLikeJevQueryJson,
   parseJevQueryJson,
 } from './shared/jevQuery'
 import type { DatasetIntakeStatus, DatasetPreview } from './shared/dataset'
-import { ANALYSIS_ERROR_COPY, COLUMN_QUESTION_CODE, COLUMN_QUESTION_COPY, plainAnalysisError, runSubsetCopy } from './runView/format'
+import { ANALYSIS_ERROR_COPY, plainAnalysisError } from './runView/format'
 import { useTheme } from './theme'
 import './styles.css'
 
@@ -126,11 +120,7 @@ export const defaultAnalysisApi: AnalysisApiClient = {
   createFromUrl: (input) => json<DatasetPreview>('/api/datasets/from-url', { method: 'POST', body: JSON.stringify(input) }, { timeoutMs: INTAKE_TIMEOUT_MS }),
 }
 
-const DEFAULT_TASK = 'Classify each row using the visible columns.'
-export const PRODUCT_TITLE = 'Dynamic insights from your data.'
-export const ENGINEER_MODE_PARAM = 'mode'
-export const ENGINEER_MODE_VALUE = 'engineer'
-
+export const PRODUCT_TITLE = 'Turn a CSV into a dashboard'
 export const LOCAL_DATA_NOTE = 'This file is read in your browser and is not uploaded.'
 
 /** Storage errors that mean "there is no live service here", not "this file is bad". */
@@ -161,40 +151,7 @@ const fixtureIdFor = (dataset?: { sourceType?: string; datasetId?: string }): st
   dataset?.sourceType === 'fixture' ? dataset.datasetId : undefined
 )
 
-export const isEngineerMode = (search = typeof window === 'undefined' ? '' : window.location.search): boolean => (
-  new URLSearchParams(search.startsWith('?') || search.length === 0 ? search : `?${search}`).get(ENGINEER_MODE_PARAM) === ENGINEER_MODE_VALUE
-)
-
-const engineerHref = (on: boolean): string => {
-  const path = typeof window === 'undefined' ? '/' : window.location.pathname || '/'
-  const hash = typeof window === 'undefined' ? '' : window.location.hash
-  const params = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search)
-  if (on) params.set(ENGINEER_MODE_PARAM, ENGINEER_MODE_VALUE)
-  else params.delete(ENGINEER_MODE_PARAM)
-  const query = params.toString()
-  return `${path}${query ? `?${query}` : ''}${hash}`
-}
-
 export const hasRunnableQuery = (query: string): boolean => looksLikeJevQueryJson(query)
-
-export const canConfirmJevRun = ({ query, starting }: { query: string; starting: boolean }): boolean =>
-  hasRunnableQuery(query) && !starting
-
-export const queryRunFooter = ({
-  query,
-  starting,
-  hasSnapshot,
-}: {
-  query: string
-  starting: boolean
-  hasSnapshot: boolean
-}): string | undefined => {
-  if (starting) return 'Starting…'
-  if (hasSnapshot) return undefined
-  if (hasRunnableQuery(query)) return undefined
-  if (query.trim().length > 0) return 'Valid Jev JSON required.'
-  return 'Enter Jev query JSON before running.'
-}
 
 const shortError = (error: unknown, fallback: string) => {
   if (error instanceof DatasetError) return error.message.trim() || plainDatasetError(error.code, fallback)
@@ -205,13 +162,6 @@ const shortError = (error: unknown, fallback: string) => {
   }
   return fallback
 }
-
-const Thinking = ({ children }: { children: string }) => (
-  <p className="thinking" role="status">
-    <span className="thinking-dot" aria-hidden="true" />
-    {children}
-  </p>
-)
 
 const ThemeToggle = () => {
   const { theme, toggleTheme } = useTheme()
@@ -248,36 +198,26 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const isLocal = route.kind === 'local'
   const [dataset, setDataset] = useState<DatasetPreview | undefined>()
   const [intakeStatus, setIntakeStatus] = useState<DatasetIntakeStatus>()
-  const [task, setTask] = useState(DEFAULT_TASK)
-  const [draft, setDraft] = useState<AnalysisDraftResult | undefined>()
-  const [query, setQuery] = useState('')
   const [snapshot, setSnapshot] = useState<AnalysisSnapshot | undefined>()
-  const [drafting, setDrafting] = useState(false)
-  const [starting, setStarting] = useState(false)
   const [intakeBusy, setIntakeBusy] = useState(false)
   const [error, setError] = useState<string | undefined>()
   const [intakeError, setIntakeError] = useState<string | undefined>()
   const [intakeResetToken, setIntakeResetToken] = useState(0)
   const [shareMessage, setShareMessage] = useState('')
   const [shareLoading, setShareLoading] = useState(false)
-  const [queryCopyMessage, setQueryCopyMessage] = useState('')
   const [foldAnimate, setFoldAnimate] = useState(false)
-  const [runLatency, setRunLatency] = useState<'saved' | 'live' | undefined>()
-  const [jsonOpen, setJsonOpen] = useState(() => isEngineerMode())
-  const [engineerMode, setEngineerMode] = useState(() => isEngineerMode())
   const [tiles, setTiles] = useState<DashboardTileModel[]>([])
   const [resumingId, setResumingId] = useState<string>()
   const [proposing, setProposing] = useState(false)
   const [runRequested, setRunRequested] = useState(false)
   const [manualShareUrl, setManualShareUrl] = useState('')
   const [storyQuestion, setStoryQuestion] = useState('')
-  const [notice, setNotice] = useState<string>()
   const routeVersion = useRef(0)
 
   const navigate = (href: string) => {
     routeVersion.current += 1
-    setIntakeBusy(false); setDrafting(false); setStarting(false)
-    setStoryQuestion(''); setNotice(undefined)
+    setIntakeBusy(false)
+    setStoryQuestion('')
     window.history.pushState({}, '', href)
     setRoute(parseAppLocation())
     window.scrollTo?.({ top: 0, behavior: 'instant' })
@@ -291,12 +231,9 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   useEffect(() => {
     const sync = () => {
       routeVersion.current += 1
-      setIntakeBusy(false); setDrafting(false); setStarting(false)
-      setStoryQuestion(''); setNotice(undefined)
+      setIntakeBusy(false)
+      setStoryQuestion('')
       setRoute(parseAppLocation())
-      const next = isEngineerMode()
-      setEngineerMode(next)
-      setJsonOpen(next)
     }
     window.addEventListener('popstate', sync)
     return () => window.removeEventListener('popstate', sync)
@@ -332,7 +269,6 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     setShareLoading(true)
     setError(undefined)
     setSnapshot(undefined)
-    setDraft(undefined)
     const load = loadDemoSnapshot(shareAnalysisId).then((demoSnapshot) => demoSnapshot ?? api.share(shareAnalysisId))
     void load.then((nextSnapshot) => {
       if (active) setSnapshot(nextSnapshot)
@@ -351,7 +287,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     let failures = 0
     const poll = async () => {
       try {
-        const next = await (isShareView ? api.share(snapshot.analysisId) : api.read(snapshot.analysisId))
+        const next = await api.share(snapshot.analysisId)
         if (!active) return
         setSnapshot(next)
         failures = 0
@@ -375,86 +311,14 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const resetIntakeForm = () => setIntakeResetToken((token) => token + 1)
 
   const resetRunState = () => {
-    setDraft(undefined)
-    setQuery('')
     setSnapshot(undefined)
     setShareMessage('')
-    setQueryCopyMessage('')
     setError(undefined)
-    setRunLatency(undefined)
-    setJsonOpen(engineerMode)
     setTiles([])
     setResumingId(undefined)
     setProposing(false)
     setRunRequested(false)
     setManualShareUrl('')
-    setNotice(undefined)
-  }
-
-  const handleDraft = async () => {
-    if (!datasetId) { setError('Choose a dataset first.'); return }
-    if (!task.trim()) { setError('Enter a task before drafting a query.'); return }
-    const version = routeVersion.current
-    setDrafting(true); setError(undefined); setIntakeError(undefined); setDraft(undefined); setQuery(''); setQueryCopyMessage(''); setShareMessage(''); setNotice(undefined)
-    try {
-      const result = await api.draft({ datasetId, fixtureId: fixtureIdFor(dataset), task: task.trim() })
-      if (version !== routeVersion.current) return
-      setDraft(result)
-      setQuery(formatDraftQueryForEditor({
-        query: result.query,
-        questionKind: result.metadata.questionKind,
-        classes: result.metadata.classes,
-      }))
-    } catch (draftError) {
-      if (version !== routeVersion.current) return
-      // The table already holds the answer: show it instead of running a model.
-      if (draftError instanceof Error && draftError.message === COLUMN_QUESTION_CODE) {
-        setStoryQuestion(task.trim())
-        setNotice(COLUMN_QUESTION_COPY)
-      } else setError(shortError(draftError, 'Could not draft a Jev query'))
-    } finally { if (version === routeVersion.current) setDrafting(false) }
-  }
-
-  const handleRun = async (nextQuery = query) => {
-    if (!hasRunnableQuery(nextQuery) || !datasetId) return
-    const parsed = parseJevQueryJson(nextQuery)
-    if (!parsed) return
-    const version = routeVersion.current
-    setStarting(true); setError(undefined); setIntakeError(undefined); setShareMessage(''); setRunLatency(undefined)
-    try {
-      const started = await api.start({
-        datasetId,
-        fixtureId: fixtureIdFor(dataset),
-        query: nextQuery.trim(),
-        classes: classesFromJevQuery(parsed),
-        questionKind: parsed.type,
-      })
-      if (version !== routeVersion.current) return
-      setRunLatency(started.status === 'complete' ? 'saved' : 'live')
-      setSnapshot(started)
-    } catch (runError) { if (version === routeVersion.current) setError(shortError(runError, 'Could not start Jev analysis'))
-    } finally { if (version === routeVersion.current) setStarting(false) }
-  }
-
-  const handleResume = async () => {
-    if (!snapshot || snapshot.status !== 'error' || !snapshot.error?.retryable || !datasetId) return
-    const version = routeVersion.current
-    setStarting(true); setError(undefined); setIntakeError(undefined); setShareMessage(''); setRunLatency('live')
-    try {
-      const started = await api.start({
-        datasetId,
-        fixtureId: fixtureIdFor(dataset),
-        query: snapshot.query,
-        classes: [...snapshot.classes],
-        questionKind: snapshot.questionKind,
-        analysisId: snapshot.analysisId,
-        resume: true,
-      })
-      if (version !== routeVersion.current) return
-      setRunLatency(started.status === 'complete' ? 'saved' : 'live')
-      setSnapshot(started)
-    } catch (runError) { if (version === routeVersion.current) setError(shortError(runError, 'Could not resume Jev analysis'))
-    } finally { if (version === routeVersion.current) setStarting(false) }
   }
 
   const readCsvText = async (file: File): Promise<string> => {
@@ -467,19 +331,11 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     })
   }
 
-  const applyDataset = (preview: DatasetPreview, preferredTask?: string, shouldNavigate = true, local = false) => {
+  const applyDataset = (preview: DatasetPreview, shouldNavigate = true, local = false) => {
     resetRunState()
     resetIntakeForm()
     setIntakeError(undefined)
     setDataset(preview)
-    const nextInsights = proposeInsights(preview)
-    const insight = nextInsights[0]
-    const nextTask = preferredTask ?? insight?.task ?? DEFAULT_TASK
-    setTask(nextTask)
-    if (insight) {
-      const nextQuery = queryFromInsight(insight)
-      if (hasRunnableQuery(nextQuery)) setQuery(nextQuery)
-    }
     if (shouldNavigate) navigate(local ? LOCAL_PATH : datasetHref(preview.datasetId, window.location.search))
   }
 
@@ -494,7 +350,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       // Without the live service the dashboard is still built, entirely in this tab.
       const offline = !api.createFromCsv || (intakeStatus !== undefined && (!intakeStatus.convex || !intakeStatus.uploadThing))
       if (offline) {
-        applyDataset(localDatasetPreview(validated, file.name), undefined, true, true)
+        applyDataset(localDatasetPreview(validated, file.name), true, true)
         return
       }
       let preview: DatasetPreview
@@ -503,7 +359,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       } catch (storeError) {
         if (!isIntakeOffline(storeError)) throw storeError
         if (version !== routeVersion.current) return
-        applyDataset(localDatasetPreview(validated, file.name), undefined, true, true)
+        applyDataset(localDatasetPreview(validated, file.name), true, true)
         return
       }
       if (version !== routeVersion.current) return
@@ -553,7 +409,7 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
       ? api.readDataset(routeDatasetId)
       : Promise.reject(new DatasetError('DATASET_NOT_FOUND', 'Could not load this dataset.', 404))))
     void load.then((preview) => {
-      if (active) applyDataset(preview, undefined, false)
+      if (active) applyDataset(preview, false)
     }).catch((loadError) => {
       if (active) setIntakeError(shortError(loadError, 'Could not use this CSV'))
     }).finally(() => {
@@ -742,11 +598,6 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
     else { setShareMessage('Copy link below'); setManualShareUrl(url) }
   }, [])
 
-  const copyQuery = useCallback(async () => {
-    if (!query.trim()) return
-    setQueryCopyMessage(await copyText(query) ? 'Copied' : 'Select the query to copy')
-  }, [query])
-
   const activeDataset = demo?.dataset ?? dataset
   const story = useMemo(() => (
     activeDataset
@@ -757,47 +608,42 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
   const showShape = !isShareView && Boolean(activeDataset)
   // Jev runs read rows from stored datasets, so they need the live service.
   const canAskJev = !demo && !isLocal
-  const showAdvanced = showShape && engineerMode && canAskJev
-  const showRun = Boolean(snapshot) && (isShareView || engineerMode)
-  const toggleEngineerMode = () => {
-    const next = !engineerMode
-    window.history.pushState({}, '', engineerHref(next))
-    setEngineerMode(next)
-    setJsonOpen(next)
-  }
-  const canRun = Boolean(datasetId && canConfirmJevRun({ query, starting: starting || drafting }))
-  const parsedQuery = parseJevQueryJson(query)
-  const querySummary = parsedQuery?.instructions
-  const queryInvalid = query.trim().length > 0 && !parsedQuery
-  const runFooter = queryRunFooter({ query, starting: starting || drafting, hasSnapshot: Boolean(snapshot) })
-  const subsetCopy = draft
-    ? runSubsetCopy({
-      analyzedRows: draft.metadata.rowCount,
-      datasetRows: dataset?.acceptedRowCount,
-      sourceType: draft.sourceType,
-      inputHalf: draft.metadata.inputHalf,
-    })
-    : undefined
-  const choiceClasses = parsedQuery?.type === 'choice' ? Object.keys(parsedQuery.criteria) : []
-  const stage = isShareView ? 'share' : snapshot && engineerMode ? 'run' : activeDataset ? 'dataset' : 'intake'
+  const showRun = Boolean(snapshot) && isShareView
+  const stage = isShareView ? 'share' : activeDataset ? 'dataset' : 'intake'
   const landing = route.kind === 'land'
   const demoShare = shareAnalysisId !== undefined && isDemoAnalysisId(shareAnalysisId)
+  // A demo replay returns to its dashboard; everything else returns to the start.
+  const backHref = demoShare ? `/demo/${shareAnalysisId!.slice(5)}` : landHref(window.location.search)
+  const goBack = () => {
+    if (!demoShare) {
+      setDataset(undefined)
+      resetRunState()
+      setIntakeError(undefined)
+      resetIntakeForm()
+    }
+    navigate(backHref)
+  }
+  const pageTitle = isShareView
+    ? 'Saved analysis'
+    : activeDataset?.displayName ?? demoDatasets.find((item) => item.id === demoId)?.name ?? 'Dataset'
 
   return (
-    <main className="analysis-shell" data-stage={stage} data-mode={engineerMode ? 'engineer' : 'product'}>
+    <main className="analysis-shell" data-stage={stage}>
       <header className="site-header">
-        {landing ? null : <a className="brand" href="/" aria-label="Jev home" onClick={(event) => { event.preventDefault(); navigate('/'); setDataset(undefined); resetRunState() }}><span className="brand-mark" aria-hidden="true">j.</span><span>Jev<span className="brand-subtitle">Data, in perspective.</span></span></a>}
         <div className="site-header-actions">
           <ThemeToggle />
         </div>
       </header>
       {landing ? <h1 id="page-title" className="sr-only">{PRODUCT_TITLE}</h1> : (
-        <section className="hero" aria-labelledby="page-title">
-          <div className="hero-text">
-            <p className="eyebrow">{demo ? 'Built-in example' : isShareView ? 'Shared analysis' : 'Your dashboard'}</p>
-            <h1 id="page-title">{demo ? (route.kind === 'demo' && route.demoId === 'squirrels' ? 'Small creatures. Big picture.' : 'Every play tells a story.') : isShareView ? 'Inspect a saved run.' : PRODUCT_TITLE}</h1>
-            <p className="hero-copy">{demo ? 'This dashboard was built from the table below with no setup: the charts and headlines are chosen from the columns.' : isShareView ? 'Explore a saved analysis, replayed from stored results.' : 'Charts chosen to fit your columns, each stating what it found.'}</p>
+        <section className="page-head" aria-labelledby="page-title">
+          <div className="page-head-text">
+            <a className="page-back" href={backHref} onClick={(event) => { event.preventDefault(); goBack() }}><span aria-hidden="true">←</span> Back</a>
+            <h1 id="page-title">{pageTitle}</h1>
+            {activeDataset ? <p className="page-meta">{formatCount(activeDataset.acceptedRowCount)} rows <span aria-hidden="true">·</span> {activeDataset.columns.length} columns</p> : null}
           </div>
+          {demo && route.kind === 'demo' && route.demoId === 'football' ? (
+            <Button variant="secondary" onClick={() => navigate('/share/demo-football')}>Replay timeline <ArrowUpRight /></Button>
+          ) : null}
         </section>
       )}
       <div className="workspace">
@@ -815,10 +661,8 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
         <StageFold open={showShape} animate={foldAnimate}>
           {activeDataset ? (
             <div className="stage-stack">
-              <div className="dataset-overview"><div><p className="eyebrow">{demo ? 'Built-in example' : isLocal ? 'Your file' : 'Dataset'}</p><p className="dataset-title">{activeDataset.displayName}</p></div><div className="dataset-overview-actions"><span>{formatCount(activeDataset.acceptedRowCount)} rows <span aria-hidden="true">·</span> {activeDataset.columns.length} columns</span>{demo && route.kind === 'demo' && route.demoId === 'football' ? <Button variant="secondary" onClick={() => navigate('/share/demo-football')}>Replay timeline <ArrowUpRight /></Button> : null}</div></div>
               {demo ? <p className="demo-disclosure">{demo.disclosure}</p> : null}
               {isLocal ? <p className="demo-disclosure">{LOCAL_DATA_NOTE} There is no link to share, and closing or reloading the tab clears it.</p> : null}
-              {notice ? <p className="demo-disclosure" role="status">{notice}</p> : null}
               {story ? (
                 <StoryDashboard
                   key={activeDataset.datasetId}
@@ -849,96 +693,11 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
                 </section>
               ) : null}
               <SchemaStrip dataset={activeDataset} />
-              <DatasetPreviewCard dataset={activeDataset} onChange={() => {
-                setDataset(undefined)
-                resetRunState()
-                setIntakeError(undefined)
-                resetIntakeForm()
-                navigate(landHref(window.location.search))
-              }} />
+              <DatasetPreviewCard dataset={activeDataset} />
             </div>
           ) : null}
         </StageFold>
         {manualShareUrl ? <div className="share-fallback" role="status"><Label htmlFor="share-url">Copy this public link</Label><input id="share-url" readOnly value={manualShareUrl} onFocus={(event) => event.currentTarget.select()} /><a href={manualShareUrl} target="_blank" rel="noreferrer">Open link <ArrowUpRight /></a></div> : null}
-        <StageFold open={showAdvanced} animate={foldAnimate}>
-          {dataset && engineerMode ? (
-            <details className="advanced-json query-card" open={jsonOpen} onToggle={(event) => setJsonOpen((event.currentTarget as HTMLDetailsElement).open)}>
-              <summary className="advanced-json-summary">Edit Jev JSON</summary>
-              <Card className="query-card advanced-json-body">
-                <CardHeader className="section-heading flex-row items-start justify-between space-y-0">
-                  <div>
-                    <p className="eyebrow">Advanced</p>
-                    <h2 id="query-heading">Jev query</h2>
-                  </div>
-                  {drafting ? <Badge variant="running">Drafting</Badge> : null}
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-2">
-                    <Label htmlFor="analysis-task">Analysis task</Label>
-                    <Textarea
-                      id="analysis-task"
-                      value={task}
-                      onChange={(event) => setTask(event.target.value)}
-                      rows={2}
-                      placeholder="What should Jev answer per row?"
-                    />
-                  </div>
-                  {querySummary ? <p className="query-summary">{querySummary}</p> : null}
-                  {subsetCopy ? <p className="query-scope" role="status">{subsetCopy}</p> : null}
-                  {choiceClasses.length >= 2 ? (
-                    <ul className="class-chips" aria-label="Choice classes">
-                      {choiceClasses.map((name) => (
-                        <li key={name} className="class-chip">{name}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  <div className="grid gap-2 min-w-0">
-                    <div className="query-editor-head">
-                      <Label htmlFor="jev-query">Jev query JSON</Label>
-                      <Button variant="ghost" size="sm" type="button" onClick={() => void copyQuery()} disabled={!query.trim()}>
-                        {queryCopyMessage || 'Copy'}
-                      </Button>
-                    </div>
-                    <Textarea
-                      id="jev-query"
-                      className="query-json"
-                      value={query}
-                      onChange={(event) => { setQuery(event.target.value); setQueryCopyMessage('') }}
-                      rows={10}
-                      spellCheck={false}
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                      aria-invalid={queryInvalid || undefined}
-                    />
-                  </div>
-                  {drafting ? <Thinking>Drafting query…</Thinking> : null}
-                  {starting ? <Thinking>Starting run…</Thinking> : null}
-                </CardContent>
-                <CardFooter className="form-footer">
-                  {runFooter ? <span>{runFooter}</span> : null}
-                  <Button type="button" variant="secondary" onClick={() => void handleDraft()} disabled={drafting}>
-                    {drafting ? 'Drafting…' : 'Draft task'}
-                  </Button>
-                  <Button
-                    className="run-button"
-                    variant="run"
-                    type="button"
-                    onClick={() => void handleRun()}
-                    disabled={!canRun}
-                  >
-                    {starting ? 'Starting…' : 'Run Jev'}
-                  </Button>
-                </CardFooter>
-              </Card>
-            </details>
-          ) : null}
-        </StageFold>
-        {!isShareView && error && (engineerMode || !showIntake) && (
-          <div className="error-banner" role="alert">
-            <b>{error === INVALID_CLASSES_COPY ? "Couldn't draft" : "Couldn't run"}</b>
-            <span>{error}</span>
-          </div>
-        )}
         {demoShare ? <p className="demo-disclosure">{demoReplayDisclosure(shareAnalysisId!)}</p> : null}
         {isShareView && shareLoading && <p className="empty-copy" role="status">Loading public snapshot…</p>}
         {isShareView && error && (
@@ -954,31 +713,10 @@ const App = ({ api = defaultAnalysisApi }: { api?: AnalysisApiClient }) => {
               shareUrl={shareUrl}
               shareMessage={shareMessage}
               onCopyShare={() => void copyShareUrl()}
-              onResume={isShareView ? undefined : () => void handleResume()}
-              resuming={starting}
-              datasetRowCount={dataset?.acceptedRowCount}
-              inputHalf={draft?.metadata.inputHalf}
-              latencyHint={isShareView ? undefined : runLatency}
-              sourceRows={dataset?.previewRows}
             />
           ) : null}
         </StageFold>
       </div>
-      {!isShareView && !landing ? (
-        <footer className="site-footer">
-          <span>A little data. A clearer picture.</span>
-          <a
-            className="engineer-link"
-            href={engineerHref(!engineerMode)}
-            onClick={(event) => {
-              event.preventDefault()
-              toggleEngineerMode()
-            }}
-          >
-            {engineerMode ? 'Product' : 'Engineer'}
-          </a>
-        </footer>
-      ) : null}
     </main>
   )
 }

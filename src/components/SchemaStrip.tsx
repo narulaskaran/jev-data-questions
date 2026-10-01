@@ -5,7 +5,8 @@ export const COLUMN_TYPES_COPY = 'Column types'
 
 export const SchemaStrip = ({ dataset }: { dataset: DatasetPreview }) => {
   const shape = inspectDatasetShape(dataset.columns, dataset.previewRows)
-  const summary = schemaStripParts(shape).join(' · ')
+  // Row and column counts are already in the page header.
+  const summary = schemaStripParts(shape).slice(1).join(' · ')
   const columns = shape.columns
   return (
     <section className="schema-strip" aria-label="Dataset shape">

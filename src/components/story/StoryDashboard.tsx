@@ -58,7 +58,6 @@ const StoryCard = ({ view, wide }: { view: StoryView; wide: boolean }) => {
     <Card className="story-card" data-view-kind={view.kind} data-chart={view.chart.type} data-wide={wide || undefined} aria-labelledby={headingId}>
       <header className="story-card-head">
         <div className="story-card-copy">
-          <p className="eyebrow">{view.eyebrow}</p>
           <h2 id={headingId}>{view.title}</h2>
           <p className="story-subtitle">{view.subtitle}</p>
         </div>

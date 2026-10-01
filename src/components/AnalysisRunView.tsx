@@ -170,7 +170,6 @@ export const AnalysisRunView = memo(function AnalysisRunView({
     <Card className="analysis-card" aria-labelledby="analysis-heading" data-analysis-id={snapshot.analysisId} data-complete-snap={completeSnap || undefined} data-saved-run={savedReuse || undefined}>
       <CardHeader className="analysis-head flex-row items-start justify-between space-y-0 p-6 pb-0">
         <div>
-          <p className="eyebrow">Run</p>
           <h2 id="analysis-heading" className="analysis-progress-pct">{progressPercent}%</h2>
           <p className="analysis-progress-count">{progressCount}</p>
         </div>
@@ -195,11 +194,13 @@ export const AnalysisRunView = memo(function AnalysisRunView({
         </div>
       </CardHeader>
       <CardContent>
-        <Progress
-          completedRows={displayCompleted}
-          totalRows={snapshot.progress.totalRows}
-          percent={progressPercent}
-        />
+        {completeSnap ? null : (
+          <Progress
+            completedRows={displayCompleted}
+            totalRows={snapshot.progress.totalRows}
+            percent={progressPercent}
+          />
+        )}
         {latencyCopy ? <p className="run-latency" role="status">{latencyCopy}</p> : null}
         {stallCopy ? <p className="run-stall" role="status">{stallCopy}</p> : null}
         {errorCopy ? (

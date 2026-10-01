@@ -5,7 +5,7 @@ import { plainDatasetError } from '../dataset/csvTypes'
 import type { DatasetIntakeStatus } from '../shared/dataset'
 import { Button } from './ui/button'
 import { ArrowUpRight } from './ui/arrow'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { Card, CardContent } from './ui/card'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Progress } from './ui/progress'
@@ -69,15 +69,13 @@ export const DatasetIntake = ({
 
   return (
     <section className="intake-panel" aria-labelledby="intake-heading" aria-busy={disabled || undefined}>
-      <h2 id="intake-heading" className="sr-only">Choose a dataset</h2>
+      <div className="column-head">
+        <h2 id="intake-heading">Your data</h2>
+        <p>Drop in a CSV to see it charted.</p>
+      </div>
       <div className="intake-cards">
         <Card className={`intake-card${disabled ? ' is-disabled' : ''}`}>
-          <CardHeader>
-            <p className="eyebrow">Bring your own</p>
-            <CardTitle>Bring your own data.</CardTitle>
-            <p className="intake-description">Drop in a CSV and get a dashboard in seconds.</p>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="p-5">
             <div
               className={`byod-file${dragging ? ' is-dragging' : ''}`}
               onDragOver={(event) => {
@@ -86,6 +84,9 @@ export const DatasetIntake = ({
                 setDragging(true)
               }}
               onDragLeave={() => setDragging(false)}
+              onClick={(event) => {
+                if (!fileBlocked && !(event.target as HTMLElement).closest('button, input, a')) fileInputRef.current?.click()
+              }}
               onDrop={(event) => {
                 if (fileBlocked) return
                 event.preventDefault()
@@ -95,7 +96,7 @@ export const DatasetIntake = ({
               }}
             >
               <svg className="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/></svg>
-              <p>Drop a CSV here, or choose a file.</p>
+              <p>{dragging ? 'Release to chart this file' : 'Drop a CSV here, or choose a file.'}</p>
               <input
                 ref={fileInputRef}
                 id="csv-file"
